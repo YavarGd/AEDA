@@ -40,4 +40,28 @@ public sealed class PalettePlacementCalculatorTests
         Assert.Equal(500, position.X);
         Assert.Equal(380, position.Y);
     }
+
+    [Fact]
+    public void IsVisibleWithinAnyWorkingArea_RejectsOffscreenPosition()
+    {
+        var isVisible = WindowPositionValidator.IsVisibleWithinAnyWorkingArea(
+            new WindowPosition(2000, 2000),
+            width: 500,
+            height: 300,
+            [new RectBounds(0, 0, 1280, 720)]);
+
+        Assert.False(isVisible);
+    }
+
+    [Fact]
+    public void IsVisibleWithinAnyWorkingArea_AcceptsPartiallyVisiblePosition()
+    {
+        var isVisible = WindowPositionValidator.IsVisibleWithinAnyWorkingArea(
+            new WindowPosition(1200, 650),
+            width: 500,
+            height: 300,
+            [new RectBounds(0, 0, 1280, 720)]);
+
+        Assert.True(isVisible);
+    }
 }

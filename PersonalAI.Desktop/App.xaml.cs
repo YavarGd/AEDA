@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Interop;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Desktop.Windows;
+using PersonalAI.Infrastructure.Context;
 
 namespace PersonalAI.Desktop;
 
@@ -13,6 +14,8 @@ public partial class App : System.Windows.Application
     private TrayIconService? _trayIconService;
     private GlobalHotKeyService? _hotKeyService;
     private MainWindow? _mainWindow;
+    private ForegroundWindowTracker? _foregroundWindowTracker;
+    private WindowPositionService? _windowPositionService;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -39,6 +42,10 @@ public partial class App : System.Windows.Application
         var chatProvider = ChatProviderFactory.CreateDefaultLocalProvider();
         var conversationRepository =
             ConversationRepositoryFactory.CreateDefaultRepository();
+        var activeContextProvider =
+            ActiveContextProviderFactory.CreateDefaultProvider();
+        _foregroundWindowTracker = new ForegroundWindowTracker();
+        _windowPositionService = new WindowPositionService();
 
         try
         {
@@ -56,7 +63,12 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        _mainWindow = new MainWindow(chatProvider, conversationRepository);
+        _mainWindow = new MainWindow(
+            chatProvider,
+            conversationRepository,
+            activeContextProvider,
+            _foregroundWindowTracker,
+            _windowPositionService);
         MainWindow = _mainWindow;
 
         _trayIconService = new TrayIconService(
@@ -64,7 +76,7 @@ public partial class App : System.Windows.Application
             HidePersonalAi,
             ExitPersonalAi);
 
-        _mainWindow.ShowPaletteAndFocusPrompt();
+        ShowPersonalAi();
         var windowHandle = new WindowInteropHelper(_mainWindow).EnsureHandle();
         _existingInstanceNotificationService =
             new ExistingInstanceNotificationService(windowHandle);
@@ -105,7 +117,13 @@ public partial class App : System.Windows.Application
 
     private void ShowPersonalAi()
     {
-        _mainWindow?.ShowPaletteAndFocusPrompt();
+        if (_mainWindow is null)
+        {
+            return;
+        }
+
+        _mainWindow.CaptureExternalWindowBeforeActivation();
+        _mainWindow.ShowPaletteAndFocusPrompt();
     }
 
     private void HidePersonalAi()
@@ -117,6 +135,7 @@ public partial class App : System.Windows.Application
     {
         if (_mainWindow is not null)
         {
+            _mainWindow.ClearAttachedContext();
             _mainWindow.AllowClose = true;
         }
 

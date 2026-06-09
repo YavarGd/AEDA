@@ -17,13 +17,37 @@
         KeyDown="MainWindow_KeyDown"
         Loaded="MainWindow_Loaded">
     <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="250" />
             <ColumnDefinition Width="20" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Grid Grid.Column="0">
+        <Border x:Name="DragHeader"
+                Grid.Row="0"
+                Grid.ColumnSpan="3"
+                Margin="0,0,0,12"
+                Padding="0,0,0,8"
+                MouseLeftButtonDown="DragHeader_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock FontWeight="SemiBold"
+                           Text="PersonalAI" />
+                <TextBlock Grid.Column="1"
+                           Opacity="0.65"
+                           Text="Ctrl+Alt+Space" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Grid.Column="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -42,10 +66,11 @@
                      SelectionChanged="ConversationListBox_SelectionChanged" />
         </Grid>
 
-        <Grid Grid.Column="2">
+        <Grid Grid.Row="1" Grid.Column="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="2*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="3*" />
                 <RowDefinition Height="Auto" />
@@ -83,22 +108,70 @@
                         IsEnabled="False" />
             </Grid>
 
-            <TextBox x:Name="PromptTextBox"
-                     Grid.Row="1"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto"
-                     FontFamily="Consolas"
-                     FontSize="14"
-                     MinHeight="150" />
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="150" />
+                </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Row="2"
+                <TextBox x:Name="PromptTextBox"
+                         Grid.Column="0"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         FontFamily="Consolas"
+                         FontSize="14"
+                         MinHeight="150" />
+
+                <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                    <Button x:Name="AttachContextButton"
+                            MinHeight="30"
+                            Margin="0,0,0,8"
+                            Click="AttachContextButton_Click"
+                            Content="Attach Context" />
+                    <Button x:Name="UseClipboardTextButton"
+                            MinHeight="30"
+                            Margin="0,0,0,8"
+                            Click="UseClipboardTextButton_Click"
+                            Content="Use Clipboard Text" />
+                    <Button x:Name="CaptureScreenshotButton"
+                            MinHeight="30"
+                            Click="CaptureScreenshotButton_Click"
+                            Content="Capture Screenshot" />
+                </StackPanel>
+            </Grid>
+
+            <Border x:Name="ContextPreviewBorder"
+                    Grid.Row="2"
+                    Margin="0,10,0,0"
+                    Padding="10"
+                    BorderBrush="#80707070"
+                    BorderThickness="1"
+                    Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock x:Name="ContextPreviewTextBlock"
+                               Grid.Column="0"
+                               TextWrapping="Wrap" />
+                    <Button Grid.Column="1"
+                            Width="72"
+                            Margin="10,0,0,0"
+                            Click="RemoveContextButton_Click"
+                            Content="Remove" />
+                </Grid>
+            </Border>
+
+            <TextBlock Grid.Row="3"
                        Margin="0,12,0,8"
                        FontWeight="SemiBold"
                        Text="History" />
 
             <TextBox x:Name="ResponseTextBox"
-                     Grid.Row="3"
+                     Grid.Row="4"
                      AcceptsReturn="True"
                      IsReadOnly="True"
                      TextWrapping="Wrap"
@@ -108,7 +181,7 @@
                      MinHeight="220" />
 
             <TextBlock x:Name="StatusTextBlock"
-                       Grid.Row="4"
+                       Grid.Row="5"
                        Margin="0,12,0,0"
                        Text="Idle" />
         </Grid>
