@@ -127,17 +127,96 @@
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0"
-                            Orientation="Horizontal"
                             Spacing="8"
                             Margin="0,0,0,8">
-                    <Button Command="{Binding AttachApplicationContextCommand}"
-                            Content="Attach" />
-                    <Button Command="{Binding AttachClipboardTextCommand}"
-                            Content="Clipboard" />
-                    <Button Command="{Binding CaptureScreenshotCommand}"
-                            Content="Screenshot" />
-                    <Button Command="{Binding RemoveAttachedContextCommand}"
-                            Content="Remove context" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8">
+                            <Button Command="{Binding CaptureApplicationContextCommand}"
+                                    Content="Capture app" />
+                            <Button Command="{Binding AttachClipboardContextCommand}"
+                                    Content="Clipboard" />
+                            <Button Command="{Binding AttachVsCodeContextCommand}"
+                                    Content="VS Code" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="{Binding AttachedContextCount}"
+                                       Opacity="0.7" />
+                            <TextBlock Text="attached"
+                                       Opacity="0.7" />
+                            <Button Command="{Binding ClearAllContextsCommand}"
+                                    Content="Clear all"
+                                    Visibility="{Binding HasAttachedContexts, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{Binding EditorConnectionStatus}"
+                               Opacity="0.7" />
+                    <TextBlock Text="{Binding ContextStatusMessage}"
+                               Opacity="0.7" />
+
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  Visibility="{Binding HasAttachedContexts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl ItemsSource="{Binding AttachedContexts}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsStackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="10"
+                                            Margin="0,0,8,0"
+                                            MaxWidth="320"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            ToolTipService.ToolTip="{Binding Preview}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="{Binding Type}"
+                                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                                           Opacity="0.7" />
+                                                <TextBlock Text="{Binding DisplayTitle}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="{Binding SourceName}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Opacity="0.75" />
+                                                <TextBlock Text="{Binding Preview}"
+                                                           TextWrapping="Wrap"
+                                                           MaxLines="2"
+                                                           Opacity="0.75" />
+                                            </StackPanel>
+
+                                            <Button Grid.Column="1"
+                                                    Margin="8,0,0,0"
+                                                    VerticalAlignment="Top"
+                                                    Command="{Binding DataContext.RemoveContextCommand, ElementName=Root}"
+                                                    CommandParameter="{Binding}"
+                                                    Content="Remove" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </StackPanel>
 
                 <Grid Grid.Row="1">

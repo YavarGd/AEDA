@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using PersonalAI.Core.Editor;
 
-namespace PersonalAI.Desktop.Ipc;
+namespace PersonalAI.Infrastructure.Ipc;
 
 public sealed class PersonalAiPipeServer : IDisposable
 {
@@ -19,8 +19,23 @@ public sealed class PersonalAiPipeServer : IDisposable
         _handler = handler;
     }
 
+    public EditorIpcConnectionState State { get; private set; } =
+        EditorIpcConnectionState.Stopped;
+
+    public string StatusMessage { get; private set; } = "Editor integration stopped.";
+
+    public event EventHandler? StateChanged;
+
     public void Start()
     {
+        if (_serverTask is not null)
+        {
+            return;
+        }
+
+        SetState(
+            EditorIpcConnectionState.Starting,
+            "Starting editor integration.");
         _serverTask = Task.Run(RunAsync);
     }
 
@@ -43,17 +58,42 @@ public sealed class PersonalAiPipeServer : IDisposable
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous);
 
+                SetState(
+                    EditorIpcConnectionState.Listening,
+                    "VS Code integration connected.");
+
                 await pipe.WaitForConnectionAsync(_cancellation.Token);
                 await HandleConnectionAsync(pipe, _cancellation.Token);
             }
             catch (OperationCanceledException)
             {
+                SetState(
+                    EditorIpcConnectionState.Stopped,
+                    "Editor integration stopped.");
                 return;
             }
-            catch (IOException)
+            catch (IOException exception)
             {
+                SetState(
+                    EditorIpcConnectionState.Unavailable,
+                    $"Editor integration already in use or unavailable. {exception.Message}");
+                await Task.Delay(TimeSpan.FromSeconds(2), _cancellation.Token);
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                SetState(
+                    EditorIpcConnectionState.Unavailable,
+                    $"Editor integration unavailable. {exception.Message}");
+                return;
             }
         }
+    }
+
+    private void SetState(EditorIpcConnectionState state, string statusMessage)
+    {
+        State = state;
+        StatusMessage = statusMessage;
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private async Task HandleConnectionAsync(

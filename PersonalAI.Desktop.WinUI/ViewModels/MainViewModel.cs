@@ -4,6 +4,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using PersonalAI.Core.Chat;
+using PersonalAI.Core.Context;
+using PersonalAI.Core.Editor;
 using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;
 
@@ -14,24 +16,35 @@ public sealed partial class MainViewModel : ObservableObject
     private const string NewChatTitle = "New chat";
 
     private readonly ConversationSessionService _conversationSession;
+    private readonly ClipboardContextService _clipboardContextService;
+    private readonly ActiveWindowContextService _activeWindowContextService;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly GenerationNavigationGuard _navigationGuard = new();
+    private readonly AttachedContextCollection _attachedContextCollection = new();
     private readonly List<Conversation> _allConversations = [];
     private CancellationTokenSource? _generationCancellation;
     private Conversation? _activeConversation;
     private Task? _activeGenerationTask;
+    private EditorContextEnvelope? _latestEditorContext;
     private bool _hasRequestedGenerationCancellation;
     private bool _isSending;
 
-    public MainViewModel(ConversationSessionService conversationSession)
+    public MainViewModel(
+        ConversationSessionService conversationSession,
+        ClipboardContextService clipboardContextService,
+        ActiveWindowContextService activeWindowContextService)
     {
         _conversationSession = conversationSession;
+        _clipboardContextService = clipboardContextService;
+        _activeWindowContextService = activeWindowContextService;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     }
 
     public ObservableCollection<ConversationListItem> Conversations { get; } = [];
 
     public ObservableCollection<ChatMessageViewModel> Messages { get; } = [];
+
+    public ObservableCollection<AttachedContextItem> AttachedContexts { get; } = [];
 
     public IReadOnlyList<string> AvailableModels { get; } = ["gemma4"];
 
@@ -59,6 +72,15 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private ConversationListItem? _selectedConversation;
 
+    [ObservableProperty]
+    private bool _isEditorConnected;
+
+    [ObservableProperty]
+    private string _editorConnectionStatus = "VS Code disconnected";
+
+    [ObservableProperty]
+    private string _contextStatusMessage = "No context attached";
+
     public bool IsGenerating => Status is ChatStatus.Connecting or ChatStatus.Generating;
 
     public bool IsTimelineEmpty => Messages.Count == 0;
@@ -66,6 +88,12 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasNoConversations => Conversations.Count == 0;
 
     public bool CanSend => !IsGenerating && !_isSending && !string.IsNullOrWhiteSpace(Prompt);
+
+    public bool CanModifyContexts => !IsGenerating && !_isSending;
+
+    public bool HasAttachedContexts => AttachedContexts.Count > 0;
+
+    public int AttachedContextCount => AttachedContexts.Count;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -100,8 +128,14 @@ public sealed partial class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsGenerating));
         OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanModifyContexts));
         SendMessageCommand.NotifyCanExecuteChanged();
         CancelGenerationCommand.NotifyCanExecuteChanged();
+        AttachClipboardContextCommand.NotifyCanExecuteChanged();
+        CaptureApplicationContextCommand.NotifyCanExecuteChanged();
+        AttachVsCodeContextCommand.NotifyCanExecuteChanged();
+        RemoveContextCommand.NotifyCanExecuteChanged();
+        ClearAllContextsCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
@@ -172,6 +206,7 @@ public sealed partial class MainViewModel : ObservableObject
         _activeConversation = null;
         SelectedConversation = null;
         Messages.Clear();
+        ClearAttachedContextItems();
         Prompt = string.Empty;
         CurrentConversationTitle = NewChatTitle;
         Status = ChatStatus.Ready;
@@ -225,6 +260,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         _isSending = true;
         OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanModifyContexts));
         SendMessageCommand.NotifyCanExecuteChanged();
 
         _generationCancellation = new CancellationTokenSource();
@@ -233,9 +269,11 @@ public sealed partial class MainViewModel : ObservableObject
         StatusMessage = "Connecting";
         Prompt = string.Empty;
 
+        var contextSnapshot = _attachedContextCollection.Snapshot();
         var generationTask = ExecuteGenerationAsync(
             prompt,
             model,
+            contextSnapshot,
             _generationCancellation.Token);
         _activeGenerationTask = generationTask;
 
@@ -255,21 +293,32 @@ public sealed partial class MainViewModel : ObservableObject
             _hasRequestedGenerationCancellation = false;
             _isSending = false;
             OnPropertyChanged(nameof(CanSend));
+            OnPropertyChanged(nameof(CanModifyContexts));
             SendMessageCommand.NotifyCanExecuteChanged();
             CancelGenerationCommand.NotifyCanExecuteChanged();
+            AttachClipboardContextCommand.NotifyCanExecuteChanged();
+            CaptureApplicationContextCommand.NotifyCanExecuteChanged();
+            AttachVsCodeContextCommand.NotifyCanExecuteChanged();
+            RemoveContextCommand.NotifyCanExecuteChanged();
+            ClearAllContextsCommand.NotifyCanExecuteChanged();
         }
     }
 
     private async Task ExecuteGenerationAsync(
         string prompt,
         string model,
+        IReadOnlyList<AttachedContextItem> contextSnapshot,
         CancellationToken cancellationToken)
     {
         ChatMessageViewModel? assistantMessage = null;
         var assistantResponse = new StringBuilder();
+        var requestAccepted = false;
 
         try
         {
+            var previousHistory = Messages
+                .Select(message => new ChatMessage(message.Role, message.Content))
+                .ToArray();
             var conversation = await EnsureActiveConversationAsync(
                 prompt,
                 model,
@@ -288,21 +337,32 @@ public sealed partial class MainViewModel : ObservableObject
             Status = ChatStatus.Generating;
             StatusMessage = "Generating";
 
-            var history = Messages
-                .Where(message => message != assistantMessage)
-                .Select(message => new ChatMessage(message.Role, message.Content))
-                .ToArray();
+            var requestMessages = AttachedContextPromptComposer.Compose(
+                previousHistory,
+                prompt,
+                contextSnapshot);
 
             await foreach (var chunk in _conversationSession.StreamAsync(
                                model,
-                               history,
+                               requestMessages,
                                cancellationToken))
             {
                 if (!string.IsNullOrEmpty(chunk.Content))
                 {
+                    if (!requestAccepted)
+                    {
+                        requestAccepted = true;
+                        ClearAttachedContextItems();
+                    }
+
                     assistantResponse.Append(chunk.Content);
                     AppendAssistantText(assistantMessage, chunk.Content, conversation.Id);
                 }
+            }
+
+            if (!requestAccepted)
+            {
+                ClearAttachedContextItems();
             }
 
             var completedContent = assistantResponse.ToString();
@@ -385,25 +445,97 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void AttachApplicationContext()
     {
-        StatusMessage = "Application context migration is not part of this phase.";
+        StatusMessage = "Use Capture app to attach application context.";
     }
 
-    [RelayCommand]
-    public void AttachClipboardText()
+    [RelayCommand(CanExecute = nameof(CanModifyContexts))]
+    public async Task AttachClipboardContextAsync()
     {
-        StatusMessage = "Clipboard context migration is not part of this phase.";
+        var item = await _clipboardContextService.CaptureTextAsync();
+
+        if (item is null)
+        {
+            SetContextStatus("Clipboard text was unavailable.");
+            return;
+        }
+
+        AddAttachedContext(item, "Clipboard context attached.");
     }
 
-    [RelayCommand]
-    public void CaptureScreenshot()
+    [RelayCommand(CanExecute = nameof(CanModifyContexts))]
+    public async Task CaptureApplicationContextAsync()
     {
-        StatusMessage = "Screenshot context migration is not part of this phase.";
+        var item = await _activeWindowContextService.CaptureAsync();
+
+        if (item is null)
+        {
+            SetContextStatus(
+                "No usable external application window was available.");
+            return;
+        }
+
+        AddAttachedContext(item, "Application context attached.");
     }
 
-    [RelayCommand]
-    public void RemoveAttachedContext()
+    [RelayCommand(CanExecute = nameof(CanModifyContexts))]
+    public void AttachVsCodeContext()
     {
-        StatusMessage = "No attached context in this phase.";
+        if (_latestEditorContext is null)
+        {
+            SetContextStatus("No VS Code editor context has been received.");
+            return;
+        }
+
+        AddAttachedContext(
+            AttachedContextFactory.FromEditorContext(_latestEditorContext),
+            "VS Code context attached.");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanModifyContexts))]
+    public void RemoveContext(AttachedContextItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        if (_attachedContextCollection.Remove(item.Id))
+        {
+            AttachedContexts.Remove(item);
+            NotifyAttachedContextsChanged();
+            SetContextStatus("Context removed.");
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanModifyContexts))]
+    public void ClearAllContexts()
+    {
+        ClearAttachedContextItems();
+        SetContextStatus("All attached context cleared.");
+    }
+
+    public void ReceiveEditorContext(EditorContextEnvelope envelope)
+    {
+        _latestEditorContext = envelope;
+        IsEditorConnected = true;
+        EditorConnectionStatus = "VS Code context received";
+
+        if (string.IsNullOrWhiteSpace(Prompt) &&
+            !string.IsNullOrWhiteSpace(envelope.UserPrompt))
+        {
+            Prompt = envelope.UserPrompt;
+        }
+
+        ReplaceAttachedContext(
+            AttachedContextType.VsCodeEditor,
+            AttachedContextFactory.FromEditorContext(envelope));
+        SetContextStatus("VS Code editor context attached.");
+    }
+
+    public void SetEditorConnectionState(bool isConnected, string status)
+    {
+        IsEditorConnected = isConnected;
+        EditorConnectionStatus = status;
     }
 
     private async Task<Conversation> EnsureActiveConversationAsync(
@@ -453,6 +585,58 @@ public sealed partial class MainViewModel : ObservableObject
             CancellationToken.None);
 
         await ReloadConversationListAsync(_activeConversation.Id);
+    }
+
+    private void AddAttachedContext(AttachedContextItem item, string successMessage)
+    {
+        if (!_attachedContextCollection.Add(item))
+        {
+            SetContextStatus("That context is already attached.");
+            return;
+        }
+
+        AttachedContexts.Add(item);
+        NotifyAttachedContextsChanged();
+        SetContextStatus(successMessage);
+    }
+
+    private void ReplaceAttachedContext(
+        AttachedContextType contextType,
+        AttachedContextItem replacement)
+    {
+        var existing = AttachedContexts
+            .Where(context => context.Type == contextType)
+            .ToArray();
+
+        foreach (var item in existing)
+        {
+            _attachedContextCollection.Remove(item.Id);
+            AttachedContexts.Remove(item);
+        }
+
+        _attachedContextCollection.Add(replacement);
+        AttachedContexts.Add(replacement);
+        NotifyAttachedContextsChanged();
+    }
+
+    private void ClearAttachedContextItems()
+    {
+        _attachedContextCollection.Clear();
+        AttachedContexts.Clear();
+        NotifyAttachedContextsChanged();
+    }
+
+    private void NotifyAttachedContextsChanged()
+    {
+        OnPropertyChanged(nameof(HasAttachedContexts));
+        OnPropertyChanged(nameof(AttachedContextCount));
+        ClearAllContextsCommand.NotifyCanExecuteChanged();
+    }
+
+    private void SetContextStatus(string message)
+    {
+        ContextStatusMessage = message;
+        StatusMessage = message;
     }
 
     private async Task ReloadConversationListAsync(Guid? selectedConversationId = null)

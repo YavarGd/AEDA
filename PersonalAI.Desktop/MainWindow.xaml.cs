@@ -12,6 +12,7 @@ using PersonalAI.Core.Editor;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
 using PersonalAI.Desktop.Windows;
+using ForegroundWindowTracker = PersonalAI.Desktop.Windows.ForegroundWindowTracker;
 
 namespace PersonalAI.Desktop;
 

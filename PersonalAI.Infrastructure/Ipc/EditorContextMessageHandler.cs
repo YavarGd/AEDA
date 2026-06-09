@@ -1,6 +1,6 @@
 using PersonalAI.Core.Editor;
 
-namespace PersonalAI.Desktop.Ipc;
+namespace PersonalAI.Infrastructure.Ipc;
 
 public sealed class EditorContextMessageHandler(
     Action<EditorContextEnvelope> attachContext,

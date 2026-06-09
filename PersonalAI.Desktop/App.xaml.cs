@@ -3,7 +3,8 @@ using System.Windows.Interop;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Desktop.Windows;
 using PersonalAI.Infrastructure.Context;
-using PersonalAI.Desktop.Ipc;
+using PersonalAI.Infrastructure.Ipc;
+using ForegroundWindowTracker = PersonalAI.Desktop.Windows.ForegroundWindowTracker;
 
 namespace PersonalAI.Desktop;
 

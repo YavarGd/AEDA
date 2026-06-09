@@ -48,6 +48,12 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    public void FocusPromptInput()
+    {
+        PromptTextBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+        PromptTextBox.SelectionStart = PromptTextBox.Text.Length;
+    }
+
     private async Task<bool> ShowStopGenerationDialogAsync(
         GenerationStopConfirmationRequest request)
     {
