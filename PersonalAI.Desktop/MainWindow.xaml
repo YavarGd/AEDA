@@ -7,8 +7,14 @@
         Title="PersonalAI"
         MinHeight="560"
         MinWidth="860"
-        Height="680"
-        Width="1080"
+        Height="620"
+        Width="960"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Closing="MainWindow_Closing"
+        KeyDown="MainWindow_KeyDown"
         Loaded="MainWindow_Loaded">
     <Grid Margin="20">
         <Grid.ColumnDefinitions>

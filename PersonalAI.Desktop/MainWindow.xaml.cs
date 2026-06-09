@@ -1,10 +1,13 @@
 using System.IO;
 using System.Net.Http;
 using System.Text;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using PersonalAI.Core.Chat;
 using PersonalAI.Infrastructure.Chat;
+using PersonalAI.Desktop.Windows;
 
 namespace PersonalAI.Desktop;
 
@@ -16,6 +19,8 @@ public partial class MainWindow : Window
     private Conversation? _activeConversation;
     private bool _isGenerating;
     private bool _isRefreshingConversationList;
+
+    public bool AllowClose { get; set; }
 
     public MainWindow()
         : this(
@@ -203,6 +208,57 @@ public partial class MainWindow : Window
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
         _generationCancellation?.Cancel();
+    }
+
+    public void ShowPaletteAndFocusPrompt()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        Topmost = true;
+        PaletteWindowPlacementService.PlaceNearCursor(this);
+        Activate();
+        FocusPromptInput();
+    }
+
+    public void HidePalette()
+    {
+        Hide();
+    }
+
+    public void FocusPromptInput()
+    {
+        PromptTextBox.Focus();
+        PromptTextBox.CaretIndex = PromptTextBox.Text.Length;
+    }
+
+    private void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (AllowClose)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        HidePalette();
+    }
+
+    private void MainWindow_KeyDown(
+        object sender,
+        System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            HidePalette();
+            e.Handled = true;
+        }
     }
 
     private void StartNewChat()
