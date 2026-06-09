@@ -101,6 +101,83 @@ public sealed class SqliteConversationRepositoryTests : IDisposable
             stored.UpdatedAtUtc.ToUniversalTime());
     }
 
+    [Fact]
+    public async Task ListConversationsAsync_OrdersByMostRecentlyUpdatedFirst()
+    {
+        var repository = new SqliteConversationRepository(_databasePath);
+        await repository.InitializeAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var older = new Conversation(
+            Guid.NewGuid(),
+            "Older",
+            "gemma4",
+            now.AddMinutes(-10),
+            now.AddMinutes(-5),
+            ConversationStatus.Completed);
+        var newer = new Conversation(
+            Guid.NewGuid(),
+            "Newer",
+            "gemma4",
+            now.AddMinutes(-10),
+            now,
+            ConversationStatus.Completed);
+
+        await repository.CreateConversationAsync(older);
+        await repository.CreateConversationAsync(newer);
+
+        var conversations = await repository.ListConversationsAsync();
+
+        Assert.Collection(
+            conversations,
+            conversation => Assert.Equal(newer.Id, conversation.Id),
+            conversation => Assert.Equal(older.Id, conversation.Id));
+    }
+
+    [Fact]
+    public async Task ListMessagesAsync_ReturnsOnlyMessagesForSelectedConversation()
+    {
+        var repository = new SqliteConversationRepository(_databasePath);
+        await repository.InitializeAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var firstConversation = new Conversation(
+            Guid.NewGuid(),
+            "First",
+            "gemma4",
+            now,
+            now,
+            ConversationStatus.Completed);
+        var secondConversation = new Conversation(
+            Guid.NewGuid(),
+            "Second",
+            "gemma4",
+            now,
+            now,
+            ConversationStatus.Completed);
+
+        await repository.CreateConversationAsync(firstConversation);
+        await repository.CreateConversationAsync(secondConversation);
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            firstConversation.Id,
+            ChatRole.User,
+            "First message",
+            now.AddSeconds(1)));
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            secondConversation.Id,
+            ChatRole.User,
+            "Second message",
+            now.AddSeconds(1)));
+
+        var messages = await repository.ListMessagesAsync(secondConversation.Id);
+
+        var message = Assert.Single(messages);
+        Assert.Equal(secondConversation.Id, message.ConversationId);
+        Assert.Equal("Second message", message.Content);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

@@ -2,9 +2,13 @@
     x:Class="PersonalAI.Desktop.WinUI.Views.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:PersonalAI.Desktop.WinUI.Converters"
     Title="PersonalAI">
     <Grid x:Name="Root"
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.Resources>
+            <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="280" />
             <ColumnDefinition Width="*" />
@@ -28,9 +32,10 @@
             <TextBox Grid.Row="1"
                      Margin="0,12,0,12"
                      PlaceholderText="Search conversations"
-                     Text="{Binding ConversationSearch, Mode=TwoWay}" />
+                     Text="{Binding ConversationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <ListView Grid.Row="2"
                       ItemsSource="{Binding Conversations}"
+                      SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
                       SelectionChanged="ConversationList_SelectionChanged">
                 <ListView.ItemTemplate>
                     <DataTemplate>
@@ -44,6 +49,12 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
+            <TextBlock Grid.Row="2"
+                       Text="No conversations yet"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Opacity="0.7"
+                       Visibility="{Binding HasNoConversations, Converter={StaticResource BooleanToVisibilityConverter}}" />
             <Button Grid.Row="3"
                     Content="Settings"
                     HorizontalAlignment="Stretch" />
@@ -83,25 +94,31 @@
                               IsActive="{Binding IsGenerating}" />
             </Grid>
 
-            <ListView x:Name="TimelineList"
-                      Grid.Row="1"
-                      Margin="0,24"
-                      ItemsSource="{Binding Messages}">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Padding="0,8">
-                            <StackPanel MaxWidth="820">
-                                <TextBlock Text="{Binding RoleLabel}"
-                                           Style="{ThemeResource CaptionTextBlockStyle}"
-                                           Opacity="0.7" />
-                                <TextBlock Text="{Binding Content}"
-                                           TextWrapping="Wrap"
-                                           IsTextSelectionEnabled="True" />
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
+            <Grid Grid.Row="1"
+                  Margin="0,24">
+                <ListView x:Name="TimelineList"
+                          ItemsSource="{Binding Messages}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="0,8">
+                                <StackPanel MaxWidth="820">
+                                    <TextBlock Text="{Binding RoleLabel}"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Opacity="0.7" />
+                                    <TextBlock Text="{Binding Content}"
+                                               TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock Text="Start a new chat or choose a conversation"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Opacity="0.7"
+                           Visibility="{Binding IsTimelineEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </Grid>
 
             <Grid Grid.Row="2">
                 <Grid.RowDefinitions>
@@ -147,7 +164,7 @@
                             VerticalAlignment="Bottom"
                             Command="{Binding CancelGenerationCommand}"
                             Content="Stop"
-                            Visibility="{Binding IsGenerating}" />
+                            Visibility="{Binding IsGenerating, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
             </Grid>
         </Grid>

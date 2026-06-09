@@ -16,11 +16,17 @@ public partial class App : Application
         InitializeComponent();
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         var chatProvider = ChatProviderFactory.CreateDefaultLocalProvider();
+        var conversationRepository = ConversationRepositoryFactory.CreateDefaultRepository();
+        await conversationRepository.InitializeAsync();
         var chatSession = new ChatSessionService(chatProvider);
-        var viewModel = new MainViewModel(chatSession);
+        var conversationSession = new ConversationSessionService(
+            conversationRepository,
+            chatSession);
+        var viewModel = new MainViewModel(conversationSession);
+        await viewModel.InitializeAsync();
 
         _window = new MainWindow(viewModel);
         _window.Activate();

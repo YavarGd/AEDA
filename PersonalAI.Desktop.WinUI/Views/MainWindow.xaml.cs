@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using PersonalAI.Desktop.WinUI.Models;
+using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 
 namespace PersonalAI.Desktop.WinUI.Views;
@@ -15,6 +16,7 @@ public sealed partial class MainWindow : Window
         _viewModel = viewModel;
         InitializeComponent();
         Root.DataContext = _viewModel;
+        _viewModel.ConfirmStopGenerationAsync = ShowStopGenerationDialogAsync;
     }
 
     private void ConversationList_SelectionChanged(
@@ -44,5 +46,22 @@ public sealed partial class MainWindow : Window
         {
             _viewModel.SendMessageCommand.Execute(null);
         }
+    }
+
+    private async Task<bool> ShowStopGenerationDialogAsync(
+        GenerationStopConfirmationRequest request)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "Assistant response in progress",
+            Content = "PersonalAI is still generating a response for the current conversation.",
+            PrimaryButtonText = request.PrimaryButtonText,
+            CloseButtonText = request.CloseButtonText,
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary;
     }
 }
