@@ -1,0 +1,77 @@
+{
+  "name": "vscode-personalai",
+  "displayName": "PersonalAI",
+  "description": "Send explicit VS Code editor context to the local PersonalAI desktop app.",
+  "version": "0.1.0",
+  "publisher": "personalai",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:personalai.askAboutSelection",
+    "onCommand:personalai.explainSelection",
+    "onCommand:personalai.findProblemsInSelection",
+    "onCommand:personalai.openPersonalAI"
+  ],
+  "main": "./out/src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "personalai.askAboutSelection",
+        "title": "PersonalAI: Ask About Selection"
+      },
+      {
+        "command": "personalai.explainSelection",
+        "title": "PersonalAI: Explain Selection"
+      },
+      {
+        "command": "personalai.findProblemsInSelection",
+        "title": "PersonalAI: Find Problems in Selection"
+      },
+      {
+        "command": "personalai.openPersonalAI",
+        "title": "PersonalAI: Open PersonalAI"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "personalai.askAboutSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "PersonalAI",
+      "properties": {
+        "personalai.maxSelectedTextCharacters": {
+          "type": "number",
+          "default": 100000,
+          "minimum": 1000,
+          "description": "Maximum selected text characters to send to PersonalAI before prompting to truncate or cancel."
+        },
+        "personalai.pipeName": {
+          "type": "string",
+          "default": "\\\\.\\pipe\\PersonalAI.EditorContext.v1",
+          "description": "Local Windows named pipe used to communicate with the PersonalAI desktop app."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "test": "node --test out/test/*.test.js",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.5.4"
+  }
+}

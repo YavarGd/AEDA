@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Editor;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
 using PersonalAI.Desktop.Windows;
@@ -22,6 +23,7 @@ public partial class MainWindow : Window
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly WindowPositionService _windowPositionService;
     private readonly AttachedContextState _attachedContextState = new();
+    private EditorContextEnvelope? _attachedEditorContext;
     private CancellationTokenSource? _generationCancellation;
     private Conversation? _activeConversation;
     private ActiveWindowReference? _lastExternalWindow;
@@ -155,6 +157,9 @@ public partial class MainWindow : Window
                 requestMessages,
                 prompt,
                 _attachedContextState.Current);
+            composedMessages = ComposeWithEditorContext(
+                composedMessages,
+                _attachedEditorContext);
             var request = new ChatRequest(model, composedMessages);
 
             await foreach (var chunk in _chatProvider.StreamAsync(
@@ -288,7 +293,23 @@ public partial class MainWindow : Window
     public void ClearAttachedContext()
     {
         RemoveAttachedContext();
+        _attachedEditorContext = null;
         UpdateContextPreview();
+    }
+
+    public void AttachEditorContext(EditorContextEnvelope envelope)
+    {
+        _attachedEditorContext = envelope;
+
+        if (string.IsNullOrWhiteSpace(PromptTextBox.Text) &&
+            !string.IsNullOrWhiteSpace(envelope.UserPrompt))
+        {
+            PromptTextBox.Text = envelope.UserPrompt;
+            FocusPromptInput();
+        }
+
+        UpdateContextPreview();
+        SetStatus(ChatUiStatus.Idle);
     }
 
     public void FocusPromptInput()
@@ -323,6 +344,7 @@ public partial class MainWindow : Window
     {
         _activeConversation = null;
         RemoveAttachedContext();
+        _attachedEditorContext = null;
         _isRefreshingConversationList = true;
         ConversationListBox.SelectedItem = null;
         _isRefreshingConversationList = false;
@@ -366,8 +388,7 @@ public partial class MainWindow : Window
 
     private void RemoveContextButton_Click(object sender, RoutedEventArgs e)
     {
-        RemoveAttachedContext();
-        UpdateContextPreview();
+        ClearAttachedContext();
     }
 
     private async Task CaptureAndAttachContextAsync(
@@ -439,14 +460,33 @@ public partial class MainWindow : Window
     {
         var context = _attachedContextState.Current;
 
-        if (context is null)
+        if (context is null && _attachedEditorContext is null)
         {
             ContextPreviewTextBlock.Text = string.Empty;
             ContextPreviewBorder.Visibility = Visibility.Collapsed;
             return;
         }
 
-        ContextPreviewTextBlock.Text = ContextFormatter.FormatPreview(context);
+        var preview = new StringBuilder();
+
+        if (context is not null)
+        {
+            preview.Append(ContextFormatter.FormatPreview(context));
+        }
+
+        if (_attachedEditorContext is not null)
+        {
+            if (preview.Length > 0)
+            {
+                preview.AppendLine();
+                preview.AppendLine();
+            }
+
+            preview.Append(EditorContextPromptComposer.FormatPreview(
+                _attachedEditorContext));
+        }
+
+        ContextPreviewTextBlock.Text = preview.ToString();
         ContextPreviewBorder.Visibility = Visibility.Visible;
     }
 
@@ -679,6 +719,33 @@ public partial class MainWindow : Window
             ChatRole.Tool => "Tool",
             _ => role.ToString()
         };
+    }
+
+    private static IReadOnlyList<ChatMessage> ComposeWithEditorContext(
+        IReadOnlyList<ChatMessage> messages,
+        EditorContextEnvelope? editorContext)
+    {
+        if (editorContext is null)
+        {
+            return messages;
+        }
+
+        var composed = messages.ToList();
+        var userIndex = composed.FindLastIndex(message => message.Role == ChatRole.User);
+        var editorMessage = new ChatMessage(
+            ChatRole.System,
+            EditorContextPromptComposer.FormatPromptBlock(editorContext));
+
+        if (userIndex < 0)
+        {
+            composed.Add(editorMessage);
+        }
+        else
+        {
+            composed.Insert(userIndex, editorMessage);
+        }
+
+        return composed;
     }
 
     private static ChatUiStatus MapConversationStatus(ConversationStatus status)
