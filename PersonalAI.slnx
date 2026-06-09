@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="PersonalAI.Core/PersonalAI.Core.csproj" />
+  <Project Path="PersonalAI.Desktop/PersonalAI.Desktop.csproj" />
+  <Project Path="PersonalAI.Infrastructure/PersonalAI.Infrastructure.csproj" />
+  <Project Path="PersonalAI.Providers/PersonalAI.Providers.csproj" />
+  <Project Path="PersonalAI.Tests/PersonalAI.Tests.csproj" />
+</Solution>
