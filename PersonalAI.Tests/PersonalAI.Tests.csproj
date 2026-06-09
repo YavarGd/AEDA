@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PersonalAI.Core\PersonalAI.Core.csproj" />
+    <ProjectReference Include="..\PersonalAI.Infrastructure\PersonalAI.Infrastructure.csproj" />
     <ProjectReference Include="..\PersonalAI.Providers\PersonalAI.Providers.csproj" />
   </ItemGroup>
 

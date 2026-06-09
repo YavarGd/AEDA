@@ -6,77 +6,105 @@
         mc:Ignorable="d"
         Title="PersonalAI"
         MinHeight="560"
-        MinWidth="760"
-        Height="640"
-        Width="960">
+        MinWidth="860"
+        Height="680"
+        Width="1080"
+        Loaded="MainWindow_Loaded">
     <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="2*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="3*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250" />
+            <ColumnDefinition Width="20" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="220" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-            <TextBlock Grid.Column="0"
-                       VerticalAlignment="Center"
-                       Margin="0,0,8,0"
-                       Text="Model" />
-            <TextBox x:Name="ModelTextBox"
-                     Grid.Column="1"
-                     MinHeight="30"
-                     VerticalContentAlignment="Center"
-                     Text="gemma4" />
-            <Button x:Name="SendButton"
-                    Grid.Column="3"
-                    Width="96"
-                    Margin="12,0,8,0"
-                    Click="SendButton_Click"
-                    Content="Send" />
-            <Button x:Name="CancelButton"
-                    Grid.Column="4"
-                    Width="96"
-                    Click="CancelButton_Click"
-                    Content="Cancel"
-                    IsEnabled="False" />
+            <Button x:Name="NewChatButton"
+                    Grid.Row="0"
+                    MinHeight="32"
+                    Margin="0,0,0,10"
+                    Click="NewChatButton_Click"
+                    Content="New Chat" />
+
+            <ListBox x:Name="ConversationListBox"
+                     Grid.Row="1"
+                     DisplayMemberPath="Title"
+                     SelectionChanged="ConversationListBox_SelectionChanged" />
         </Grid>
 
-        <TextBox x:Name="PromptTextBox"
-                 Grid.Row="1"
-                 AcceptsReturn="True"
-                 TextWrapping="Wrap"
-                 VerticalScrollBarVisibility="Auto"
-                 FontFamily="Consolas"
-                 FontSize="14"
-                 MinHeight="150" />
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="2*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="3*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="2"
-                   Margin="0,12,0,8"
-                   FontWeight="SemiBold"
-                   Text="Response" />
+            <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-        <TextBox x:Name="ResponseTextBox"
-                 Grid.Row="3"
-                 AcceptsReturn="True"
-                 IsReadOnly="True"
-                 TextWrapping="Wrap"
-                 VerticalScrollBarVisibility="Auto"
-                 FontFamily="Consolas"
-                 FontSize="14"
-                 MinHeight="220" />
+                <TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           Text="Model" />
+                <TextBox x:Name="ModelTextBox"
+                         Grid.Column="1"
+                         MinHeight="30"
+                         VerticalContentAlignment="Center"
+                         Text="gemma4" />
+                <Button x:Name="SendButton"
+                        Grid.Column="3"
+                        Width="96"
+                        Margin="12,0,8,0"
+                        Click="SendButton_Click"
+                        Content="Send" />
+                <Button x:Name="CancelButton"
+                        Grid.Column="4"
+                        Width="96"
+                        Click="CancelButton_Click"
+                        Content="Cancel"
+                        IsEnabled="False" />
+            </Grid>
 
-        <TextBlock x:Name="StatusTextBlock"
-                   Grid.Row="4"
-                   Margin="0,12,0,0"
-                   Text="Idle" />
+            <TextBox x:Name="PromptTextBox"
+                     Grid.Row="1"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"
+                     FontSize="14"
+                     MinHeight="150" />
+
+            <TextBlock Grid.Row="2"
+                       Margin="0,12,0,8"
+                       FontWeight="SemiBold"
+                       Text="History" />
+
+            <TextBox x:Name="ResponseTextBox"
+                     Grid.Row="3"
+                     AcceptsReturn="True"
+                     IsReadOnly="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"
+                     FontSize="14"
+                     MinHeight="220" />
+
+            <TextBlock x:Name="StatusTextBlock"
+                       Grid.Row="4"
+                       Margin="0,12,0,0"
+                       Text="Idle" />
+        </Grid>
     </Grid>
 </Window>
