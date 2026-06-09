@@ -1,0 +1,155 @@
+<Window
+    x:Class="PersonalAI.Desktop.WinUI.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="PersonalAI">
+    <Grid x:Name="Root"
+          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0"
+              Padding="16"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+              BorderThickness="0,0,1,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Button Grid.Row="0"
+                    Command="{Binding NewChatCommand}"
+                    Content="New chat"
+                    HorizontalAlignment="Stretch" />
+            <TextBox Grid.Row="1"
+                     Margin="0,12,0,12"
+                     PlaceholderText="Search conversations"
+                     Text="{Binding ConversationSearch, Mode=TwoWay}" />
+            <ListView Grid.Row="2"
+                      ItemsSource="{Binding Conversations}"
+                      SelectionChanged="ConversationList_SelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding Title}"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="{Binding Preview}"
+                                       Opacity="0.7"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            <Button Grid.Row="3"
+                    Content="Settings"
+                    HorizontalAlignment="Stretch" />
+        </Grid>
+
+        <Grid Grid.Column="1"
+              Padding="24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <TextBlock Text="{Binding CurrentConversationTitle}"
+                               Style="{ThemeResource TitleTextBlockStyle}" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Opacity="0.7" />
+                </StackPanel>
+
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding AvailableModels}"
+                          SelectedItem="{Binding SelectedModel, Mode=TwoWay}"
+                          Header="Model" />
+
+                <ProgressRing Grid.Column="2"
+                              Width="28"
+                              Height="28"
+                              Margin="16,24,0,0"
+                              IsActive="{Binding IsGenerating}" />
+            </Grid>
+
+            <ListView x:Name="TimelineList"
+                      Grid.Row="1"
+                      Margin="0,24"
+                      ItemsSource="{Binding Messages}">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="0,8">
+                            <StackPanel MaxWidth="820">
+                                <TextBlock Text="{Binding RoleLabel}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Opacity="0.7" />
+                                <TextBlock Text="{Binding Content}"
+                                           TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            Margin="0,0,0,8">
+                    <Button Command="{Binding AttachApplicationContextCommand}"
+                            Content="Attach" />
+                    <Button Command="{Binding AttachClipboardTextCommand}"
+                            Content="Clipboard" />
+                    <Button Command="{Binding CaptureScreenshotCommand}"
+                            Content="Screenshot" />
+                    <Button Command="{Binding RemoveAttachedContextCommand}"
+                            Content="Remove context" />
+                </StackPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox x:Name="PromptTextBox"
+                             AcceptsReturn="True"
+                             MinHeight="88"
+                             PlaceholderText="Ask PersonalAI"
+                             Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             TextWrapping="Wrap"
+                             KeyDown="PromptTextBox_KeyDown" />
+                    <Button Grid.Column="1"
+                            Margin="12,0,0,0"
+                            VerticalAlignment="Bottom"
+                            Command="{Binding SendMessageCommand}"
+                            Content="Send" />
+                    <Button Grid.Column="2"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Bottom"
+                            Command="{Binding CancelGenerationCommand}"
+                            Content="Stop"
+                            Visibility="{Binding IsGenerating}" />
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
