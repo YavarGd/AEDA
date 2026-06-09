@@ -98,11 +98,16 @@ public sealed class OllamaChatProvider : IChatProvider
 
         using var reader = new StreamReader(responseStream);
 
-        while (!reader.EndOfStream)
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var line = await reader.ReadLineAsync(cancellationToken);
+
+            if (line is null)
+            {
+                yield break;
+            }
 
             if (string.IsNullOrWhiteSpace(line))
             {
