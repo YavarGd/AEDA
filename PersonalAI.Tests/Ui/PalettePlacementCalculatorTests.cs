@@ -17,6 +17,18 @@ public sealed class PalettePlacementCalculatorTests
     }
 
     [Fact]
+    public void CenterInBounds_DoesNotPlacePaletteBeforeAvailableArea()
+    {
+        var position = PalettePlacementCalculator.CenterInBounds(
+            new RectBounds(100, 50, 300, 200),
+            width: 500,
+            height: 300);
+
+        Assert.Equal(100, position.X);
+        Assert.Equal(50, position.Y);
+    }
+
+    [Fact]
     public void NearCursor_ClampsPaletteInsideAvailableArea()
     {
         var position = PalettePlacementCalculator.NearCursor(

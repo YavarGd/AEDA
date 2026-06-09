@@ -6,7 +6,7 @@ namespace PersonalAI.Desktop.Windows;
 
 public static class PaletteWindowPlacementService
 {
-    public static void PlaceNearCursor(Window window)
+    public static void CenterOnActiveMonitor(Window window)
     {
         var cursor = Cursor.Position;
         var screen = Screen.FromPoint(cursor);
@@ -15,9 +15,8 @@ public static class PaletteWindowPlacementService
             screen.WorkingArea.Top,
             screen.WorkingArea.Width,
             screen.WorkingArea.Height);
-        var position = PalettePlacementCalculator.NearCursor(
+        var position = PalettePlacementCalculator.CenterInBounds(
             bounds,
-            new PointPosition(cursor.X, cursor.Y),
             window.Width,
             window.Height);
 

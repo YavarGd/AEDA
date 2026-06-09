@@ -8,30 +8,29 @@ namespace PersonalAI.Desktop;
 public partial class App : System.Windows.Application
 {
     private const uint VirtualKeySpace = 0x20;
-    private Mutex? _singleInstanceMutex;
+    private SingleInstanceService? _singleInstanceService;
+    private ExistingInstanceNotificationService? _existingInstanceNotificationService;
     private TrayIconService? _trayIconService;
     private GlobalHotKeyService? _hotKeyService;
     private MainWindow? _mainWindow;
-    private bool _ownsSingleInstanceMutex;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
 
-        _singleInstanceMutex = new Mutex(
-            initiallyOwned: true,
-            name: "Local\\PersonalAI.SingleInstance",
-            createdNew: out var createdNew);
-        _ownsSingleInstanceMutex = createdNew;
+        _singleInstanceService = new SingleInstanceService();
 
-        if (!createdNew)
+        if (!_singleInstanceService.IsPrimaryInstance)
         {
-            System.Windows.MessageBox.Show(
-                "PersonalAI is already running. Use Ctrl+Alt+Space or the tray icon to open it.",
-                "PersonalAI",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            if (!ExistingInstanceNotificationService.NotifyExistingInstance())
+            {
+                System.Windows.MessageBox.Show(
+                    "PersonalAI is already running. Use Ctrl+Alt+Space or the tray icon to open it.",
+                    "PersonalAI",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
 
             Shutdown();
             return;
@@ -66,27 +65,26 @@ public partial class App : System.Windows.Application
             ExitPersonalAi);
 
         _mainWindow.ShowPaletteAndFocusPrompt();
-        RegisterHotKey(_mainWindow);
+        var windowHandle = new WindowInteropHelper(_mainWindow).EnsureHandle();
+        _existingInstanceNotificationService =
+            new ExistingInstanceNotificationService(windowHandle);
+        _existingInstanceNotificationService.ShowPaletteRequested +=
+            (_, _) => ShowPersonalAi();
+        RegisterHotKey(windowHandle);
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         _hotKeyService?.Dispose();
+        _existingInstanceNotificationService?.Dispose();
         _trayIconService?.Dispose();
-
-        if (_ownsSingleInstanceMutex)
-        {
-            _singleInstanceMutex?.ReleaseMutex();
-        }
-
-        _singleInstanceMutex?.Dispose();
+        _singleInstanceService?.Dispose();
 
         base.OnExit(e);
     }
 
-    private void RegisterHotKey(MainWindow mainWindow)
+    private void RegisterHotKey(nint windowHandle)
     {
-        var windowHandle = new WindowInteropHelper(mainWindow).EnsureHandle();
         _hotKeyService = new GlobalHotKeyService(
             windowHandle,
             new GlobalHotKey(

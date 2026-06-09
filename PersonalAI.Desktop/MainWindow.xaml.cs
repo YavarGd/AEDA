@@ -223,8 +223,8 @@ public partial class MainWindow : Window
         }
 
         Topmost = true;
-        PaletteWindowPlacementService.PlaceNearCursor(this);
-        Activate();
+        PaletteWindowPlacementService.CenterOnActiveMonitor(this);
+        WindowForegroundService.BringToForeground(this);
         FocusPromptInput();
     }
 
