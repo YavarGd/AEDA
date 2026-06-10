@@ -59,7 +59,12 @@ public sealed class OllamaChatProvider : IChatProvider
                 .Select(message => new OllamaMessage
                 {
                     Role = ConvertRole(message.Role),
-                    Content = message.Content
+                    Content = message.Content,
+                    Images = message.Images.Count == 0
+                        ? null
+                        : message.Images
+                            .Select(image => image.Base64Data)
+                            .ToArray()
                 })
                 .ToArray()
         };
@@ -181,6 +186,10 @@ public sealed class OllamaChatProvider : IChatProvider
 
         [JsonPropertyName("content")]
         public required string Content { get; init; }
+
+        [JsonPropertyName("images")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string[]? Images { get; init; }
     }
 
     private sealed class OllamaChatResponse

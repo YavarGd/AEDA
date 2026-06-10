@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using PersonalAI.Core.Chat;
 using PersonalAI.Providers.Ollama;
 
@@ -96,11 +97,81 @@ public sealed class OllamaChatProviderUnitTests
         Assert.Contains("model name", exception.Message);
     }
 
+    [Fact]
+    public async Task StreamAsync_OmitsImagesForTextOnlyRequest()
+    {
+        string? body = null;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return CreateOkResponse();
+        }))
+        {
+            BaseAddress = new Uri("http://localhost:11434")
+        };
+
+        var provider = new OllamaChatProvider(httpClient);
+
+        await foreach (var _ in provider.StreamAsync(CreateRequest()))
+        {
+        }
+
+        Assert.NotNull(body);
+        Assert.DoesNotContain("\"images\"", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamAsync_SerializesImageExactlyOnce()
+    {
+        string? body = null;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return CreateOkResponse();
+        }))
+        {
+            BaseAddress = new Uri("http://localhost:11434")
+        };
+
+        var provider = new OllamaChatProvider(httpClient);
+        var request = new ChatRequest(
+            "llava",
+            [
+                new ChatMessage(
+                    ChatRole.User,
+                    "describe",
+                    [new ChatImage("image/png", "aW1hZ2U=")])
+            ]);
+
+        await foreach (var _ in provider.StreamAsync(request))
+        {
+        }
+
+        using var document = JsonDocument.Parse(body!);
+        var images = document.RootElement
+            .GetProperty("messages")[0]
+            .GetProperty("images");
+
+        var image = Assert.Single(images.EnumerateArray());
+        Assert.Equal("aW1hZ2U=", image.GetString());
+    }
+
     private static ChatRequest CreateRequest()
     {
         return new ChatRequest(
             "gemma4",
             [new ChatMessage(ChatRole.User, "Hello")]);
+    }
+
+    private static HttpResponseMessage CreateOkResponse()
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}",
+                Encoding.UTF8,
+                "application/json")
+        };
     }
 
     private sealed class StubHttpMessageHandler(

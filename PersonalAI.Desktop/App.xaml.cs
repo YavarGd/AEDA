@@ -3,6 +3,8 @@ using System.Windows.Interop;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Desktop.Windows;
 using PersonalAI.Infrastructure.Context;
+using PersonalAI.Infrastructure.Ipc;
+using ForegroundWindowTracker = PersonalAI.Desktop.Windows.ForegroundWindowTracker;
 
 namespace PersonalAI.Desktop;
 
@@ -16,6 +18,7 @@ public partial class App : System.Windows.Application
     private MainWindow? _mainWindow;
     private ForegroundWindowTracker? _foregroundWindowTracker;
     private WindowPositionService? _windowPositionService;
+    private PersonalAiPipeServer? _pipeServer;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -83,11 +86,22 @@ public partial class App : System.Windows.Application
         _existingInstanceNotificationService.ShowPaletteRequested +=
             (_, _) => ShowPersonalAi();
         RegisterHotKey(windowHandle);
+
+        var editorContextHandler = new EditorContextMessageHandler(
+            envelope => Dispatcher.Invoke(() =>
+            {
+                ShowPersonalAi();
+                _mainWindow.AttachEditorContext(envelope);
+            }),
+            () => Dispatcher.Invoke(ShowPersonalAi));
+        _pipeServer = new PersonalAiPipeServer(editorContextHandler);
+        _pipeServer.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         _hotKeyService?.Dispose();
+        _pipeServer?.Dispose();
         _existingInstanceNotificationService?.Dispose();
         _trayIconService?.Dispose();
         _singleInstanceService?.Dispose();
