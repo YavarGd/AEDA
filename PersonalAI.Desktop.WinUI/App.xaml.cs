@@ -62,10 +62,16 @@ public partial class App : Application
             activeContextProvider,
             _foregroundWindowTracker,
             GetWindowHandle);
+        var screenshotAttachmentService = new ScreenshotAttachmentService(
+            new ScreenshotContextService(
+                activeContextProvider,
+                _foregroundWindowTracker,
+                GetWindowHandle));
         var viewModel = new MainViewModel(
             conversationSession,
             clipboardContextService,
-            activeWindowContextService);
+            activeWindowContextService,
+            screenshotAttachmentService);
         _viewModel = viewModel;
         await viewModel.InitializeAsync();
 

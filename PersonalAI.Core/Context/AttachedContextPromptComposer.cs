@@ -17,14 +17,19 @@ public static class AttachedContextPromptComposer
         ArgumentNullException.ThrowIfNull(attachedContexts);
 
         var messages = previousMessages.ToList();
-        var contextBlock = FormatContextBlock(attachedContexts);
+        var contextSnapshot = attachedContexts.ToArray();
+        var contextBlock = FormatContextBlock(contextSnapshot);
 
         if (!string.IsNullOrWhiteSpace(contextBlock))
         {
             messages.Add(new ChatMessage(ChatRole.System, contextBlock));
         }
 
-        messages.Add(new ChatMessage(ChatRole.User, userPrompt));
+        var images = contextSnapshot
+            .SelectMany(context => context.Images)
+            .ToArray();
+
+        messages.Add(new ChatMessage(ChatRole.User, userPrompt, images));
         return messages;
     }
 

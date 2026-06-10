@@ -4,5 +4,6 @@ public enum AttachedContextType
 {
     Clipboard,
     ApplicationWindow,
-    VsCodeEditor
+    VsCodeEditor,
+    Screenshot
 }

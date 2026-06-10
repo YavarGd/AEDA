@@ -1,4 +1,5 @@
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Chat;
 
 namespace PersonalAI.Tests.Context;
 
@@ -85,6 +86,41 @@ public sealed class AttachedContextCollectionTests
 
         Assert.Single(snapshot);
         Assert.Empty(collection.Items);
+    }
+
+    [Fact]
+    public void FromScreenshot_CreatesImageContextWithThumbnailMetadata()
+    {
+        var item = AttachedContextFactory.FromScreenshot(
+            "Window",
+            "notepad",
+            "Current window",
+            800,
+            600,
+            "png",
+            new ChatImage("image/png", "aW1hZ2U="),
+            "data:image/png;base64,thumb",
+            temporaryPath: null,
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(AttachedContextType.Screenshot, item.Type);
+        Assert.Equal("data:image/png;base64,thumb", item.ThumbnailDataUri);
+        Assert.Equal("800", item.Metadata["width"]);
+        Assert.Equal("600", item.Metadata["height"]);
+        var image = Assert.Single(item.Images);
+        Assert.Equal("image/png", image.MediaType);
+    }
+
+    [Fact]
+    public void ChatModelCapabilityService_BlocksUnknownTextOnlyModel()
+    {
+        Assert.False(ChatModelCapabilityService.SupportsImages("llama3"));
+    }
+
+    [Fact]
+    public void ChatModelCapabilityService_AllowsConfiguredVisionModel()
+    {
+        Assert.True(ChatModelCapabilityService.SupportsImages("llava:latest"));
     }
 
     private static ActiveApplicationContext CreateApplicationContext(

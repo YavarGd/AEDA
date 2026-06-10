@@ -51,6 +51,33 @@ public sealed class AttachedContextPromptComposerTests
     }
 
     [Fact]
+    public void Compose_AttachesScreenshotImageExactlyOnceToVisibleUserMessage()
+    {
+        var screenshot = AttachedContextFactory.FromScreenshot(
+            "Window",
+            "notepad",
+            "Current window",
+            640,
+            480,
+            "png",
+            new ChatImage("image/png", "aW1hZ2U="),
+            "data:image/png;base64,thumb",
+            temporaryPath: @"C:\Temp\screenshot.png",
+            DateTimeOffset.UtcNow);
+
+        var messages = AttachedContextPromptComposer.Compose(
+            [],
+            "describe this",
+            [screenshot]);
+
+        var userMessage = messages.Last();
+        var image = Assert.Single(userMessage.Images);
+        Assert.Equal("aW1hZ2U=", image.Base64Data);
+        Assert.DoesNotContain("screenshot.png", userMessage.Content);
+        Assert.DoesNotContain("aW1hZ2U=", userMessage.Content);
+    }
+
+    [Fact]
     public void FormatContextBlock_PreservesDeterministicOrdering()
     {
         var first = AttachedContextFactory.FromClipboardText("first");
@@ -62,6 +89,30 @@ public sealed class AttachedContextPromptComposerTests
         Assert.True(
             block.IndexOf("first", StringComparison.Ordinal) <
             block.IndexOf("second", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FormatContextBlock_PreservesMixedContextOrdering()
+    {
+        var clipboard = AttachedContextFactory.FromClipboardText("clipboard");
+        var screenshot = AttachedContextFactory.FromScreenshot(
+            "Window",
+            "notepad",
+            "Current window",
+            640,
+            480,
+            "png",
+            new ChatImage("image/png", "aW1hZ2U="),
+            "data:image/png;base64,thumb",
+            temporaryPath: null,
+            DateTimeOffset.UtcNow);
+
+        var block = AttachedContextPromptComposer.FormatContextBlock(
+            [clipboard, screenshot]);
+
+        Assert.True(
+            block.IndexOf("clipboard", StringComparison.Ordinal) <
+            block.IndexOf("Screenshot context", StringComparison.Ordinal));
     }
 
     [Fact]

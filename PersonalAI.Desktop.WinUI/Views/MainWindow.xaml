@@ -141,8 +141,8 @@
                                     Content="Capture app" />
                             <Button Command="{Binding AttachClipboardContextCommand}"
                                     Content="Clipboard" />
-                            <Button Command="{Binding AttachVsCodeContextCommand}"
-                                    Content="VS Code" />
+                            <Button Command="{Binding CaptureScreenshotContextCommand}"
+                                    Content="Screenshot" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1"
@@ -190,6 +190,11 @@
                                             </Grid.ColumnDefinitions>
 
                                             <StackPanel Spacing="2">
+                                                <Image Source="{Binding ThumbnailDataUri}"
+                                                       MaxWidth="180"
+                                                       MaxHeight="100"
+                                                       Stretch="Uniform"
+                                                       HorizontalAlignment="Left" />
                                                 <TextBlock Text="{Binding Type}"
                                                            Style="{ThemeResource CaptionTextBlockStyle}"
                                                            Opacity="0.7" />

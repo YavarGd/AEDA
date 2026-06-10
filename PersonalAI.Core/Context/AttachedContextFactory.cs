@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using PersonalAI.Core.Chat;
 using PersonalAI.Core.Editor;
 
 namespace PersonalAI.Core.Context;
@@ -25,6 +26,8 @@ public static class AttachedContextFactory
             "Clipboard text",
             CreatePreview(normalized),
             normalized,
+            Images: [],
+            ThumbnailDataUri: null,
             new Dictionary<string, string>
             {
                 ["characters"] = normalized.Length.ToString(
@@ -60,6 +63,8 @@ public static class AttachedContextFactory
             title,
             CreatePreview(payload),
             payload,
+            Images: [],
+            ThumbnailDataUri: null,
             metadata,
             context.CapturedAtUtc,
             $"app:{context.ProcessId}:{context.ProcessName}:{context.WindowTitle}");
@@ -95,9 +100,60 @@ public static class AttachedContextFactory
             title,
             CreatePreview(EditorContextPromptComposer.FormatPreview(envelope)),
             payload,
+            Images: [],
+            ThumbnailDataUri: null,
             metadata,
             context?.TimestampUtc ?? DateTimeOffset.UtcNow,
             $"vscode:{context?.WorkspaceFolderPath}:{context?.FullActiveFilePath}:{context?.Selection}:{Hash(context?.SelectedText ?? string.Empty)}");
+    }
+
+    public static AttachedContextItem FromScreenshot(
+        string title,
+        string sourceName,
+        string captureMode,
+        int width,
+        int height,
+        string imageFormat,
+        ChatImage image,
+        string thumbnailDataUri,
+        string? temporaryPath,
+        DateTimeOffset capturedAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(width),
+                "Screenshot dimensions must be positive.");
+        }
+
+        var metadata = new Dictionary<string, string>
+        {
+            ["captureMode"] = captureMode,
+            ["width"] = width.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["height"] = height.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["imageFormat"] = imageFormat,
+            ["thumbnailDataUri"] = thumbnailDataUri
+        };
+
+        AddMetadata(metadata, "temporaryPath", temporaryPath);
+
+        var payload =
+            $"Screenshot context\nSource: {sourceName}\nMode: {captureMode}\nDimensions: {width}x{height}\nFormat: {imageFormat}";
+
+        return new AttachedContextItem(
+            Guid.NewGuid(),
+            AttachedContextType.Screenshot,
+            sourceName,
+            title,
+            $"{captureMode} screenshot, {width}x{height}",
+            payload,
+            [image],
+            thumbnailDataUri,
+            metadata,
+            capturedAtUtc,
+            $"screenshot:{sourceName}:{captureMode}:{width}x{height}:{Hash(image.Base64Data)}");
     }
 
     public static string CreatePreview(string text)

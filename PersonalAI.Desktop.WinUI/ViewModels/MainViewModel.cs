@@ -18,6 +18,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ConversationSessionService _conversationSession;
     private readonly ClipboardContextService _clipboardContextService;
     private readonly ActiveWindowContextService _activeWindowContextService;
+    private readonly ScreenshotAttachmentService _screenshotAttachmentService;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly GenerationNavigationGuard _navigationGuard = new();
     private readonly AttachedContextCollection _attachedContextCollection = new();
@@ -25,18 +26,19 @@ public sealed partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _generationCancellation;
     private Conversation? _activeConversation;
     private Task? _activeGenerationTask;
-    private EditorContextEnvelope? _latestEditorContext;
     private bool _hasRequestedGenerationCancellation;
     private bool _isSending;
 
     public MainViewModel(
         ConversationSessionService conversationSession,
         ClipboardContextService clipboardContextService,
-        ActiveWindowContextService activeWindowContextService)
+        ActiveWindowContextService activeWindowContextService,
+        ScreenshotAttachmentService screenshotAttachmentService)
     {
         _conversationSession = conversationSession;
         _clipboardContextService = clipboardContextService;
         _activeWindowContextService = activeWindowContextService;
+        _screenshotAttachmentService = screenshotAttachmentService;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     }
 
@@ -87,13 +89,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool HasNoConversations => Conversations.Count == 0;
 
-    public bool CanSend => !IsGenerating && !_isSending && !string.IsNullOrWhiteSpace(Prompt);
+    public bool CanSend => !IsGenerating &&
+        !_isSending &&
+        !string.IsNullOrWhiteSpace(Prompt) &&
+        !HasUnsupportedImageContext;
 
     public bool CanModifyContexts => !IsGenerating && !_isSending;
 
     public bool HasAttachedContexts => AttachedContexts.Count > 0;
 
     public int AttachedContextCount => AttachedContexts.Count;
+
+    public bool HasUnsupportedImageContext =>
+        AttachedContexts.Any(context => context.Images.Count > 0) &&
+        !ChatModelCapabilityService.SupportsImages(SelectedModel);
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -119,6 +128,14 @@ public sealed partial class MainViewModel : ObservableObject
         SendMessageCommand.NotifyCanExecuteChanged();
     }
 
+    partial void OnSelectedModelChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(HasUnsupportedImageContext));
+        SendMessageCommand.NotifyCanExecuteChanged();
+        UpdateImageCapabilityStatus();
+    }
+
     partial void OnConversationSearchChanged(string value)
     {
         ApplyConversationFilter();
@@ -133,7 +150,7 @@ public sealed partial class MainViewModel : ObservableObject
         CancelGenerationCommand.NotifyCanExecuteChanged();
         AttachClipboardContextCommand.NotifyCanExecuteChanged();
         CaptureApplicationContextCommand.NotifyCanExecuteChanged();
-        AttachVsCodeContextCommand.NotifyCanExecuteChanged();
+        CaptureScreenshotContextCommand.NotifyCanExecuteChanged();
         RemoveContextCommand.NotifyCanExecuteChanged();
         ClearAllContextsCommand.NotifyCanExecuteChanged();
     }
@@ -298,7 +315,7 @@ public sealed partial class MainViewModel : ObservableObject
             CancelGenerationCommand.NotifyCanExecuteChanged();
             AttachClipboardContextCommand.NotifyCanExecuteChanged();
             CaptureApplicationContextCommand.NotifyCanExecuteChanged();
-            AttachVsCodeContextCommand.NotifyCanExecuteChanged();
+            CaptureScreenshotContextCommand.NotifyCanExecuteChanged();
             RemoveContextCommand.NotifyCanExecuteChanged();
             ClearAllContextsCommand.NotifyCanExecuteChanged();
         }
@@ -478,17 +495,20 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanModifyContexts))]
-    public void AttachVsCodeContext()
+    public async Task CaptureScreenshotContextAsync()
     {
-        if (_latestEditorContext is null)
+        SetContextStatus("Capturing screenshot...");
+        var item = await _screenshotAttachmentService.CaptureExternalWindowAsync();
+
+        if (item is null)
         {
-            SetContextStatus("No VS Code editor context has been received.");
+            SetContextStatus(
+                "No usable external window was available for screenshot capture.");
             return;
         }
 
-        AddAttachedContext(
-            AttachedContextFactory.FromEditorContext(_latestEditorContext),
-            "VS Code context attached.");
+        AddAttachedContext(item, "Screenshot context attached.");
+        UpdateImageCapabilityStatus();
     }
 
     [RelayCommand(CanExecute = nameof(CanModifyContexts))]
@@ -502,6 +522,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (_attachedContextCollection.Remove(item.Id))
         {
             AttachedContexts.Remove(item);
+            ReleaseContextResources(item);
             NotifyAttachedContextsChanged();
             SetContextStatus("Context removed.");
         }
@@ -516,7 +537,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void ReceiveEditorContext(EditorContextEnvelope envelope)
     {
-        _latestEditorContext = envelope;
         IsEditorConnected = true;
         EditorConnectionStatus = "VS Code context received";
 
@@ -622,6 +642,11 @@ public sealed partial class MainViewModel : ObservableObject
     private void ClearAttachedContextItems()
     {
         _attachedContextCollection.Clear();
+        foreach (var item in AttachedContexts)
+        {
+            ReleaseContextResources(item);
+        }
+
         AttachedContexts.Clear();
         NotifyAttachedContextsChanged();
     }
@@ -630,13 +655,33 @@ public sealed partial class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasAttachedContexts));
         OnPropertyChanged(nameof(AttachedContextCount));
+        OnPropertyChanged(nameof(HasUnsupportedImageContext));
+        OnPropertyChanged(nameof(CanSend));
         ClearAllContextsCommand.NotifyCanExecuteChanged();
+        SendMessageCommand.NotifyCanExecuteChanged();
     }
 
     private void SetContextStatus(string message)
     {
         ContextStatusMessage = message;
         StatusMessage = message;
+    }
+
+    private void UpdateImageCapabilityStatus()
+    {
+        if (HasUnsupportedImageContext)
+        {
+            SetContextStatus(
+                $"The selected model '{SelectedModel}' is not configured for image input. Remove the screenshot or switch to a vision model.");
+        }
+    }
+
+    private void ReleaseContextResources(AttachedContextItem item)
+    {
+        if (item.Type == AttachedContextType.Screenshot)
+        {
+            _screenshotAttachmentService.Release(item);
+        }
     }
 
     private async Task ReloadConversationListAsync(Guid? selectedConversationId = null)
