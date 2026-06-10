@@ -123,6 +123,22 @@ public sealed class AttachedContextCollectionTests
         Assert.True(ChatModelCapabilityService.SupportsImages("llava:latest"));
     }
 
+    [Fact]
+    public void ChatModelCapabilityService_AllowsTaggedVisionModelName()
+    {
+        Assert.True(ChatModelCapabilityService.SupportsImages("gemma3:12b"));
+    }
+
+    [Fact]
+    public void FromActiveApplicationContext_DoesNotExposeExecutablePathInPreview()
+    {
+        var item = AttachedContextFactory.FromActiveApplicationContext(
+            CreateApplicationContext(processId: 13, title: "Document"));
+
+        Assert.DoesNotContain("C:\\Windows", item.Preview, StringComparison.Ordinal);
+        Assert.Equal(@"C:\Windows\notepad.exe", item.Metadata["executablePath"]);
+    }
+
     private static ActiveApplicationContext CreateApplicationContext(
         uint processId,
         string title)

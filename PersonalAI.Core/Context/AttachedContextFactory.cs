@@ -48,6 +48,14 @@ public static class AttachedContextFactory
             "Active application");
         var source = FirstNonEmpty(context.ProcessName, "Application");
         var payload = ContextFormatter.FormatPromptBlock(context);
+        var preview = CreatePreview(string.Join(
+            " ",
+            new[]
+            {
+                context.ProcessName,
+                context.WindowTitle,
+                context.CapturedSelectedText
+            }.Where(value => !string.IsNullOrWhiteSpace(value))));
         var metadata = new Dictionary<string, string>();
 
         AddMetadata(metadata, "processName", context.ProcessName);
@@ -61,7 +69,7 @@ public static class AttachedContextFactory
             AttachedContextType.ApplicationWindow,
             source,
             title,
-            CreatePreview(payload),
+            preview,
             payload,
             Images: [],
             ThumbnailDataUri: null,
