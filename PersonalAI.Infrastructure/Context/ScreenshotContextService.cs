@@ -3,16 +3,18 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Settings;
 
 namespace PersonalAI.Infrastructure.Context;
 
 public sealed class ScreenshotContextService(
     IActiveContextProvider activeContextProvider,
     ForegroundWindowTracker foregroundWindowTracker,
-    Func<nint> getOwnWindowHandle)
+    Func<nint> getOwnWindowHandle,
+    Func<ContextSettings>? getContextSettings = null)
 {
     public const int MaxImageBytes = 4 * 1024 * 1024;
-    private const int ThumbnailMaxEdge = 240;
+    private const int DefaultThumbnailMaxEdge = 240;
 
     public async Task<AttachedContextItem?> CaptureExternalWindowAsync(
         CancellationToken cancellationToken = default)
@@ -42,7 +44,10 @@ public sealed class ScreenshotContextService(
             context.ScreenshotPath,
             cancellationToken);
 
-        if (bytes.Length > MaxImageBytes)
+        var settings = ApplicationSettingsValidator.NormalizeContext(
+            getContextSettings?.Invoke() ?? ContextSettings.Default);
+
+        if (bytes.Length > settings.ScreenshotMaxPayloadBytes)
         {
             DeleteTemporaryFile(context.ScreenshotPath);
             throw new InvalidOperationException(
@@ -50,7 +55,9 @@ public sealed class ScreenshotContextService(
         }
 
         using var image = Image.FromStream(new MemoryStream(bytes));
-        var thumbnail = CreateThumbnailDataUri(image);
+        var thumbnail = CreateThumbnailDataUri(
+            image,
+            settings.ScreenshotThumbnailMaxEdge);
         var title = string.IsNullOrWhiteSpace(context.WindowTitle)
             ? "Window screenshot"
             : context.WindowTitle.Trim();
@@ -79,11 +86,18 @@ public sealed class ScreenshotContextService(
         }
     }
 
-    private static string CreateThumbnailDataUri(Image image)
+    private static string CreateThumbnailDataUri(
+        Image image,
+        int thumbnailMaxEdge)
     {
+        if (thumbnailMaxEdge <= 0)
+        {
+            thumbnailMaxEdge = DefaultThumbnailMaxEdge;
+        }
+
         var scale = Math.Min(
-            (double)ThumbnailMaxEdge / image.Width,
-            (double)ThumbnailMaxEdge / image.Height);
+            (double)thumbnailMaxEdge / image.Width,
+            (double)thumbnailMaxEdge / image.Height);
         scale = Math.Min(1, scale);
         var width = Math.Max(1, (int)Math.Round(image.Width * scale));
         var height = Math.Max(1, (int)Math.Round(image.Height * scale));

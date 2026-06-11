@@ -5,9 +5,9 @@ namespace PersonalAI.Desktop.WinUI.Services;
 public sealed class WinUiGlobalHotKeyService : NativeMessageWindow
 {
     private const uint WmHotKey = 0x0312;
-    private readonly int _id;
-    private readonly uint _modifiers;
-    private readonly uint _virtualKey;
+    private int _id;
+    private uint _modifiers;
+    private uint _virtualKey;
     private bool _isRegistered;
 
     public WinUiGlobalHotKeyService(int id, uint modifiers, uint virtualKey)
@@ -22,6 +22,10 @@ public sealed class WinUiGlobalHotKeyService : NativeMessageWindow
 
     public bool IsRegistered => _isRegistered;
 
+    public uint Modifiers => _modifiers;
+
+    public uint VirtualKey => _virtualKey;
+
     public bool Register()
     {
         if (_isRegistered)
@@ -31,6 +35,34 @@ public sealed class WinUiGlobalHotKeyService : NativeMessageWindow
 
         _isRegistered = RegisterHotKey(Handle, _id, _modifiers, _virtualKey);
         return _isRegistered;
+    }
+
+    public bool TryChange(uint modifiers, uint virtualKey)
+    {
+        if (modifiers == _modifiers && virtualKey == _virtualKey)
+        {
+            return Register();
+        }
+
+        var candidateId = _id == 1 ? 2 : 1;
+
+        if (!RegisterHotKey(Handle, candidateId, modifiers, virtualKey))
+        {
+            return false;
+        }
+
+        var wasRegistered = _isRegistered;
+
+        if (_isRegistered)
+        {
+            UnregisterHotKey(Handle, _id);
+        }
+
+        _id = candidateId;
+        _modifiers = modifiers;
+        _virtualKey = virtualKey;
+        _isRegistered = true;
+        return wasRegistered || Register();
     }
 
     public new void Dispose()

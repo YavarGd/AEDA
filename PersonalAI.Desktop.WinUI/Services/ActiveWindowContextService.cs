@@ -1,4 +1,5 @@
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Settings;
 using PersonalAI.Infrastructure.Context;
 
 namespace PersonalAI.Desktop.WinUI.Services;
@@ -6,7 +7,8 @@ namespace PersonalAI.Desktop.WinUI.Services;
 public sealed class ActiveWindowContextService(
     IActiveContextProvider activeContextProvider,
     ForegroundWindowTracker foregroundWindowTracker,
-    Func<nint> getOwnWindowHandle)
+    Func<nint> getOwnWindowHandle,
+    Func<PrivacySettings>? getPrivacySettings = null)
 {
     public async Task<AttachedContextItem?> CaptureAsync(
         CancellationToken cancellationToken = default)
@@ -27,8 +29,23 @@ public sealed class ActiveWindowContextService(
                 CaptureScreenshot: false),
             cancellationToken);
 
-        return context is null
-            ? null
-            : AttachedContextFactory.FromActiveApplicationContext(context);
+        if (context is null)
+        {
+            return null;
+        }
+
+        var settings = ApplicationSettingsValidator.NormalizePrivacy(
+            getPrivacySettings?.Invoke() ?? PrivacySettings.Default);
+        var sanitized = context with
+        {
+            ExecutablePath = settings.IncludeExecutablePathInProviderMetadata
+                ? context.ExecutablePath
+                : null,
+            WindowTitle = settings.IncludeWindowTitleInProviderContext
+                ? context.WindowTitle
+                : null
+        };
+
+        return AttachedContextFactory.FromActiveApplicationContext(sanitized);
     }
 }

@@ -10,12 +10,12 @@
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </Grid.Resources>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="{Binding SidebarColumnWidth}" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
         <Grid Grid.Column="0"
-              Padding="16"
+              Padding="{Binding SidebarPadding}"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
               BorderThickness="0,0,1,0">
             <Grid.RowDefinitions>
@@ -41,10 +41,13 @@
                     <DataTemplate>
                         <StackPanel Spacing="4">
                             <TextBlock Text="{Binding Title}"
-                                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTipService.ToolTip="{Binding Title}" />
                             <TextBlock Text="{Binding Preview}"
                                        Opacity="0.7"
-                                       TextTrimming="CharacterEllipsis" />
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding DataContext.ShowConversationMetadata, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </StackPanel>
                     </DataTemplate>
                 </ListView.ItemTemplate>
@@ -57,6 +60,7 @@
                        Visibility="{Binding HasNoConversations, Converter={StaticResource BooleanToVisibilityConverter}}" />
             <Button Grid.Row="3"
                     Content="Settings"
+                    Command="{Binding OpenSettingsCommand}"
                     HorizontalAlignment="Stretch" />
         </Grid>
 
@@ -71,7 +75,7 @@
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
@@ -82,10 +86,14 @@
                                Opacity="0.7" />
                 </StackPanel>
 
-                <ComboBox Grid.Column="1"
-                          ItemsSource="{Binding AvailableModels}"
-                          SelectedItem="{Binding SelectedModel, Mode=TwoWay}"
-                          Header="Model" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding RoutingStatusMessage}"
+                           VerticalAlignment="Center"
+                           Margin="16,0,0,0"
+                           MaxWidth="320"
+                           Opacity="0.7"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTipService.ToolTip="{Binding RoutingStatusMessage}" />
 
                 <ProgressRing Grid.Column="2"
                               Width="28"
@@ -104,7 +112,8 @@
                                 <StackPanel MaxWidth="820">
                                     <TextBlock Text="{Binding RoleLabel}"
                                                Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Opacity="0.7" />
+                                               Opacity="0.7"
+                                               Visibility="{Binding DataContext.ShowMessageMetadata, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <TextBlock Text="{Binding Content}"
                                                TextWrapping="Wrap"
                                                IsTextSelectionEnabled="True" />
@@ -251,6 +260,190 @@
                             Visibility="{Binding IsGenerating, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
             </Grid>
+        </Grid>
+
+        <Grid Grid.Column="1"
+              Padding="24"
+              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+              Visibility="{Binding IsSettingsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+                <TextBlock Text="Settings"
+                           Style="{ThemeResource TitleTextBlockStyle}" />
+                <Button HorizontalAlignment="Right"
+                        Command="{Binding CloseSettingsCommand}"
+                        Content="Done" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,20,0,0">
+                <StackPanel DataContext="{Binding Settings}"
+                            MaxWidth="760"
+                            Spacing="20"
+                            HorizontalAlignment="Left">
+                    <Expander Header="General"
+                              IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <ComboBox Header="Launch destination"
+                                      ItemsSource="{Binding LaunchDestinationOptions}"
+                                      SelectedItem="{Binding LaunchDestination, Mode=TwoWay}" />
+                            <CheckBox Content="Preserve composer draft between hide/show"
+                                      IsChecked="{Binding PreserveComposerDraftBetweenHideShow, Mode=TwoWay}" />
+                            <CheckBox Content="Confirm before clearing all attached context"
+                                      IsChecked="{Binding ConfirmBeforeClearingAllContext, Mode=TwoWay}" />
+                            <TextBlock Text="{Binding SettingsPath}"
+                                       TextWrapping="Wrap"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Appearance"
+                              IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <ComboBox Header="Theme"
+                                      ItemsSource="{Binding ThemeOptions}"
+                                      SelectedItem="{Binding Theme, Mode=TwoWay}" />
+                            <CheckBox Content="Compact sidebar"
+                                      IsChecked="{Binding CompactSidebar, Mode=TwoWay}" />
+                            <CheckBox Content="Show message metadata"
+                                      IsChecked="{Binding ShowMessageMetadata, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Advanced model routing"
+                              IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button Content="Refresh models"
+                                        Command="{Binding RefreshModelsCommand}" />
+                                <Button Content="Reset assignments"
+                                        Command="{Binding ResetModelAssignmentsCommand}" />
+                                <TextBlock Text="{Binding ModelRefreshStatus}"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           Opacity="0.7" />
+                            </StackPanel>
+                            <ComboBox Header="General"
+                                      ItemsSource="{Binding InstalledModels}"
+                                      SelectedItem="{Binding GeneralModel, Mode=TwoWay}"
+                                      IsEditable="True" />
+                            <ComboBox Header="Coding"
+                                      ItemsSource="{Binding InstalledModels}"
+                                      SelectedItem="{Binding CodingModel, Mode=TwoWay}"
+                                      IsEditable="True" />
+                            <ComboBox Header="Vision"
+                                      ItemsSource="{Binding InstalledModels}"
+                                      SelectedItem="{Binding VisionModel, Mode=TwoWay}"
+                                      IsEditable="True" />
+                            <ComboBox Header="Fast"
+                                      ItemsSource="{Binding InstalledModels}"
+                                      SelectedItem="{Binding FastModel, Mode=TwoWay}"
+                                      IsEditable="True" />
+                            <ComboBox Header="Reasoning"
+                                      ItemsSource="{Binding InstalledModels}"
+                                      SelectedItem="{Binding ReasoningModel, Mode=TwoWay}"
+                                      IsEditable="True" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Hotkey"
+                              IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="12">
+                                <CheckBox Content="Ctrl"
+                                          IsChecked="{Binding HotkeyControl, Mode=TwoWay}" />
+                                <CheckBox Content="Alt"
+                                          IsChecked="{Binding HotkeyAlt, Mode=TwoWay}" />
+                                <CheckBox Content="Shift"
+                                          IsChecked="{Binding HotkeyShift, Mode=TwoWay}" />
+                                <CheckBox Content="Win"
+                                          IsChecked="{Binding HotkeyWindows, Mode=TwoWay}" />
+                            </StackPanel>
+                            <TextBox Header="Key"
+                                     Text="{Binding HotkeyKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button Content="Apply hotkey"
+                                        Command="{Binding ApplyHotkeyCommand}" />
+                                <Button Content="Reset hotkey"
+                                        Command="{Binding ResetHotkeyCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Window and startup"
+                              IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <ComboBox Header="Close behavior"
+                                      ItemsSource="{Binding CloseBehaviorOptions}"
+                                      SelectedItem="{Binding CloseBehavior, Mode=TwoWay}" />
+                            <CheckBox Content="Start minimized to tray"
+                                      IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}" />
+                            <CheckBox Content="Remember window position"
+                                      IsChecked="{Binding RememberWindowPosition, Mode=TwoWay}" />
+                            <CheckBox Content="Launch at Windows sign-in"
+                                      IsChecked="{Binding LaunchAtSignIn, Mode=TwoWay}" />
+                            <Button Content="Apply startup setting"
+                                    Command="{Binding ToggleStartupCommand}" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Context and privacy"
+                              IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <NumberBox Header="Max total text context characters"
+                                       Value="{Binding MaxTotalTextContextCharacters, Mode=TwoWay}" />
+                            <NumberBox Header="Max clipboard attachment characters"
+                                       Value="{Binding MaxIndividualClipboardCharacters, Mode=TwoWay}" />
+                            <NumberBox Header="Max attached context items"
+                                       Value="{Binding MaxAttachedContextItems, Mode=TwoWay}" />
+                            <NumberBox Header="Screenshot max payload bytes"
+                                       Value="{Binding ScreenshotMaxPayloadBytes, Mode=TwoWay}" />
+                            <NumberBox Header="Screenshot thumbnail max edge"
+                                       Value="{Binding ScreenshotThumbnailMaxEdge, Mode=TwoWay}" />
+                            <CheckBox Content="Clear attachments after successful send"
+                                      IsChecked="{Binding ClearAttachmentsAfterSuccessfulSend, Mode=TwoWay}" />
+                            <CheckBox Content="Include executable path in provider metadata"
+                                      IsChecked="{Binding IncludeExecutablePathInProviderMetadata, Mode=TwoWay}" />
+                            <CheckBox Content="Include window title in provider context"
+                                      IsChecked="{Binding IncludeWindowTitleInProviderContext, Mode=TwoWay}" />
+                            <TextBox Header="Excluded applications (one process name per line)"
+                                     AcceptsReturn="True"
+                                     MinHeight="120"
+                                     Text="{Binding ExcludedApplicationsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Vision and diagnostics"
+                              IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <TextBox Header="Additional vision model patterns"
+                                     AcceptsReturn="True"
+                                     MinHeight="96"
+                                     Text="{Binding VisionPatternsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="{Binding SchemaVersionDisplay}"
+                                       Opacity="0.7" />
+                            <TextBlock Text="{Binding StatusMessage}"
+                                       TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button Content="Open settings folder"
+                                        Command="{Binding OpenSettingsFolderCommand}" />
+                                <Button Content="Reset window position"
+                                        Command="{Binding ResetWindowPositionCommand}" />
+                            </StackPanel>
+                            <Button Content="Reset all settings"
+                                    Command="{Binding ResetAllCommand}" />
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </Window>

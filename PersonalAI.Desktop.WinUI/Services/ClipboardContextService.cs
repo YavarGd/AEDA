@@ -1,9 +1,11 @@
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Settings;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace PersonalAI.Desktop.WinUI.Services;
 
-public sealed class ClipboardContextService
+public sealed class ClipboardContextService(
+    Func<ContextSettings>? getContextSettings = null)
 {
     public async Task<AttachedContextItem?> CaptureTextAsync(
         CancellationToken cancellationToken = default)
@@ -26,7 +28,13 @@ public sealed class ClipboardContextService
                 return null;
             }
 
-            return AttachedContextFactory.FromClipboardText(text);
+            var settings = ApplicationSettingsValidator.NormalizeContext(
+                getContextSettings?.Invoke() ?? ContextSettings.Default);
+            var clipped = text.Length > settings.MaxIndividualClipboardCharacters
+                ? text[..settings.MaxIndividualClipboardCharacters]
+                : text;
+
+            return AttachedContextFactory.FromClipboardText(clipped);
         }
         catch (Exception exception) when (
             exception is UnauthorizedAccessException ||
