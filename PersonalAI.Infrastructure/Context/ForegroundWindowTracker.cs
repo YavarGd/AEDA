@@ -3,13 +3,16 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Settings;
 
 namespace PersonalAI.Infrastructure.Context;
 
-public sealed class ForegroundWindowTracker
+public sealed class ForegroundWindowTracker(
+    Func<PrivacySettings>? getPrivacySettings = null)
 {
     private readonly int _ownProcessId = Environment.ProcessId;
     private readonly ActiveWindowReferenceTracker _referenceTracker = new();
+    private readonly Func<PrivacySettings>? _getPrivacySettings = getPrivacySettings;
 
     public ActiveWindowReference? LastExternalWindow => _referenceTracker.Current;
 
@@ -42,7 +45,7 @@ public sealed class ForegroundWindowTracker
             NativeMethods.IsWindow(current.WindowHandle));
     }
 
-    private static bool TryCreateExternalReference(
+    private bool TryCreateExternalReference(
         nint windowHandle,
         out ActiveWindowReference? reference)
     {
@@ -56,7 +59,10 @@ public sealed class ForegroundWindowTracker
         var processName = GetProcessName(processId);
         var windowTitle = NativeMethods.GetWindowTitle(windowHandle);
 
-        if (!IsUsableExternalWindow(processName, windowTitle))
+        var privacySettings = ApplicationSettingsValidator.NormalizePrivacy(
+            _getPrivacySettings?.Invoke() ?? PrivacySettings.Default);
+
+        if (!IsUsableExternalWindow(processName, privacySettings))
         {
             reference = null;
             return false;
@@ -95,19 +101,18 @@ public sealed class ForegroundWindowTracker
 
     private static bool IsUsableExternalWindow(
         string? processName,
-        string? windowTitle)
+        PrivacySettings privacySettings)
     {
-        if (string.IsNullOrWhiteSpace(processName) ||
-            string.IsNullOrWhiteSpace(windowTitle))
+        if (string.IsNullOrWhiteSpace(processName))
         {
             return false;
         }
 
-        return !processName.Equals("explorer", StringComparison.OrdinalIgnoreCase) &&
-            !processName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase) &&
-            !processName.Equals("CredentialUIBroker", StringComparison.OrdinalIgnoreCase) &&
-            !processName.Equals("LockApp", StringComparison.OrdinalIgnoreCase) &&
-            !processName.Equals("LogonUI", StringComparison.OrdinalIgnoreCase);
+        return !PrivacyExclusionMatcher.IsExcluded(
+            processName,
+            privacySettings.ExcludedApplications) &&
+            !processName.Equals("explorer", StringComparison.OrdinalIgnoreCase) &&
+            !processName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);
     }
 
     private static class NativeMethods

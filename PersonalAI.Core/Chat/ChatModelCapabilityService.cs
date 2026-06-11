@@ -1,27 +1,16 @@
 namespace PersonalAI.Core.Chat;
 
+using PersonalAI.Core.Settings;
+
 public static class ChatModelCapabilityService
 {
-    private static readonly string[] VisionModelNameFragments =
-    [
-        "llava",
-        "bakllava",
-        "moondream",
-        "llama3.2-vision",
-        "llama3.2vision",
-        "minicpm-v",
-        "gemma3",
-        "gemma4"
-    ];
-
     public static bool SupportsImages(string model)
     {
-        if (string.IsNullOrWhiteSpace(model))
-        {
-            return false;
-        }
+        return SupportsImages(model, settings: null);
+    }
 
-        return VisionModelNameFragments.Any(fragment =>
-            model.Contains(fragment, StringComparison.OrdinalIgnoreCase));
+    public static bool SupportsImages(string model, VisionSettings? settings)
+    {
+        return VisionModelCapabilityRegistry.SupportsImages(model, settings);
     }
 }

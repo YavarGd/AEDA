@@ -7,7 +7,7 @@ using PersonalAI.Core.Chat;
 
 namespace PersonalAI.Providers.Ollama;
 
-public sealed class OllamaChatProvider : IChatProvider
+public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -152,6 +152,38 @@ public sealed class OllamaChatProvider : IChatProvider
         }
     }
 
+    public async Task<IReadOnlyList<string>> ListModelsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            "/api/tags",
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(
+                cancellationToken);
+
+            throw new HttpRequestException(
+                $"Ollama returned {(int)response.StatusCode} " +
+                $"{response.ReasonPhrase}: {errorBody}");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(
+            cancellationToken);
+        var tags = await JsonSerializer.DeserializeAsync<OllamaTagsResponse>(
+            stream,
+            JsonOptions,
+            cancellationToken);
+
+        return tags?.Models
+            .Select(model => model.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? [];
+    }
+
     private static string ConvertRole(ChatRole role)
     {
         return role switch
@@ -202,5 +234,17 @@ public sealed class OllamaChatProvider : IChatProvider
 
         [JsonPropertyName("done_reason")]
         public string? DoneReason { get; init; }
+    }
+
+    private sealed class OllamaTagsResponse
+    {
+        [JsonPropertyName("models")]
+        public OllamaModelTag[] Models { get; init; } = [];
+    }
+
+    private sealed class OllamaModelTag
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; init; } = string.Empty;
     }
 }

@@ -3,9 +3,11 @@ using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Editor;
+using PersonalAI.Core.Settings;
 using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;
 
@@ -19,6 +21,9 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ClipboardContextService _clipboardContextService;
     private readonly ActiveWindowContextService _activeWindowContextService;
     private readonly ScreenshotAttachmentService _screenshotAttachmentService;
+    private readonly IApplicationSettingsService _settingsService;
+    private readonly IChatModelRouter _modelRouter;
+    private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _listModelsAsync;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly GenerationNavigationGuard _navigationGuard = new();
     private readonly AttachedContextCollection _attachedContextCollection = new();
@@ -33,13 +38,22 @@ public sealed partial class MainViewModel : ObservableObject
         ConversationSessionService conversationSession,
         ClipboardContextService clipboardContextService,
         ActiveWindowContextService activeWindowContextService,
-        ScreenshotAttachmentService screenshotAttachmentService)
+        ScreenshotAttachmentService screenshotAttachmentService,
+        IApplicationSettingsService settingsService,
+        SettingsViewModel settings,
+        IChatModelRouter modelRouter,
+        Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync)
     {
         _conversationSession = conversationSession;
         _clipboardContextService = clipboardContextService;
         _activeWindowContextService = activeWindowContextService;
         _screenshotAttachmentService = screenshotAttachmentService;
+        _settingsService = settingsService;
+        Settings = settings;
+        _modelRouter = modelRouter;
+        _listModelsAsync = listModelsAsync;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        ApplySettings(settingsService.Current);
     }
 
     public ObservableCollection<ConversationListItem> Conversations { get; } = [];
@@ -48,13 +62,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<AttachedContextItem> AttachedContexts { get; } = [];
 
-    public IReadOnlyList<string> AvailableModels { get; } = ["gemma4"];
+    public SettingsViewModel Settings { get; }
 
     public Func<GenerationStopConfirmationRequest, Task<bool>> ConfirmStopGenerationAsync { get; set; } =
         _ => Task.FromResult(false);
 
-    [ObservableProperty]
-    private string _selectedModel = "gemma4";
+    public Func<Task<bool>> ConfirmClearAllContextsAsync { get; set; } =
+        () => Task.FromResult(true);
 
     [ObservableProperty]
     private string _prompt = string.Empty;
@@ -83,6 +97,24 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _contextStatusMessage = "No context attached";
 
+    [ObservableProperty]
+    private string _routingStatusMessage = "Model will be selected automatically.";
+
+    [ObservableProperty]
+    private bool _isSettingsOpen;
+
+    [ObservableProperty]
+    private GridLength _sidebarColumnWidth = new(280);
+
+    [ObservableProperty]
+    private Thickness _sidebarPadding = new(16);
+
+    [ObservableProperty]
+    private bool _showConversationMetadata = true;
+
+    [ObservableProperty]
+    private bool _showMessageMetadata = true;
+
     public bool IsGenerating => Status is ChatStatus.Connecting or ChatStatus.Generating;
 
     public bool IsTimelineEmpty => Messages.Count == 0;
@@ -101,8 +133,7 @@ public sealed partial class MainViewModel : ObservableObject
     public int AttachedContextCount => AttachedContexts.Count;
 
     public bool HasUnsupportedImageContext =>
-        AttachedContexts.Any(context => context.Images.Count > 0) &&
-        !ChatModelCapabilityService.SupportsImages(SelectedModel);
+        false;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -113,7 +144,9 @@ public sealed partial class MainViewModel : ObservableObject
         _allConversations.AddRange(conversations);
         ApplyConversationFilter();
 
-        if (_allConversations.Count > 0)
+        if (_allConversations.Count > 0 &&
+            _settingsService.Current.General.LaunchDestination ==
+            LaunchDestination.LastConversation)
         {
             var firstConversation = CreateListItem(_allConversations[0]);
             await SelectConversationAsync(firstConversation);
@@ -128,12 +161,18 @@ public sealed partial class MainViewModel : ObservableObject
         SendMessageCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnSelectedModelChanged(string value)
+    public void ApplySettings(ApplicationSettings settings)
     {
-        OnPropertyChanged(nameof(CanSend));
+        var normalized = ApplicationSettingsValidator.Normalize(settings);
+        SidebarColumnWidth = new GridLength(
+            normalized.Appearance.CompactSidebar ? 180 : 280);
+        SidebarPadding = new Thickness(
+            normalized.Appearance.CompactSidebar ? 10 : 16);
+        ShowConversationMetadata = !normalized.Appearance.CompactSidebar;
+        ShowMessageMetadata = normalized.Appearance.ShowMessageMetadata;
         OnPropertyChanged(nameof(HasUnsupportedImageContext));
+        OnPropertyChanged(nameof(CanSend));
         SendMessageCommand.NotifyCanExecuteChanged();
-        UpdateImageCapabilityStatus();
     }
 
     partial void OnConversationSearchChanged(string value)
@@ -153,6 +192,18 @@ public sealed partial class MainViewModel : ObservableObject
         CaptureScreenshotContextCommand.NotifyCanExecuteChanged();
         RemoveContextCommand.NotifyCanExecuteChanged();
         ClearAllContextsCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    public void OpenSettings()
+    {
+        IsSettingsOpen = true;
+    }
+
+    [RelayCommand]
+    public void CloseSettings()
+    {
+        IsSettingsOpen = false;
     }
 
     [RelayCommand]
@@ -248,7 +299,6 @@ public sealed partial class MainViewModel : ObservableObject
             storedConversation.Id);
 
         _activeConversation = storedConversation;
-        SelectedModel = storedConversation.Model;
         CurrentConversationTitle = storedConversation.Title;
         Messages.Clear();
 
@@ -268,8 +318,6 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task SendMessageAsync()
     {
         var prompt = Prompt.Trim();
-        var model = SelectedModel;
-
         if (_isSending || string.IsNullOrWhiteSpace(prompt))
         {
             return;
@@ -289,7 +337,6 @@ public sealed partial class MainViewModel : ObservableObject
         var contextSnapshot = _attachedContextCollection.Snapshot();
         var generationTask = ExecuteGenerationAsync(
             prompt,
-            model,
             contextSnapshot,
             _generationCancellation.Token);
         _activeGenerationTask = generationTask;
@@ -323,31 +370,44 @@ public sealed partial class MainViewModel : ObservableObject
 
     private async Task ExecuteGenerationAsync(
         string prompt,
-        string model,
         IReadOnlyList<AttachedContextItem> contextSnapshot,
         CancellationToken cancellationToken)
     {
         ChatMessageViewModel? assistantMessage = null;
         var assistantResponse = new StringBuilder();
         var requestAccepted = false;
+        var model = ModelRoutingSettings.DefaultModel;
 
         try
         {
             var previousHistory = Messages
                 .Select(message => new ChatMessage(message.Role, message.Content))
                 .ToArray();
-            var conversation = await EnsureActiveConversationAsync(
+            var routingDecision = await SelectModelAsync(
                 prompt,
+                contextSnapshot,
+                cancellationToken);
+            RoutingStatusMessage = routingDecision.UserVisibleReason;
+            model = routingDecision.SelectedModel;
+            var routedPrompt = routingDecision.RoutedPrompt.Trim();
+
+            if (string.IsNullOrWhiteSpace(routedPrompt))
+            {
+                routedPrompt = prompt;
+            }
+
+            var conversation = await EnsureActiveConversationAsync(
+                routedPrompt,
                 model,
                 CancellationToken.None);
 
             await _conversationSession.AddMessageAsync(
                 conversation.Id,
                 ChatRole.User,
-                prompt,
+                routedPrompt,
                 CancellationToken.None);
 
-            AddMessage(new ChatMessageViewModel(ChatRole.User, prompt));
+            AddMessage(new ChatMessageViewModel(ChatRole.User, routedPrompt));
             assistantMessage = new ChatMessageViewModel(ChatRole.Assistant, string.Empty);
             AddMessage(assistantMessage);
 
@@ -356,8 +416,10 @@ public sealed partial class MainViewModel : ObservableObject
 
             var requestMessages = AttachedContextPromptComposer.Compose(
                 previousHistory,
-                prompt,
-                contextSnapshot);
+                routedPrompt,
+                contextSnapshot,
+                _settingsService.Current.Context.MaxIndividualClipboardCharacters,
+                _settingsService.Current.Context.MaxTotalTextContextCharacters);
 
             await foreach (var chunk in _conversationSession.StreamAsync(
                                model,
@@ -369,7 +431,7 @@ public sealed partial class MainViewModel : ObservableObject
                     if (!requestAccepted)
                     {
                         requestAccepted = true;
-                        ClearAttachedContextItems();
+                        ClearAttachedContextItemsAfterSend();
                     }
 
                     assistantResponse.Append(chunk.Content);
@@ -379,7 +441,7 @@ public sealed partial class MainViewModel : ObservableObject
 
             if (!requestAccepted)
             {
-                ClearAttachedContextItems();
+                ClearAttachedContextItemsAfterSend();
             }
 
             var completedContent = assistantResponse.ToString();
@@ -529,8 +591,14 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanModifyContexts))]
-    public void ClearAllContexts()
+    public async Task ClearAllContextsAsync()
     {
+        if (_settingsService.Current.General.ConfirmBeforeClearingAllContext &&
+            !await ConfirmClearAllContextsAsync())
+        {
+            return;
+        }
+
         ClearAttachedContextItems();
         SetContextStatus("All attached context cleared.");
     }
@@ -609,6 +677,14 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void AddAttachedContext(AttachedContextItem item, string successMessage)
     {
+        if (AttachedContexts.Count >=
+            _settingsService.Current.Context.MaxAttachedContextItems)
+        {
+            SetContextStatus(
+                $"Remove an attached context before adding another. Limit: {_settingsService.Current.Context.MaxAttachedContextItems}.");
+            return;
+        }
+
         if (!_attachedContextCollection.Add(item))
         {
             SetContextStatus("That context is already attached.");
@@ -651,6 +727,14 @@ public sealed partial class MainViewModel : ObservableObject
         NotifyAttachedContextsChanged();
     }
 
+    private void ClearAttachedContextItemsAfterSend()
+    {
+        if (_settingsService.Current.Context.ClearAttachmentsAfterSuccessfulSend)
+        {
+            ClearAttachedContextItems();
+        }
+    }
+
     private void NotifyAttachedContextsChanged()
     {
         OnPropertyChanged(nameof(HasAttachedContexts));
@@ -672,7 +756,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (HasUnsupportedImageContext)
         {
             SetContextStatus(
-                $"The selected model '{SelectedModel}' is not configured for image input. Remove the screenshot or switch to a vision model.");
+                "No configured vision model can accept the attached screenshot.");
         }
     }
 
@@ -728,6 +812,61 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Messages.Add(message);
         NotifyMessageCollectionChanged();
+    }
+
+    private async Task<ModelRoutingDecision> SelectModelAsync(
+        string prompt,
+        IReadOnlyList<AttachedContextItem> contextSnapshot,
+        CancellationToken cancellationToken)
+    {
+        var installedModels = await GetInstalledModelsForRoutingAsync(
+            cancellationToken);
+        var request = new ModelRoutingRequest(
+            prompt,
+            contextSnapshot
+                .Select(context => new AttachedContextSignal(
+                    context.Type.ToString(),
+                    context.Images.Count > 0))
+                .ToArray(),
+            installedModels,
+            _settingsService.Current.Models.Assignments);
+
+        var decision = await _modelRouter.SelectModelAsync(
+            request,
+            cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(decision.FallbackReason))
+        {
+            StatusMessage = decision.FallbackReason;
+        }
+
+        return decision;
+    }
+
+    private async Task<IReadOnlyList<string>> GetInstalledModelsForRoutingAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var models = await _listModelsAsync(cancellationToken);
+
+            if (models.Count > 0)
+            {
+                return models;
+            }
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException ||
+            exception is InvalidOperationException ||
+            exception is TaskCanceledException)
+        {
+        }
+
+        return _settingsService.Current.Models.Assignments
+            .Select(assignment => assignment.Model)
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private void AppendAssistantText(

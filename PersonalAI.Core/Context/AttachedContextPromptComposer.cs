@@ -13,12 +13,30 @@ public static class AttachedContextPromptComposer
         string userPrompt,
         IEnumerable<AttachedContextItem> attachedContexts)
     {
+        return Compose(
+            previousMessages,
+            userPrompt,
+            attachedContexts,
+            MaxContextPayloadCharacters,
+            MaxTotalContextCharacters);
+    }
+
+    public static IReadOnlyList<ChatMessage> Compose(
+        IEnumerable<ChatMessage> previousMessages,
+        string userPrompt,
+        IEnumerable<AttachedContextItem> attachedContexts,
+        int maxContextPayloadCharacters,
+        int maxTotalContextCharacters)
+    {
         ArgumentNullException.ThrowIfNull(previousMessages);
         ArgumentNullException.ThrowIfNull(attachedContexts);
 
         var messages = previousMessages.ToList();
         var contextSnapshot = attachedContexts.ToArray();
-        var contextBlock = FormatContextBlock(contextSnapshot);
+        var contextBlock = FormatContextBlock(
+            contextSnapshot,
+            maxContextPayloadCharacters,
+            maxTotalContextCharacters);
 
         if (!string.IsNullOrWhiteSpace(contextBlock))
         {
@@ -36,6 +54,17 @@ public static class AttachedContextPromptComposer
     public static string FormatContextBlock(
         IEnumerable<AttachedContextItem> attachedContexts)
     {
+        return FormatContextBlock(
+            attachedContexts,
+            MaxContextPayloadCharacters,
+            MaxTotalContextCharacters);
+    }
+
+    public static string FormatContextBlock(
+        IEnumerable<AttachedContextItem> attachedContexts,
+        int maxContextPayloadCharacters,
+        int maxTotalContextCharacters)
+    {
         ArgumentNullException.ThrowIfNull(attachedContexts);
 
         var builder = new StringBuilder();
@@ -43,7 +72,9 @@ public static class AttachedContextPromptComposer
 
         foreach (var context in attachedContexts)
         {
-            var payload = Truncate(context.ProviderPayload, MaxContextPayloadCharacters);
+            var payload = Truncate(
+                context.ProviderPayload,
+                maxContextPayloadCharacters);
             var header = new StringBuilder();
             header.AppendLine(
                 $"Attached context: {context.Type} - {context.DisplayTitle}");
@@ -62,9 +93,9 @@ public static class AttachedContextPromptComposer
             blockBuilder.Append(footer);
             var block = blockBuilder.ToString();
 
-            if (written + block.Length > MaxTotalContextCharacters)
+            if (written + block.Length > maxTotalContextCharacters)
             {
-                var remaining = MaxTotalContextCharacters - written;
+                var remaining = maxTotalContextCharacters - written;
 
                 if (remaining <= 0)
                 {

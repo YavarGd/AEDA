@@ -15,6 +15,8 @@ public sealed class WinUiWindowPlacementService
     private bool _isApplyingPosition;
     private WindowPosition _rememberedPosition;
 
+    public bool RememberWindowPosition { get; set; } = true;
+
     public WinUiWindowPlacementService()
         : this(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -33,7 +35,9 @@ public sealed class WinUiWindowPlacementService
         window.AppWindow.Resize(new SizeInt32(1080, 760));
         window.AppWindow.Changed += (_, args) =>
         {
-            if (_isApplyingPosition || !args.DidPositionChange)
+            if (_isApplyingPosition ||
+                !RememberWindowPosition ||
+                !args.DidPositionChange)
             {
                 return;
             }
@@ -48,10 +52,9 @@ public sealed class WinUiWindowPlacementService
     {
         var areas = GetWorkingAreas();
         var size = window.AppWindow.Size;
-        var persisted = GetPreferredPosition(
-            size.Width,
-            size.Height,
-            areas);
+        var persisted = RememberWindowPosition
+            ? GetPreferredPosition(size.Width, size.Height, areas)
+            : null;
         var position = persisted ?? GetActivationPosition(
             externalWindow,
             size.Width,
@@ -130,6 +133,24 @@ public sealed class WinUiWindowPlacementService
         _rememberedPosition = position;
         _hasRememberedPosition = true;
         PersistPosition(position);
+    }
+
+    public void ResetRememberedPosition()
+    {
+        _hasRememberedPosition = false;
+
+        try
+        {
+            if (File.Exists(_settingsPath))
+            {
+                File.Delete(_settingsPath);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException ||
+            exception is UnauthorizedAccessException)
+        {
+        }
     }
 
     private static IReadOnlyList<RectBounds> GetWorkingAreas()

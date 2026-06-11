@@ -17,6 +17,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Root.DataContext = _viewModel;
         _viewModel.ConfirmStopGenerationAsync = ShowStopGenerationDialogAsync;
+        _viewModel.ConfirmClearAllContextsAsync = ShowClearAllContextsDialogAsync;
     }
 
     private void ConversationList_SelectionChanged(
@@ -54,6 +55,11 @@ public sealed partial class MainWindow : Window
         PromptTextBox.SelectionStart = PromptTextBox.Text.Length;
     }
 
+    public void ApplyTheme(ElementTheme theme)
+    {
+        Root.RequestedTheme = theme;
+    }
+
     private async Task<bool> ShowStopGenerationDialogAsync(
         GenerationStopConfirmationRequest request)
     {
@@ -64,6 +70,22 @@ public sealed partial class MainWindow : Window
             Content = "PersonalAI is still generating a response for the current conversation.",
             PrimaryButtonText = request.PrimaryButtonText,
             CloseButtonText = request.CloseButtonText,
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary;
+    }
+
+    private async Task<bool> ShowClearAllContextsDialogAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "Clear attached context?",
+            Content = "This removes all currently attached context from the composer.",
+            PrimaryButtonText = "Clear context",
+            CloseButtonText = "Keep context",
             DefaultButton = ContentDialogButton.Close
         };
 
