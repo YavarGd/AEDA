@@ -8,6 +8,9 @@ using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Editor;
 using PersonalAI.Core.Settings;
+using PersonalAI.Core.Tasks;
+using PersonalAI.Core.Tools;
+using PersonalAI.Core.Tools.Reference;
 using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;
 
@@ -23,6 +26,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ScreenshotAttachmentService _screenshotAttachmentService;
     private readonly IApplicationSettingsService _settingsService;
     private readonly IChatModelRouter _modelRouter;
+    private readonly ITypedToolRuntime _toolRuntime;
     private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _listModelsAsync;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly GenerationNavigationGuard _navigationGuard = new();
@@ -42,6 +46,8 @@ public sealed partial class MainViewModel : ObservableObject
         IApplicationSettingsService settingsService,
         SettingsViewModel settings,
         IChatModelRouter modelRouter,
+        ITypedToolRuntime toolRuntime,
+        TaskTimelineViewModel taskTimeline,
         Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync)
     {
         _conversationSession = conversationSession;
@@ -51,6 +57,8 @@ public sealed partial class MainViewModel : ObservableObject
         _settingsService = settingsService;
         Settings = settings;
         _modelRouter = modelRouter;
+        _toolRuntime = toolRuntime;
+        TaskTimeline = taskTimeline;
         _listModelsAsync = listModelsAsync;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         ApplySettings(settingsService.Current);
@@ -63,6 +71,8 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<AttachedContextItem> AttachedContexts { get; } = [];
 
     public SettingsViewModel Settings { get; }
+
+    public TaskTimelineViewModel TaskTimeline { get; }
 
     public Func<GenerationStopConfirmationRequest, Task<bool>> ConfirmStopGenerationAsync { get; set; } =
         _ => Task.FromResult(false);
@@ -204,6 +214,37 @@ public sealed partial class MainViewModel : ObservableObject
     public void CloseSettings()
     {
         IsSettingsOpen = false;
+    }
+
+    [RelayCommand]
+    public async Task RunReferenceToolAsync()
+    {
+        var taskId = TaskId.NewId();
+        TaskTimeline.ObserveTask(taskId);
+        StatusMessage = "Running reference tool...";
+
+        var result = await _toolRuntime.InvokeAsync(
+            taskId,
+            new ToolInvocation(
+                GetCurrentUtcTimeTool.Id,
+                new GetCurrentUtcTimeInput()),
+            CancellationToken.None);
+
+        if (result is
+            {
+                IsSuccess: true,
+                Output: GetCurrentUtcTimeOutput output
+            })
+        {
+            Status = ChatStatus.Completed;
+            StatusMessage = $"UTC time: {output.Iso8601}";
+            return;
+        }
+
+        Status = result.Status == ToolExecutionStatus.Cancelled
+            ? ChatStatus.Cancelled
+            : ChatStatus.Failed;
+        StatusMessage = result.SafeErrorMessage ?? result.Summary;
     }
 
     [RelayCommand]

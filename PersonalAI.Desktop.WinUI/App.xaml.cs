@@ -2,6 +2,9 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using PersonalAI.Core.Settings;
+using PersonalAI.Core.Tasks;
+using PersonalAI.Core.Tools;
+using PersonalAI.Core.Tools.Reference;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.WinUI.Views;
@@ -9,6 +12,7 @@ using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.Ipc;
 using PersonalAI.Infrastructure.Settings;
+using PersonalAI.Infrastructure.Tools;
 
 namespace PersonalAI.Desktop.WinUI;
 
@@ -76,6 +80,19 @@ public partial class App : Application
                 _foregroundWindowTracker,
                 GetWindowHandle,
                 () => _settingsService.Current.Context));
+        var taskEventBus = new TaskEventBus();
+        var toolRegistry = new TypedToolRegistry();
+        toolRegistry.Register(new GetCurrentUtcTimeTool());
+        var permissionBroker = new WinUiPermissionBroker(
+            DispatcherQueue.GetForCurrentThread(),
+            () => _mainWindow?.ApprovalXamlRoot);
+        var toolRuntime = new TypedToolRuntime(
+            toolRegistry,
+            taskEventBus,
+            permissionBroker);
+        var taskTimeline = new TaskTimelineViewModel(
+            taskEventBus,
+            DispatcherQueue.GetForCurrentThread());
         var settingsViewModel = new SettingsViewModel(
             _settingsService,
             _startupRegistrationService,
@@ -92,6 +109,8 @@ public partial class App : Application
             _settingsService,
             settingsViewModel,
             new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
+            toolRuntime,
+            taskTimeline,
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
                 Task.FromResult<IReadOnlyList<string>>([]));
         _viewModel = viewModel;

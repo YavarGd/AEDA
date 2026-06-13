@@ -60,6 +60,8 @@ public sealed partial class MainWindow : Window
         Root.RequestedTheme = theme;
     }
 
+    public XamlRoot? ApprovalXamlRoot => Root.XamlRoot;
+
     private async Task<bool> ShowStopGenerationDialogAsync(
         GenerationStopConfirmationRequest request)
     {

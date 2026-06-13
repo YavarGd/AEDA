@@ -77,6 +77,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel>
@@ -100,6 +101,12 @@
                               Height="28"
                               Margin="16,24,0,0"
                               IsActive="{Binding IsGenerating}" />
+
+                <Button Grid.Column="3"
+                        Margin="12,20,0,0"
+                        VerticalAlignment="Center"
+                        Command="{Binding RunReferenceToolCommand}"
+                        Content="UTC" />
             </Grid>
 
             <Grid Grid.Row="1"
@@ -172,6 +179,37 @@
                                Opacity="0.7" />
                     <TextBlock Text="{Binding ContextStatusMessage}"
                                Opacity="0.7" />
+
+                    <StackPanel Spacing="6"
+                                Visibility="{Binding TaskTimeline.HasEvents, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="{Binding TaskTimeline.CurrentState}"
+                                   Opacity="0.75"
+                                   TextTrimming="CharacterEllipsis" />
+                        <ListView ItemsSource="{Binding TaskTimeline.Events}"
+                                  MaxHeight="104"
+                                  SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="72" />
+                                            <ColumnDefinition Width="132" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Timestamp}"
+                                                   Opacity="0.65" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Kind}"
+                                                   Opacity="0.75" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding Summary}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTipService.ToolTip="{Binding Detail}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
 
                     <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Disabled"
