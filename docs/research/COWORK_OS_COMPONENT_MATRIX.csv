@@ -1,0 +1,41 @@
+Subsystem,Advertised,Verified status,Source location,Quality,Security risk,Existing Local One equivalent,Recommended strategy,Porting complexity,Priority,Dependencies,Notes
+Agent loop,Yes,Production-like but oversized,src/electron/agent/executor.ts,Medium,High,None,STUDY_ONLY,Very large,P1,LLM providers tools DB,Study patterns; do not port giant executor directly
+Task planner,Yes,Functional but coupled,src/electron/agent/executor.ts; src/shared/plan-utils.ts,Medium,Medium,Partial deterministic model routing,PORT_TO_CSHARP,Medium,P1,Task event bus,Port planning states and tests
+Task event timeline,Yes,Production-like,src/shared/timeline-v2.ts; src/electron/database/repositories.ts,High,Low,None,PORT_TO_CSHARP,Medium,P0,SQLite,Highly valuable for progress reporting
+Tool contracts,Yes,Functional,src/electron/agent/tools/runtime-tool-definition.ts; registry.ts,Medium,Medium,None,PORT_TO_CSHARP,Large,P0,Permission broker,Use typed C# contracts not one giant registry
+Tool registry,Yes,Functional but oversized,src/electron/agent/tools/registry.ts,Medium,Medium,None,STUDY_ONLY,Large,P1,All tools,Port concept only
+Permissions and approvals,Yes,Functional,src/electron/agent/runtime/PermissionEngine.ts; src/electron/security,High,High,Navigation guards only,PORT_TO_CSHARP,Medium,P0,WinUI dialogs,Must be Local One controlled
+Shell tool,Yes,Implemented,src/electron/agent/tools/shell-tools.ts,Medium,High,None,REJECT,Large,P2,OS sandbox/Docker,Do not reuse directly; design C# shell gate later
+File tools,Yes,Functional,src/electron/agent/tools/file-tools.ts,High,Medium,None,PORT_TO_CSHARP,Medium,P0,Permission broker,Port path containment tests
+Code tools,Yes,Functional,src/electron/agent/tools/edit-tools.ts; grep-tools.ts; glob-tools.ts,High,Medium,None,PORT_TO_CSHARP,Medium,P1,File tools,Useful after typed runtime
+Provider abstractions,Yes,Functional,src/electron/agent/llm/types.ts; provider-factory.ts,High,Low,Yes,COPY_WITH_ATTRIBUTION,Small,P1,Existing C# providers,Copy metadata ideas/tests only
+Ollama provider,Yes,Functional,src/electron/agent/llm/ollama-provider.ts,High,Low,Yes,KEEP_LOCAL_ONE,Small,P0,Ollama HTTP,Local One already has streaming/cancel
+Provider fallback,Yes,Functional,src/electron/agent/llm; daemon retry logic,Medium,Low,Partial,PORT_TO_CSHARP,Medium,P1,Provider abstractions,Port policy not implementation
+Model router,Yes,Functional,ModelCapabilityRegistry.ts; llm-model-selection.ts,High,Low,Partial,PORT_TO_CSHARP,Medium,P1,Model catalog,Good fit for current C# core
+MCP client and registry,Yes,Production-like,src/electron/mcp/client; registry; connectors,High,High,None,PORT_TO_CSHARP,Large,P1,stdio/ws/sse,Curate and disable by default
+MCP host,Yes,Functional,src/electron/mcp/host/MCPHostServer.ts,Medium,High,None,STUDY_ONLY,Large,P2,HTTP auth tools,Useful later if exposing Local One tools
+Memory,Yes,Broad functional but complex,src/electron/memory; repositories.ts,Medium,Medium,Conversation persistence only,PORT_TO_CSHARP,Very large,P2,SQLite embeddings,Port categories gradually
+Knowledge graph,Yes,Functional but immature,src/electron/knowledge-graph; schema.ts,Medium,Medium,None,STUDY_ONLY,Large,P3,SQLite FTS,Later enhancement
+Skills,Yes,Functional,resources/skills; custom-skill-loader.ts,High,Medium,None,PORT_TO_CSHARP,Medium,P1,Filesystem manifests,High leverage with review controls
+Workflow intelligence,Yes,Functional but product-specific,src/electron/memory; agents; improvement,Medium,High,None,STUDY_ONLY,Very large,P3,Memory tasks,Too broad now
+Scheduled automations,Yes,Functional,src/electron/cron; routines; automation,High,High,None,PORT_TO_CSHARP,Medium,P2,Permission profiles,Must be explicit and reviewable
+Background execution,Yes,Functional,src/daemon/main.ts; cron; heartbeat,Medium,High,None,REJECT,Large,P3,Daemon,Reject broad background autonomy initially
+Artifact representation,Yes,Functional,src/shared/types.ts; document-preview.ts; spreadsheet-preview.ts,High,Low,None,PORT_TO_CSHARP,Medium,P1,Task event bus,Good model to adapt
+Document creation,Yes,Functional new docs,src/electron/agent/skills/document.ts; document-tools.ts,Medium,Medium,None,PORT_TO_CSHARP,Medium,P1,docx/pdfkit,Use OpenXML or narrow sidecar
+Spreadsheet creation,Yes,Functional new/edit preview,src/electron/agent/skills/spreadsheet.ts; spreadsheet service,High,Medium,None,PORT_TO_CSHARP,Medium,P1,exceljs,Use ClosedXML/OpenXML
+PowerPoint creation,Yes,Functional fallback,src/electron/utils/document-generators/pptx-generator.ts,Medium,Medium,None,WRAP_AS_SIDECAR,Medium,P2,pptxgenjs,Sidecar acceptable prototype
+PDF creation/editing,Yes,Functional,src/electron/documents/pdf-region-editor.ts; document skills,Medium,Medium,None,PORT_TO_CSHARP,Medium,P2,pdf-lib/pdfkit,Separate create vs edit
+Browser workbench,Yes,Implemented,src/electron/browser; BrowserWorkbenchView,High,High,None,PORT_TO_CSHARP,Large,P2,CDP/WebView2,Port architecture not code
+Playwright/CDP automation,Yes,Implemented,src/electron/agent/browser; browser-tools.ts,High,High,None,STUDY_ONLY,Large,P2,Playwright/CDP,Conceptual port around isolated profiles
+Inbox/email workflows,Yes,Functional,src/electron/mailbox; agent/tools/mailbox-tools.ts,Medium,High,None,REJECT,Very large,P3,OAuth/channels,Too risky and off-roadmap for now
+Remote channels,Yes,Functional,src/electron/gateway; docs/channels.md,Medium,High,None,REJECT,Very large,P3,Messaging SDKs,Do not inherit remote ingress
+Notification/channel system,Yes,Functional,src/electron/notifications; gateway,Medium,Medium,Native notifications planned,STUDY_ONLY,Medium,P3,Electron/channels,Use native Windows instead
+Background daemon,Yes,Real but broad,src/daemon/main.ts,Medium,High,None,STUDY_ONLY,Large,P2,Node services,Not a narrow sidecar
+Local API/control plane,Yes,Functional tokened WS,src/electron/control-plane,Medium,High,None,WRAP_AS_SIDECAR,Large,P2,WebSocket token,Only if narrowed and loopback
+Encrypted storage,Yes,Partial,src/electron/database/SecureSettingsRepository.ts,High,Medium,Settings JSON only,PORT_TO_CSHARP,Medium,P1,DPAPI/SQLite,Use Windows DPAPI; DB not whole encrypted
+Cost and token tracking,Yes,Functional,src/electron/agent/llm/usage-telemetry.ts; reports,High,Low,None,PORT_TO_CSHARP,Medium,P2,Provider metadata,Good after provider routing
+Tests and eval infrastructure,Yes,Large test tree,tests; src/**/__tests__,High,Low,Yes,COPY_WITH_ATTRIBUTION,Small,P0,Vitest to xUnit,Nice source of cases
+Crypto wallet/payments,Yes,Implemented,src/electron/infra,Medium,High,None,REJECT,Large,P3,ethers/x402,Irrelevant and risky
+Cloud sandboxes,Yes,Implemented via E2B,src/electron/infra/providers/e2b-sandbox.ts,Medium,High,None,REJECT,Large,P3,E2B,Conflicts local-first goal
+Device management,Yes,Partial/functional,src/electron/control-plane; renderer DevicesPanel,Medium,High,None,REJECT,Very large,P3,Remote control plane,Not needed
+Electron UI shell,Yes,Implemented,src/electron/main.ts; src/renderer,Medium,High,Native WinUI,KEEP_LOCAL_ONE,Very large,P0,Electron/React,Do not replace WinUI
