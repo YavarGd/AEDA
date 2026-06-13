@@ -2,20 +2,60 @@ using PersonalAI.Core.Tools;
 
 namespace PersonalAI.Core.Tasks;
 
-public sealed record TaskEvent(
-    Guid EventId,
-    TaskId TaskId,
-    DateTimeOffset TimestampUtc,
-    TaskEventKind Kind,
-    string Summary,
-    TaskExecutionState? State = null,
-    ToolId? ToolId = null,
-    int? ProgressPercent = null,
-    string? ProgressLabel = null,
-    IReadOnlyDictionary<string, string>? SafeMetadata = null,
-    string? SafeErrorCode = null,
-    string? SafeErrorMessage = null)
+public sealed record TaskEvent
 {
+    private TaskEvent(
+        Guid eventId,
+        TaskId taskId,
+        DateTimeOffset timestampUtc,
+        TaskEventKind kind,
+        string summary,
+        TaskExecutionState? state,
+        ToolId? toolId,
+        int? progressPercent,
+        string? progressLabel,
+        IReadOnlyDictionary<string, string>? safeMetadata,
+        string? safeErrorCode,
+        string? safeErrorMessage)
+    {
+        EventId = eventId;
+        TaskId = taskId;
+        TimestampUtc = timestampUtc;
+        Kind = kind;
+        Summary = summary;
+        State = state;
+        ToolId = toolId;
+        ProgressPercent = progressPercent;
+        ProgressLabel = progressLabel;
+        SafeMetadata = safeMetadata;
+        SafeErrorCode = safeErrorCode;
+        SafeErrorMessage = safeErrorMessage;
+    }
+
+    public Guid EventId { get; }
+
+    public TaskId TaskId { get; }
+
+    public DateTimeOffset TimestampUtc { get; }
+
+    public TaskEventKind Kind { get; }
+
+    public string Summary { get; }
+
+    public TaskExecutionState? State { get; }
+
+    public ToolId? ToolId { get; }
+
+    public int? ProgressPercent { get; }
+
+    public string? ProgressLabel { get; }
+
+    public IReadOnlyDictionary<string, string>? SafeMetadata { get; }
+
+    public string? SafeErrorCode { get; }
+
+    public string? SafeErrorMessage { get; }
+
     public static TaskEvent Create(
         TaskId taskId,
         TaskEventKind kind,
@@ -28,8 +68,6 @@ public sealed record TaskEvent(
         string? safeErrorCode = null,
         string? safeErrorMessage = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(summary);
-
         if (progressPercent is < 0 or > 100)
         {
             throw new ArgumentOutOfRangeException(
@@ -42,13 +80,15 @@ public sealed record TaskEvent(
             taskId,
             DateTimeOffset.UtcNow,
             kind,
-            summary,
+            TaskEventMetadata.SanitizeSummary(summary),
             state,
             toolId,
             progressPercent,
-            progressLabel,
-            safeMetadata,
-            safeErrorCode,
-            safeErrorMessage);
+            TaskEventMetadata.SanitizeProgressLabel(progressLabel),
+            TaskEventMetadata.Normalize(safeMetadata),
+            TaskEventMetadata.SanitizeErrorCode(safeErrorCode),
+            safeErrorMessage is null
+                ? null
+                : TaskEventMetadata.SanitizeSummary(safeErrorMessage));
     }
 }

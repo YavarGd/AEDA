@@ -106,7 +106,8 @@
                         Margin="12,20,0,0"
                         VerticalAlignment="Center"
                         Command="{Binding RunReferenceToolCommand}"
-                        Content="UTC" />
+                        Content="Dev UTC"
+                        Visibility="{Binding IsDeveloperDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </Grid>
 
             <Grid Grid.Row="1"

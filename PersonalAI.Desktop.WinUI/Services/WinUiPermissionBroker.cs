@@ -8,59 +8,58 @@ namespace PersonalAI.Desktop.WinUI.Services;
 
 public sealed class WinUiPermissionBroker(
     DispatcherQueue dispatcherQueue,
-    Func<XamlRoot?> getXamlRoot) : IPermissionBroker
+    Func<XamlRoot?> getXamlRoot) : IPermissionBroker, IDisposable
 {
-    private readonly SemaphoreSlim _dialogLock = new(1, 1);
+    private readonly PermissionDialogCoordinator _coordinator = new();
 
     public async ValueTask<PermissionResponse> RequestPermissionAsync(
         PermissionRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        await _dialogLock.WaitAsync(cancellationToken);
-        try
-        {
-            var completion = new TaskCompletionSource<PermissionResponse>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-
-            if (!dispatcherQueue.TryEnqueue(async () =>
-                {
-                    try
-                    {
-                        completion.SetResult(await ShowDialogAsync(request));
-                    }
-                    catch (Exception exception)
-                    {
-                        completion.SetResult(PermissionResponse.Deny(
-                            request,
-                            $"Approval dialog failed closed: {exception.GetType().Name}."));
-                    }
-                }))
-            {
-                return PermissionResponse.Deny(
-                    request,
-                    "Approval dialog was unavailable.");
-            }
-
-            using var _ = cancellationToken.Register(
-                () => completion.TrySetCanceled(cancellationToken));
-            return await completion.Task;
-        }
-        finally
-        {
-            _dialogLock.Release();
-        }
+        return await _coordinator.RequestPermissionAsync(
+            request,
+            PresentOnUiThreadAsync,
+            cancellationToken);
     }
 
-    private async Task<PermissionResponse> ShowDialogAsync(PermissionRequest request)
+    public void Dispose()
+    {
+        _coordinator.Dispose();
+    }
+
+    private async Task<PermissionDialogOutcome> PresentOnUiThreadAsync(
+        PermissionRequest request,
+        PermissionDialogSession session)
+    {
+        var completion = new TaskCompletionSource<PermissionDialogOutcome>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (!dispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    completion.TrySetResult(await ShowDialogAsync(request, session));
+                }
+                catch
+                {
+                    completion.TrySetResult(PermissionDialogOutcome.Error);
+                }
+            }))
+        {
+            return PermissionDialogOutcome.Unavailable;
+        }
+
+        return await completion.Task;
+    }
+
+    private async Task<PermissionDialogOutcome> ShowDialogAsync(
+        PermissionRequest request,
+        PermissionDialogSession session)
     {
         var xamlRoot = getXamlRoot();
         if (xamlRoot is null)
         {
-            return PermissionResponse.Deny(
-                request,
-                "Approval dialog was unavailable.");
+            return PermissionDialogOutcome.Unavailable;
         }
 
         var viewModel = new PermissionRequestViewModel(request);
@@ -83,23 +82,92 @@ public sealed class WinUiPermissionBroker(
         });
         content.Children.Add(new TextBlock { Text = viewModel.Impact });
 
+        var buttonRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        var allowOnce = new Button { Content = "Allow once" };
+        var allowForTask = new Button { Content = "Allow for task" };
+        var cancelTask = new Button { Content = "Cancel task" };
+        var deny = new Button { Content = "Deny" };
+        buttonRow.Children.Add(allowOnce);
+        buttonRow.Children.Add(allowForTask);
+        buttonRow.Children.Add(cancelTask);
+        buttonRow.Children.Add(deny);
+        content.Children.Add(buttonRow);
+
         var dialog = new ContentDialog
         {
             XamlRoot = xamlRoot,
             Title = $"Approve tool: {viewModel.Title}",
             Content = content,
-            PrimaryButtonText = "Allow once",
-            SecondaryButtonText = "Deny",
-            CloseButtonText = "Allow for task",
-            DefaultButton = ContentDialogButton.Secondary
+            DefaultButton = ContentDialogButton.None
         };
 
-        var result = await dialog.ShowAsync();
-        return result switch
+        await session.RegisterCloseAsync(() => HideDialogOnUiThreadAsync(dialog));
+
+        allowOnce.Click += (_, _) =>
         {
-            ContentDialogResult.Primary => PermissionResponse.AllowOnce(request),
-            ContentDialogResult.None => PermissionResponse.AllowForTask(request),
-            _ => PermissionResponse.Deny(request)
+            if (session.TrySetOutcome(PermissionDialogOutcome.AllowOnce))
+            {
+                dialog.Hide();
+            }
         };
+        allowForTask.Click += (_, _) =>
+        {
+            if (session.TrySetOutcome(PermissionDialogOutcome.AllowForTask))
+            {
+                dialog.Hide();
+            }
+        };
+        cancelTask.Click += (_, _) =>
+        {
+            if (session.TrySetOutcome(PermissionDialogOutcome.CancelTask))
+            {
+                dialog.Hide();
+            }
+        };
+        deny.Click += (_, _) =>
+        {
+            if (session.TrySetOutcome(PermissionDialogOutcome.Deny))
+            {
+                dialog.Hide();
+            }
+        };
+
+        _ = await dialog.ShowAsync();
+        return session.OutcomeOr(PermissionDialogOutcome.Dismissed);
+    }
+
+    private Task HideDialogOnUiThreadAsync(ContentDialog dialog)
+    {
+        if (dispatcherQueue.HasThreadAccess)
+        {
+            dialog.Hide();
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (!dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    dialog.Hide();
+                    completion.TrySetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            }))
+        {
+            completion.TrySetResult();
+        }
+
+        return completion.Task;
     }
 }

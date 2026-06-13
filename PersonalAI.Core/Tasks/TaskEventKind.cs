@@ -11,6 +11,8 @@ public enum TaskEventKind
     ToolRequested,
     ToolStarted,
     ToolCompleted,
+    ToolCancelled,
+    ToolTimedOut,
     ToolFailed,
     TaskCompleted,
     TaskCancelled,

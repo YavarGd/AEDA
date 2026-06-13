@@ -145,6 +145,18 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasUnsupportedImageContext =>
         false;
 
+    public bool IsDeveloperDiagnosticsVisible
+    {
+        get
+        {
+#if DEBUG
+            return true;
+#else
+            return false;
+#endif
+        }
+    }
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         var conversations = await _conversationSession.LoadConversationsAsync(

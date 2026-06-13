@@ -1,0 +1,25 @@
+warning: in the working copy of 'PersonalAI.Core/Permissions/PermissionRequest.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Core/Tasks/TaskEvent.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Core/Tasks/TaskEventBus.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Core/Tasks/TaskEventKind.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Core/Tools/ToolDescriptor.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Desktop.WinUI/Services/WinUiPermissionBroker.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Desktop.WinUI/ViewModels/MainViewModel.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Desktop.WinUI/Views/MainWindow.xaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Infrastructure/Tools/TypedToolRuntime.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Tests/Tasks/TaskEventBusTests.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PersonalAI.Tests/Tools/TypedToolRuntimeTests.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/architecture/TOOL_RUNTIME_FOUNDATION.md', LF will be replaced by CRLF the next time Git touches it
+ PersonalAI.Core/Permissions/PermissionRequest.cs   |   4 [32m+[m[31m-[m
+ PersonalAI.Core/Tasks/TaskEvent.cs                 |  80 [32m+++[m[31m-[m
+ PersonalAI.Core/Tasks/TaskEventBus.cs              | 116 [32m++++[m[31m-[m
+ PersonalAI.Core/Tasks/TaskEventKind.cs             |   2 [32m+[m
+ PersonalAI.Core/Tools/ToolDescriptor.cs            |   6 [32m+[m
+ .../Services/WinUiPermissionBroker.cs              | 158 [32m+++++[m[31m--[m
+ .../ViewModels/MainViewModel.cs                    |  12 [32m+[m
+ PersonalAI.Desktop.WinUI/Views/MainWindow.xaml     |   3 [32m+[m[31m-[m
+ .../Tools/TypedToolRuntime.cs                      | 174 [32m+++++[m[31m---[m
+ PersonalAI.Tests/Tasks/TaskEventBusTests.cs        | 159 [32m+++++++[m
+ PersonalAI.Tests/Tools/TypedToolRuntimeTests.cs    | 471 [32m++++++++++++++++++[m[31m---[m
+ docs/architecture/TOOL_RUNTIME_FOUNDATION.md       |  71 [32m+++[m[31m-[m
+ 12 files changed, 1049 insertions(+), 207 deletions(-)

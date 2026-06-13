@@ -11,20 +11,23 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
     private readonly ITaskEventBus _eventBus;
     private readonly IPermissionBroker _permissionBroker;
     private readonly ToolRuntimeOptions _options;
-    private readonly ConcurrentDictionary<PermissionCacheKey, PermissionResponse>
+    private readonly IToolRuntimeLogger _logger;
+    private readonly ConcurrentDictionary<PermissionGrantKey, PermissionResponse>
         _allowedForTask = [];
 
     public TypedToolRuntime(
         IToolRegistry registry,
         ITaskEventBus eventBus,
         IPermissionBroker permissionBroker,
-        ToolRuntimeOptions? options = null)
+        ToolRuntimeOptions? options = null,
+        IToolRuntimeLogger? logger = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
         _permissionBroker = permissionBroker ??
             throw new ArgumentNullException(nameof(permissionBroker));
         _options = options ?? ToolRuntimeOptions.Default;
+        _logger = logger ?? NullToolRuntimeLogger.Instance;
 
         if (_options.DefaultTimeout <= TimeSpan.Zero)
         {
@@ -48,15 +51,15 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
                 taskId,
                 invocation.ToolId,
                 startedAt,
-                CancellationToken.None);
+                publishTaskCancelled: false);
         }
 
         await PublishAsync(TaskEvent.Create(
             taskId,
             TaskEventKind.ToolRequested,
-            $"Tool requested: {invocation.ToolId}.",
+            "Tool requested.",
             TaskExecutionState.Running,
-            invocation.ToolId), cancellationToken);
+            invocation.ToolId));
 
         if (!_registry.TryGetTool(invocation.ToolId, out var tool))
         {
@@ -78,10 +81,15 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return await CancelAsync(taskId, tool.Descriptor.Id, startedAt, cancellationToken);
+            return await CancelAsync(
+                taskId,
+                tool.Descriptor.Id,
+                startedAt,
+                publishTaskCancelled: false);
         }
         catch (Exception exception)
         {
+            _logger.ToolException(taskId, tool.Descriptor.Id, exception);
             return await FailAsync(
                 taskId,
                 tool.Descriptor.Id,
@@ -89,7 +97,7 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
                 startedAt,
                 "Tool validation failed unexpectedly.",
                 "validation_exception",
-                SafeExceptionMessage(exception),
+                "Tool validation failed unexpectedly.",
                 cancellationToken);
         }
 
@@ -113,7 +121,11 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
 
         if (permission.Decision == PermissionDecision.CancelTask)
         {
-            return await CancelAsync(taskId, tool.Descriptor.Id, startedAt, cancellationToken);
+            return await CancelAsync(
+                taskId,
+                tool.Descriptor.Id,
+                startedAt,
+                publishTaskCancelled: true);
         }
 
         if (!permission.IsAllowed)
@@ -134,22 +146,23 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
             TaskEventKind.ToolStarted,
             $"Tool started: {tool.Descriptor.DisplayName}.",
             TaskExecutionState.Running,
-            tool.Descriptor.Id), cancellationToken);
+            tool.Descriptor.Id));
 
+        using var timeoutCts = new CancellationTokenSource();
         try
         {
             var timeout = tool.Descriptor.RecommendedTimeout ?? _options.DefaultTimeout;
-            using var timeoutCts = new CancellationTokenSource(timeout);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken,
                 timeoutCts.Token);
+            timeoutCts.CancelAfter(timeout);
 
             var result = await tool.ExecuteAsync(
                     invocation,
                     new TaskExecutionContext(taskId, startedAt),
                     linkedCts.Token)
                 .AsTask()
-                .WaitAsync(timeout, cancellationToken);
+                .WaitAsync(timeoutCts.Token);
 
             if (result.IsSuccess)
             {
@@ -158,7 +171,7 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
                     TaskEventKind.ToolCompleted,
                     result.Summary,
                     TaskExecutionState.Running,
-                    tool.Descriptor.Id), cancellationToken);
+                    tool.Descriptor.Id));
             }
             else
             {
@@ -167,41 +180,30 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
                     tool.Descriptor.Id,
                     result.SafeErrorCode ?? "tool_failed",
                     result.SafeErrorMessage ?? result.Summary,
-                    cancellationToken);
+                    CancellationToken.None);
             }
 
             return result;
         }
-        catch (TimeoutException)
-        {
-            return await FailAsync(
-                taskId,
-                tool.Descriptor.Id,
-                ToolExecutionStatus.TimedOut,
-                startedAt,
-                "Tool timed out.",
-                "tool_timeout",
-                "The tool did not complete before its timeout.",
-                cancellationToken);
-        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return await CancelAsync(taskId, tool.Descriptor.Id, startedAt, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            return await FailAsync(
+            return await CancelAsync(
                 taskId,
                 tool.Descriptor.Id,
-                ToolExecutionStatus.TimedOut,
                 startedAt,
-                "Tool timed out.",
-                "tool_timeout",
-                "The tool did not complete before its timeout.",
-                cancellationToken);
+                publishTaskCancelled: false);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            return await TimeoutAsync(taskId, tool.Descriptor.Id, startedAt);
+        }
+        catch (TimeoutException)
+        {
+            return await TimeoutAsync(taskId, tool.Descriptor.Id, startedAt);
         }
         catch (Exception exception)
         {
+            _logger.ToolException(taskId, tool.Descriptor.Id, exception);
             return await FailAsync(
                 taskId,
                 tool.Descriptor.Id,
@@ -209,7 +211,7 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
                 startedAt,
                 "Tool failed unexpectedly.",
                 "tool_exception",
-                SafeExceptionMessage(exception),
+                "Tool failed unexpectedly.",
                 cancellationToken);
         }
     }
@@ -228,17 +230,31 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
                 "Tool does not require approval.");
         }
 
-        var cacheKey = new PermissionCacheKey(taskId, descriptor.Id);
+        var grantKeys = descriptor.RequiredPermissions
+            .Select(permission => PermissionGrantKey.Create(
+                taskId,
+                descriptor.Id,
+                permission,
+                descriptor.PermissionAccessMode,
+                descriptor.PermissionResourceScope))
+            .ToArray();
+
         if (_options.UsePerTaskPermissionCache &&
-            _allowedForTask.TryGetValue(cacheKey, out var cached))
+            grantKeys.Length > 0 &&
+            grantKeys.All(key => key.IsCacheable) &&
+            grantKeys.All(key => _allowedForTask.ContainsKey(key)))
         {
             await PublishAsync(TaskEvent.Create(
                 taskId,
                 TaskEventKind.PermissionGranted,
                 $"Permission already granted for {descriptor.DisplayName}.",
                 TaskExecutionState.Running,
-                descriptor.Id), cancellationToken);
-            return cached;
+                descriptor.Id));
+            return new PermissionResponse(
+                Guid.Empty,
+                PermissionDecision.AllowForTask,
+                DateTimeOffset.UtcNow,
+                "Permission was already granted for this task and resource.");
         }
 
         var request = PermissionRequest.Create(
@@ -251,7 +267,7 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
             TaskEventKind.PermissionRequested,
             $"Permission requested for {descriptor.DisplayName}.",
             TaskExecutionState.WaitingForPermission,
-            descriptor.Id), cancellationToken);
+            descriptor.Id));
 
         PermissionResponse response;
         try
@@ -260,9 +276,11 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
                 request,
                 cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            throw;
+            return PermissionResponse.CancelTask(
+                request,
+                "Permission request was cancelled.");
         }
         catch (Exception exception)
         {
@@ -272,9 +290,13 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
         }
 
         if (response.Decision == PermissionDecision.AllowForTask &&
-            _options.UsePerTaskPermissionCache)
+            _options.UsePerTaskPermissionCache &&
+            grantKeys.All(key => key.IsCacheable))
         {
-            _allowedForTask.TryAdd(cacheKey, response);
+            foreach (var grantKey in grantKeys)
+            {
+                _allowedForTask.TryAdd(grantKey, response);
+            }
         }
 
         await PublishAsync(TaskEvent.Create(
@@ -288,7 +310,7 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
             response.IsAllowed
                 ? TaskExecutionState.Running
                 : TaskExecutionState.Failed,
-            descriptor.Id), cancellationToken);
+            descriptor.Id));
 
         return response;
     }
@@ -297,14 +319,26 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
         TaskId taskId,
         ToolId toolId,
         DateTimeOffset startedAt,
-        CancellationToken cancellationToken)
+        bool publishTaskCancelled)
     {
         await PublishAsync(TaskEvent.Create(
             taskId,
-            TaskEventKind.TaskCancelled,
+            TaskEventKind.ToolCancelled,
             "Tool invocation was cancelled.",
             TaskExecutionState.Cancelled,
-            toolId), CancellationToken.None);
+            toolId));
+
+        if (publishTaskCancelled)
+        {
+            await PublishAsync(TaskEvent.Create(
+                taskId,
+                TaskEventKind.TaskCancelled,
+                "Task was cancelled by permission decision.",
+                TaskExecutionState.Cancelled,
+                toolId));
+        }
+
+        ClearTaskPermissionCache(taskId);
 
         return ToolResult.Failure(
             toolId,
@@ -313,6 +347,31 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
             DateTimeOffset.UtcNow - startedAt,
             "cancelled",
             "The task was cancelled.");
+    }
+
+    private async ValueTask<ToolResult> TimeoutAsync(
+        TaskId taskId,
+        ToolId toolId,
+        DateTimeOffset startedAt)
+    {
+        await PublishAsync(TaskEvent.Create(
+            taskId,
+            TaskEventKind.ToolTimedOut,
+            "Tool timed out.",
+            TaskExecutionState.Failed,
+            toolId,
+            safeErrorCode: "tool_timeout",
+            safeErrorMessage: "The tool did not complete before its timeout."));
+
+        ClearTaskPermissionCache(taskId);
+
+        return ToolResult.Failure(
+            toolId,
+            ToolExecutionStatus.TimedOut,
+            "Tool timed out.",
+            DateTimeOffset.UtcNow - startedAt,
+            "tool_timeout",
+            "The tool did not complete before its timeout.");
     }
 
     private async ValueTask<ToolResult> FailAsync(
@@ -330,7 +389,9 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
             toolId,
             safeErrorCode,
             safeErrorMessage,
-            cancellationToken);
+            CancellationToken.None);
+
+        ClearTaskPermissionCache(taskId);
 
         return ToolResult.Failure(
             toolId,
@@ -350,21 +411,24 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
         PublishAsync(TaskEvent.Create(
             taskId,
             TaskEventKind.ToolFailed,
-            safeErrorMessage,
+            "Tool failed.",
             TaskExecutionState.Failed,
             toolId,
             safeErrorCode: safeErrorCode,
-            safeErrorMessage: safeErrorMessage), cancellationToken);
+            safeErrorMessage: safeErrorMessage));
 
     private async ValueTask PublishAsync(
         TaskEvent taskEvent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
-        await _eventBus.PublishAsync(taskEvent, cancellationToken);
+        await _eventBus.PublishAsync(taskEvent, CancellationToken.None);
     }
 
-    private static string SafeExceptionMessage(Exception exception) =>
-        $"{exception.GetType().Name}: {exception.Message}";
-
-    private readonly record struct PermissionCacheKey(TaskId TaskId, ToolId ToolId);
+    private void ClearTaskPermissionCache(TaskId taskId)
+    {
+        foreach (var key in _allowedForTask.Keys.Where(key => key.TaskId == taskId))
+        {
+            _allowedForTask.TryRemove(key, out _);
+        }
+    }
 }

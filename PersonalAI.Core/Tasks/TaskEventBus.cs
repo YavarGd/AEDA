@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 
 namespace PersonalAI.Core.Tasks;
@@ -6,6 +5,7 @@ namespace PersonalAI.Core.Tasks;
 public sealed class TaskEventBus : ITaskEventBus
 {
     private readonly object _gate = new();
+    private readonly object _publishGate = new();
     private readonly List<Subscription> _subscriptions = [];
     private readonly TaskEventBusOptions _options;
 
@@ -28,6 +28,17 @@ public sealed class TaskEventBus : ITaskEventBus
         _options = options;
     }
 
+    internal int ActiveSubscriberCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _subscriptions.Count;
+            }
+        }
+    }
+
     public ValueTask PublishAsync(
         TaskEvent taskEvent,
         CancellationToken cancellationToken = default)
@@ -35,17 +46,20 @@ public sealed class TaskEventBus : ITaskEventBus
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(taskEvent);
 
-        Subscription[] subscriptions;
-        lock (_gate)
+        lock (_publishGate)
         {
-            subscriptions = [.. _subscriptions];
-        }
-
-        foreach (var subscription in subscriptions)
-        {
-            if (subscription.Accepts(taskEvent))
+            Subscription[] subscriptions;
+            lock (_gate)
             {
-                subscription.Channel.Writer.TryWrite(taskEvent);
+                subscriptions = [.. _subscriptions];
+            }
+
+            foreach (var subscription in subscriptions)
+            {
+                if (subscription.Accepts(taskEvent))
+                {
+                    subscription.Channel.Writer.TryWrite(taskEvent);
+                }
             }
         }
 
@@ -54,16 +68,14 @@ public sealed class TaskEventBus : ITaskEventBus
 
     public IAsyncEnumerable<TaskEvent> SubscribeAsync(
         CancellationToken cancellationToken = default) =>
-        SubscribeCoreAsync(taskId: null, cancellationToken);
+        new SubscriptionEnumerable(this, taskId: null, cancellationToken);
 
     public IAsyncEnumerable<TaskEvent> SubscribeAsync(
         TaskId taskId,
         CancellationToken cancellationToken = default) =>
-        SubscribeCoreAsync(taskId, cancellationToken);
+        new SubscriptionEnumerable(this, taskId, cancellationToken);
 
-    private async IAsyncEnumerable<TaskEvent> SubscribeCoreAsync(
-        TaskId? taskId,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    private Subscription CreateSubscription(TaskId? taskId)
     {
         var channel = Channel.CreateBounded<TaskEvent>(
             new BoundedChannelOptions(_options.SubscriberBufferCapacity)
@@ -79,22 +91,82 @@ public sealed class TaskEventBus : ITaskEventBus
             _subscriptions.Add(subscription);
         }
 
-        try
+        return subscription;
+    }
+
+    private void RemoveSubscription(Subscription subscription)
+    {
+        lock (_gate)
         {
-            await foreach (var taskEvent in channel.Reader.ReadAllAsync(
-                               cancellationToken))
-            {
-                yield return taskEvent;
-            }
+            _subscriptions.Remove(subscription);
         }
-        finally
+
+        subscription.Channel.Writer.TryComplete();
+    }
+
+    private sealed class SubscriptionEnumerable(
+        TaskEventBus owner,
+        TaskId? taskId,
+        CancellationToken cancellationToken) : IAsyncEnumerable<TaskEvent>
+    {
+        public IAsyncEnumerator<TaskEvent> GetAsyncEnumerator(
+            CancellationToken enumeratorCancellationToken = default)
         {
-            lock (_gate)
+            var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                enumeratorCancellationToken);
+            return new SubscriptionEnumerator(
+                owner,
+                owner.CreateSubscription(taskId),
+                linkedCancellation);
+        }
+    }
+
+    private sealed class SubscriptionEnumerator(
+        TaskEventBus owner,
+        Subscription subscription,
+        CancellationTokenSource cancellation) : IAsyncEnumerator<TaskEvent>
+    {
+        private bool _disposed;
+
+        public TaskEvent Current { get; private set; } = null!;
+
+        public async ValueTask<bool> MoveNextAsync()
+        {
+            if (_disposed)
             {
-                _subscriptions.Remove(subscription);
+                return false;
             }
 
-            channel.Writer.TryComplete();
+            try
+            {
+                Current = await subscription.Channel.Reader.ReadAsync(
+                    cancellation.Token);
+                return true;
+            }
+            catch (ChannelClosedException)
+            {
+                return false;
+            }
+            catch (OperationCanceledException)
+            {
+                await DisposeAsync();
+                throw;
+            }
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            if (_disposed)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            _disposed = true;
+            cancellation.Cancel();
+            owner.RemoveSubscription(subscription);
+            cancellation.Dispose();
+            return ValueTask.CompletedTask;
         }
     }
 
