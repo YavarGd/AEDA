@@ -212,6 +212,39 @@
                         </ListView>
                     </StackPanel>
 
+                    <StackPanel Spacing="8"
+                                Visibility="{Binding IsDeveloperDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="Developer workspace tools"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Opacity="0.75" />
+                        <TextBox PlaceholderText="Workspace root to explicitly register"
+                                 Text="{Binding DeveloperWorkspaceRoot, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8">
+                            <Button Content="Register workspace"
+                                    Command="{Binding RegisterDeveloperWorkspaceCommand}" />
+                            <TextBox Width="220"
+                                     PlaceholderText="Relative path"
+                                     Text="{Binding DeveloperToolPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Content="List"
+                                    Command="{Binding RunDeveloperListDirectoryCommand}" />
+                            <Button Content="Read"
+                                    Command="{Binding RunDeveloperReadFileCommand}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8">
+                            <TextBox Width="360"
+                                     PlaceholderText="Literal search query"
+                                     Text="{Binding DeveloperSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Content="Search"
+                                    Command="{Binding RunDeveloperSearchWorkspaceCommand}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding DeveloperToolResult}"
+                                   TextWrapping="Wrap"
+                                   MaxHeight="120"
+                                   Opacity="0.75" />
+                    </StackPanel>
+
                     <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Disabled"
                                   Visibility="{Binding HasAttachedContexts, Converter={StaticResource BooleanToVisibilityConverter}}">

@@ -5,6 +5,7 @@ using PersonalAI.Core.Settings;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Reference;
+using PersonalAI.Core.Workspaces;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.WinUI.Views;
@@ -13,6 +14,8 @@ using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.Ipc;
 using PersonalAI.Infrastructure.Settings;
 using PersonalAI.Infrastructure.Tools;
+using PersonalAI.Infrastructure.Tools.Workspace;
+using PersonalAI.Infrastructure.Workspaces;
 
 namespace PersonalAI.Desktop.WinUI;
 
@@ -31,6 +34,8 @@ public partial class App : Application
     private ForegroundWindowTracker? _foregroundWindowTracker;
     private ExternalForegroundWindowMonitor? _foregroundMonitor;
     private PersonalAiPipeServer? _pipeServer;
+    private WinUiPermissionBroker? _permissionBroker;
+    private TaskTimelineViewModel? _taskTimeline;
     private bool _isExiting;
     private bool _isWindowVisible;
 
@@ -83,14 +88,37 @@ public partial class App : Application
         var taskEventBus = new TaskEventBus();
         var toolRegistry = new TypedToolRegistry();
         toolRegistry.Register(new GetCurrentUtcTimeTool());
-        var permissionBroker = new WinUiPermissionBroker(
+        IWorkspaceRegistry workspaceRegistry = new WorkspaceRegistry();
+        var workspaceOptions = new WorkspaceToolOptions();
+        var workspaceResolver = new WorkspacePathResolver(workspaceRegistry);
+        var workspaceReader = new FileSystemWorkspaceReader(
+            workspaceRegistry,
+            workspaceResolver,
+            workspaceOptions);
+        toolRegistry.Register(new GetWorkspaceInfoTool(
+            workspaceReader,
+            workspaceResolver,
+            workspaceOptions));
+        toolRegistry.Register(new ListDirectoryTool(
+            workspaceReader,
+            workspaceResolver,
+            workspaceOptions));
+        toolRegistry.Register(new ReadTextFileTool(
+            workspaceReader,
+            workspaceResolver,
+            workspaceOptions));
+        toolRegistry.Register(new SearchWorkspaceTextTool(
+            workspaceReader,
+            workspaceResolver,
+            workspaceOptions));
+        _permissionBroker = new WinUiPermissionBroker(
             DispatcherQueue.GetForCurrentThread(),
             () => _mainWindow?.ApprovalXamlRoot);
         var toolRuntime = new TypedToolRuntime(
             toolRegistry,
             taskEventBus,
-            permissionBroker);
-        var taskTimeline = new TaskTimelineViewModel(
+            _permissionBroker);
+        _taskTimeline = new TaskTimelineViewModel(
             taskEventBus,
             DispatcherQueue.GetForCurrentThread());
         var settingsViewModel = new SettingsViewModel(
@@ -110,7 +138,8 @@ public partial class App : Application
             settingsViewModel,
             new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
             toolRuntime,
-            taskTimeline,
+            _taskTimeline,
+            workspaceRegistry,
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
                 Task.FromResult<IReadOnlyList<string>>([]));
         _viewModel = viewModel;
@@ -351,6 +380,10 @@ public partial class App : Application
         _hotKeyService = null;
         _trayIconService?.Dispose();
         _trayIconService = null;
+        _taskTimeline?.Dispose();
+        _taskTimeline = null;
+        _permissionBroker?.Dispose();
+        _permissionBroker = null;
         _singleInstanceService?.Dispose();
         _singleInstanceService = null;
     }

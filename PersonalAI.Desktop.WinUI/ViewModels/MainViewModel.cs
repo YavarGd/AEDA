@@ -11,6 +11,9 @@ using PersonalAI.Core.Settings;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Reference;
+using PersonalAI.Core.Tools.Workspace;
+using PersonalAI.Core.Workspaces;
+using PersonalAI.Infrastructure.Tools.Workspace;
 using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;
 
@@ -27,6 +30,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IApplicationSettingsService _settingsService;
     private readonly IChatModelRouter _modelRouter;
     private readonly ITypedToolRuntime _toolRuntime;
+    private readonly IWorkspaceRegistry _workspaceRegistry;
     private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _listModelsAsync;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly GenerationNavigationGuard _navigationGuard = new();
@@ -48,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject
         IChatModelRouter modelRouter,
         ITypedToolRuntime toolRuntime,
         TaskTimelineViewModel taskTimeline,
+        IWorkspaceRegistry workspaceRegistry,
         Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync)
     {
         _conversationSession = conversationSession;
@@ -59,6 +64,7 @@ public sealed partial class MainViewModel : ObservableObject
         _modelRouter = modelRouter;
         _toolRuntime = toolRuntime;
         TaskTimeline = taskTimeline;
+        _workspaceRegistry = workspaceRegistry;
         _listModelsAsync = listModelsAsync;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         ApplySettings(settingsService.Current);
@@ -124,6 +130,21 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showMessageMetadata = true;
+
+    [ObservableProperty]
+    private string _developerWorkspaceRoot = string.Empty;
+
+    [ObservableProperty]
+    private string _developerWorkspaceId = string.Empty;
+
+    [ObservableProperty]
+    private string _developerToolPath = ".";
+
+    [ObservableProperty]
+    private string _developerSearchQuery = string.Empty;
+
+    [ObservableProperty]
+    private string _developerToolResult = "No workspace tool run yet.";
 
     public bool IsGenerating => Status is ChatStatus.Connecting or ChatStatus.Generating;
 
@@ -257,6 +278,107 @@ public sealed partial class MainViewModel : ObservableObject
             ? ChatStatus.Cancelled
             : ChatStatus.Failed;
         StatusMessage = result.SafeErrorMessage ?? result.Summary;
+    }
+
+    private async Task RunDeveloperToolAsync(ToolInvocation invocation)
+    {
+        if (string.IsNullOrWhiteSpace(DeveloperWorkspaceId))
+        {
+            DeveloperToolResult = "Register a developer workspace first.";
+            return;
+        }
+
+        var taskId = TaskId.NewId();
+        TaskTimeline.ObserveTask(taskId);
+        var result = await _toolRuntime.InvokeAsync(
+            taskId,
+            invocation,
+            CancellationToken.None);
+
+        DeveloperToolResult = FormatDeveloperToolResult(result);
+        StatusMessage = result.IsSuccess
+            ? "Workspace diagnostic completed."
+            : result.SafeErrorMessage ?? result.Summary;
+    }
+
+    private static string FormatDeveloperToolResult(ToolResult result)
+    {
+        if (!result.IsSuccess)
+        {
+            return $"{result.Status}: {result.SafeErrorMessage ?? result.Summary}";
+        }
+
+        return result.Output switch
+        {
+            GetWorkspaceInfoOutput output =>
+                $"{output.DisplayName} ({output.WorkspaceId}) files={output.ImmediateFileCount} dirs={output.ImmediateDirectoryCount}",
+            ListDirectoryOutput output =>
+                string.Join(Environment.NewLine, output.Entries.Select(entry =>
+                    $"{entry.Type} {entry.RelativePath}")),
+            ReadTextFileOutput output =>
+                output.IsTruncated ? output.Content + Environment.NewLine + "[truncated]" : output.Content,
+            SearchWorkspaceTextOutput output =>
+                string.Join(Environment.NewLine, output.Matches.Select(match =>
+                    $"{match.RelativeFilePath}:{match.LineNumber}:{match.LinePreview}")),
+            _ => result.Summary
+        };
+    }
+
+    [RelayCommand]
+    public void RegisterDeveloperWorkspace()
+    {
+        try
+        {
+            var workspace = _workspaceRegistry.Register(
+                DeveloperWorkspaceRoot,
+                displayName: "Developer workspace",
+                source: "WinUI developer diagnostics");
+            DeveloperWorkspaceId = workspace.Id.ToString();
+            DeveloperToolResult = $"Registered workspace: {workspace.DisplayName}";
+        }
+        catch (WorkspaceAccessException exception)
+        {
+            DeveloperToolResult =
+                $"Workspace registration failed ({exception.SafeErrorCode}): {exception.SafeErrorMessage}";
+        }
+        catch (Exception)
+        {
+            DeveloperToolResult = "Workspace registration failed unexpectedly.";
+        }
+    }
+
+    [RelayCommand]
+    public async Task RunDeveloperListDirectoryAsync()
+    {
+        await RunDeveloperToolAsync(new ToolInvocation(
+            ListDirectoryTool.Id,
+            new ListDirectoryInput(
+                new WorkspaceId(DeveloperWorkspaceId),
+                DeveloperToolPath,
+                MaxEntries: 25)));
+    }
+
+    [RelayCommand]
+    public async Task RunDeveloperReadFileAsync()
+    {
+        await RunDeveloperToolAsync(new ToolInvocation(
+            ReadTextFileTool.Id,
+            new ReadTextFileInput(
+                new WorkspaceId(DeveloperWorkspaceId),
+                DeveloperToolPath,
+                MaxCharacters: 4000)));
+    }
+
+    [RelayCommand]
+    public async Task RunDeveloperSearchWorkspaceAsync()
+    {
+        await RunDeveloperToolAsync(new ToolInvocation(
+            SearchWorkspaceTextTool.Id,
+            new SearchWorkspaceTextInput(
+                new WorkspaceId(DeveloperWorkspaceId),
+                DeveloperSearchQuery,
+                DeveloperToolPath,
+                MaxResults: 25)));
     }
 
     [RelayCommand]

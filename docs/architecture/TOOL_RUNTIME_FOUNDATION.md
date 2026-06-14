@@ -77,7 +77,7 @@ Concrete tools should normally derive from `TypedToolBase<TInput,TOutput>` to ge
 1. Publish `ToolRequested`.
 2. Resolve the tool from `IToolRegistry`.
 3. Validate typed input.
-4. Request permission when the descriptor requires approval.
+4. Request permission when the descriptor requires approval, using invocation-specific permission requirements when a tool provides them.
 5. Cache `AllowForTask` responses only for the same task, tool, permission type, access mode, and normalized resource scope.
 6. Publish `ToolStarted`.
 7. Execute with cancellation and timeout handling.

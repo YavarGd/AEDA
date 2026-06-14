@@ -408,6 +408,237 @@ public sealed class TypedToolRuntimeTests
                     value.Contains("supersecret", StringComparison.Ordinal)) == true);
     }
 
+    [Fact]
+    public async Task InvokeAsync_AllowOnceThenAllowForTask_CachesOnlySecondRequirement()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowOnce,
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowOnce);
+        var tool = new MultiRequirementTool("mixed.once.then.task");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(3, broker.RequestCount);
+        Assert.Equal(["SCOPE-A", "SCOPE-B", "SCOPE-A"], broker.Requests.Select(request => request.ResourceScope));
+        Assert.Equal(2, tool.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AllowForTaskThenAllowOnce_CachesOnlyFirstRequirement()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowOnce,
+            PermissionDecision.AllowOnce);
+        var tool = new MultiRequirementTool("mixed.task.then.once");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(3, broker.RequestCount);
+        Assert.Equal(["SCOPE-A", "SCOPE-B", "SCOPE-B"], broker.Requests.Select(request => request.ResourceScope));
+        Assert.Equal(2, tool.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_BothAllowForTask_CachesBothRequirements()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask);
+        var tool = new MultiRequirementTool("both.task");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(2, broker.RequestCount);
+        Assert.Equal(2, tool.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_BothAllowOnce_CachesNeitherRequirement()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowOnce,
+            PermissionDecision.AllowOnce,
+            PermissionDecision.AllowOnce,
+            PermissionDecision.AllowOnce);
+        var tool = new MultiRequirementTool("both.once");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(4, broker.RequestCount);
+        Assert.Equal(2, tool.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DenialOnSecondRequirementStopsAndDoesNotExecute()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowForTask,
+            PermissionDecision.Deny);
+        var tool = new MultiRequirementTool("deny.second");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+
+        var result = await runtime.InvokeAsync(
+            TaskId.NewId(),
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(ToolExecutionStatus.PermissionDenied, result.Status);
+        Assert.Equal(2, broker.RequestCount);
+        Assert.Equal(0, tool.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CancelTaskOnSecondRequirementStopsAndDoesNotExecute()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowForTask,
+            PermissionDecision.CancelTask);
+        var tool = new MultiRequirementTool("cancel.second");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+
+        var result = await runtime.InvokeAsync(
+            TaskId.NewId(),
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(ToolExecutionStatus.Cancelled, result.Status);
+        Assert.Equal(2, broker.RequestCount);
+        Assert.Equal(0, tool.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_CachedFirstRequirementSkipsDialogButUncachedSecondPrompts()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowOnce);
+        var tool = new DynamicSecondRequirementTool();
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new ScopedInput("scope-b")));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new ScopedInput("scope-c")));
+
+        Assert.Equal(3, broker.RequestCount);
+        Assert.Equal(["SCOPE-A", "SCOPE-B", "SCOPE-C"], broker.Requests.Select(request => request.ResourceScope));
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DifferentResourcesRemainIsolatedForMultiRequirementTool()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask);
+        var first = new MultiRequirementTool("isolated.one", firstScope: "scope-a", secondScope: "scope-b");
+        var second = new MultiRequirementTool("isolated.two", firstScope: "scope-a2", secondScope: "scope-b2");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, first, second);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(taskId, new ToolInvocation(first.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(taskId, new ToolInvocation(second.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(4, broker.RequestCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_EmptyRequirementScopesRemainNonCacheable()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask,
+            PermissionDecision.AllowForTask);
+        var tool = new MultiRequirementTool("empty.scopes", firstScope: string.Empty, secondScope: string.Empty);
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(taskId, new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(taskId, new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(4, broker.RequestCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ExecutesOnlyAfterAllRequirementsApproved()
+    {
+        var broker = new QueuePermissionBroker(
+            PermissionDecision.AllowOnce,
+            PermissionDecision.AllowOnce);
+        var tool = new MultiRequirementTool("all.approved");
+        var runtime = CreateRuntime(new TaskEventBus(), broker, tool);
+
+        var result = await runtime.InvokeAsync(
+            TaskId.NewId(),
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, broker.RequestCount);
+        Assert.Equal(1, tool.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_InvocationPermissionProviderExceptionIsSafeAndLogged()
+    {
+        var bus = new TaskEventBus();
+        var logger = new CapturingToolRuntimeLogger();
+        var tool = new ThrowingPermissionProviderTool();
+        var runtime = CreateRuntime(
+            bus,
+            new FixedPermissionBroker(PermissionDecision.AllowOnce),
+            logger,
+            tool);
+        var taskId = TaskId.NewId();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var eventsTask = CollectAsync(bus.SubscribeAsync(taskId, cancellation.Token), 2);
+
+        var result = await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(tool.Descriptor.Id, new EmptyToolInput()));
+        var events = await eventsTask;
+
+        Assert.Equal(ToolExecutionStatus.UnhandledFailure, result.Status);
+        Assert.Equal("permission_requirements_failed", result.SafeErrorCode);
+        Assert.Equal("Tool permission requirements failed unexpectedly.", result.SafeErrorMessage);
+        Assert.Single(logger.Exceptions);
+        Assert.DoesNotContain(events, item => item.Summary.Contains("sensitive", StringComparison.Ordinal));
+        Assert.DoesNotContain(events, item => item.SafeErrorMessage?.Contains("sensitive", StringComparison.Ordinal) == true);
+    }
+
     private static TypedToolRuntime CreateRuntime(
         ITaskEventBus eventBus,
         IPermissionBroker permissionBroker,
@@ -459,6 +690,8 @@ public sealed class TypedToolRuntimeTests
 
     private sealed record SecretInput(string Secret);
 
+    private sealed record ScopedInput(string SecondScope);
+
     private sealed record EmptyToolOutput(string Value);
 
     private sealed class FixedPermissionBroker(PermissionDecision decision)
@@ -489,11 +722,14 @@ public sealed class TypedToolRuntimeTests
 
         public int RequestCount { get; private set; }
 
+        public List<PermissionRequest> Requests { get; } = [];
+
         public ValueTask<PermissionResponse> RequestPermissionAsync(
             PermissionRequest request,
             CancellationToken cancellationToken = default)
         {
             RequestCount++;
+            Requests.Add(request);
             var decision = _decisions.Count > 0
                 ? _decisions.Dequeue()
                 : PermissionDecision.AllowOnce;
@@ -601,6 +837,98 @@ public sealed class TypedToolRuntimeTests
             return new EmptyToolOutput("done");
         }
     }
+
+    private sealed class MultiRequirementTool(
+        string idSuffix,
+        string firstScope = "scope-a",
+        string secondScope = "scope-b")
+        : TypedToolBase<EmptyToolInput, EmptyToolOutput>, IInvocationPermissionProvider
+    {
+        public int ExecuteCount { get; private set; }
+
+        public override ToolDescriptor Descriptor { get; } =
+            ToolDescriptor.Create<EmptyToolInput, EmptyToolOutput>(
+                new ToolId($"test.multi-permission.{idSuffix}"),
+                "Multi permission test",
+                "Requires two independent permissions.",
+                requiresApproval: true);
+
+        public ValueTask<IReadOnlyList<PermissionRequirement>> GetPermissionRequirementsAsync(
+            object input,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<IReadOnlyList<PermissionRequirement>>(
+                [CreateRequirement(ToolPermission.ReadFile, firstScope),
+                    CreateRequirement(ToolPermission.ReadWorkspace, secondScope)]);
+
+        public override ValueTask<EmptyToolOutput> ExecuteAsync(
+            EmptyToolInput input,
+            TaskExecutionContext context,
+            CancellationToken cancellationToken = default)
+        {
+            ExecuteCount++;
+            return ValueTask.FromResult(new EmptyToolOutput("ok"));
+        }
+    }
+
+    private sealed class DynamicSecondRequirementTool
+        : TypedToolBase<ScopedInput, EmptyToolOutput>, IInvocationPermissionProvider
+    {
+        public override ToolDescriptor Descriptor { get; } =
+            ToolDescriptor.Create<ScopedInput, EmptyToolOutput>(
+                new ToolId("test.multi-permission.dynamic"),
+                "Dynamic permission test",
+                "Requires one cached and one dynamic permission.",
+                requiresApproval: true);
+
+        public ValueTask<IReadOnlyList<PermissionRequirement>> GetPermissionRequirementsAsync(
+            object input,
+            CancellationToken cancellationToken = default)
+        {
+            var typed = (ScopedInput)input;
+            return ValueTask.FromResult<IReadOnlyList<PermissionRequirement>>(
+                [CreateRequirement(ToolPermission.ReadFile, "scope-a"),
+                    CreateRequirement(ToolPermission.ReadWorkspace, typed.SecondScope)]);
+        }
+
+        public override ValueTask<EmptyToolOutput> ExecuteAsync(
+            ScopedInput input,
+            TaskExecutionContext context,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new EmptyToolOutput("ok"));
+    }
+
+    private sealed class ThrowingPermissionProviderTool
+        : TypedToolBase<EmptyToolInput, EmptyToolOutput>, IInvocationPermissionProvider
+    {
+        public override ToolDescriptor Descriptor { get; } =
+            ToolDescriptor.Create<EmptyToolInput, EmptyToolOutput>(
+                new ToolId("test.permission-provider.throwing"),
+                "Throwing permission provider",
+                "Throws while building permission requirements.",
+                requiresApproval: true);
+
+        public ValueTask<IReadOnlyList<PermissionRequirement>> GetPermissionRequirementsAsync(
+            object input,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("sensitive provider failure");
+
+        public override ValueTask<EmptyToolOutput> ExecuteAsync(
+            EmptyToolInput input,
+            TaskExecutionContext context,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new EmptyToolOutput("should not run"));
+    }
+
+    private static PermissionRequirement CreateRequirement(
+        ToolPermission permission,
+        string scope) =>
+        new(
+            permission,
+            PermissionAccessMode.Read,
+            PermissionGrantKey.NormalizeResourceScope(scope),
+            scope,
+            $"Read {scope}.",
+            IsReadOnly: true);
 
     private sealed class ControlledTool(TimeSpan timeout)
         : TypedToolBase<object, EmptyToolOutput>
