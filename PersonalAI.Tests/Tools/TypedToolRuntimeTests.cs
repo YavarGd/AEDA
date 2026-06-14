@@ -74,6 +74,42 @@ public sealed class TypedToolRuntimeTests
     }
 
     [Fact]
+    public async Task InvalidateWorkspacePermissions_RemovesOnlyMatchingWorkspaceScopes()
+    {
+        var workspaceA = new PersonalAI.Core.Workspaces.WorkspaceId("workspace-a");
+        var workspaceB = new PersonalAI.Core.Workspaces.WorkspaceId("workspace-b");
+        var toolA = new CountingApprovalTool($"workspace:{workspaceA}:src/a.txt", ToolPermission.ReadWorkspace);
+        var toolB = new CountingApprovalTool($"workspace:{workspaceB}:src/b.txt", ToolPermission.ReadWorkspace);
+        var broker = new FixedPermissionBroker(PermissionDecision.AllowForTask);
+        var runtime = CreateRuntime(new TaskEventBus(), broker, toolA, toolB);
+        var taskId = TaskId.NewId();
+
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(toolA.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(toolB.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(toolA.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(toolB.Descriptor.Id, new EmptyToolInput()));
+
+        runtime.InvalidateWorkspacePermissions(workspaceA);
+
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(toolA.Descriptor.Id, new EmptyToolInput()));
+        await runtime.InvokeAsync(
+            taskId,
+            new ToolInvocation(toolB.Descriptor.Id, new EmptyToolInput()));
+
+        Assert.Equal(3, broker.RequestCount);
+    }
+
+    [Fact]
     public async Task InvokeAsync_AllowOnceIsNotReused()
     {
         var broker = new FixedPermissionBroker(PermissionDecision.AllowOnce);

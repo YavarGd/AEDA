@@ -16,7 +16,92 @@ public sealed class WorkspaceRegistry : IWorkspaceRegistry
     public WorkspaceDescriptor Register(
         string rootPath,
         string? displayName = null,
+        string? source = null) =>
+        Register(WorkspaceId.NewId(), rootPath, displayName, source);
+
+    public WorkspaceDescriptor Register(
+        WorkspaceId workspaceId,
+        string rootPath,
+        string? displayName = null,
         string? source = null)
+    {
+        var descriptor = CreateDescriptor(
+            workspaceId,
+            rootPath,
+            displayName,
+            source,
+            DateTimeOffset.UtcNow);
+
+        lock (_gate)
+        {
+            if (_byId.TryGetValue(descriptor.Id, out var existingById))
+            {
+                if (!PathComparer.Equals(
+                        existingById.CanonicalRootPath,
+                        descriptor.CanonicalRootPath))
+                {
+                    throw new WorkspaceAccessException(
+                        "workspace_duplicate",
+                        "Workspace id was already registered.");
+                }
+
+                return existingById;
+            }
+
+            if (_byRoot.TryGetValue(descriptor.CanonicalRootPath, out var existingId))
+            {
+                return _byId[existingId];
+            }
+
+            _byId.Add(descriptor.Id, descriptor);
+            _byRoot.Add(descriptor.CanonicalRootPath, descriptor.Id);
+            return descriptor;
+        }
+    }
+
+    public bool TryGet(WorkspaceId workspaceId, out WorkspaceDescriptor workspace)
+    {
+        lock (_gate)
+        {
+            return _byId.TryGetValue(workspaceId, out workspace!);
+        }
+    }
+
+    public IReadOnlyList<WorkspaceDescriptor> List()
+    {
+        lock (_gate)
+        {
+            return _byId.Values.OrderBy(
+                workspace => workspace.DisplayName,
+                StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+    }
+
+    public bool Remove(WorkspaceId workspaceId)
+    {
+        lock (_gate)
+        {
+            if (!_byId.Remove(workspaceId, out var descriptor))
+            {
+                return false;
+            }
+
+            _byRoot.Remove(descriptor.CanonicalRootPath);
+            return true;
+        }
+    }
+
+    internal static StringComparer PathComparer =>
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+    public static WorkspaceDescriptor CreateDescriptor(
+        WorkspaceId workspaceId,
+        string rootPath,
+        string? displayName = null,
+        string? source = null,
+        DateTimeOffset? registeredAtUtc = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
 
@@ -67,64 +152,16 @@ public sealed class WorkspaceRegistry : IWorkspaceRegistry
         InspectTraversedComponents(canonicalRoot);
         canonicalRoot = NormalizeCanonicalRoot(rootInfo.FullName);
 
-        lock (_gate)
-        {
-            if (_byRoot.TryGetValue(canonicalRoot, out var existingId))
-            {
-                return _byId[existingId];
-            }
-
-            var descriptor = new WorkspaceDescriptor(
-                WorkspaceId.NewId(),
-                string.IsNullOrWhiteSpace(displayName)
-                    ? rootInfo.Name
-                    : displayName.Trim(),
-                canonicalRoot,
-                DateTimeOffset.UtcNow,
-                WorkspaceAccessPolicy.ReadOnly,
-                source);
-            _byId.Add(descriptor.Id, descriptor);
-            _byRoot.Add(canonicalRoot, descriptor.Id);
-            return descriptor;
-        }
+        return new WorkspaceDescriptor(
+            workspaceId,
+            string.IsNullOrWhiteSpace(displayName)
+                ? rootInfo.Name
+                : displayName.Trim(),
+            canonicalRoot,
+            registeredAtUtc ?? DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly,
+            source);
     }
-
-    public bool TryGet(WorkspaceId workspaceId, out WorkspaceDescriptor workspace)
-    {
-        lock (_gate)
-        {
-            return _byId.TryGetValue(workspaceId, out workspace!);
-        }
-    }
-
-    public IReadOnlyList<WorkspaceDescriptor> List()
-    {
-        lock (_gate)
-        {
-            return _byId.Values.OrderBy(
-                workspace => workspace.DisplayName,
-                StringComparer.OrdinalIgnoreCase).ToArray();
-        }
-    }
-
-    public bool Remove(WorkspaceId workspaceId)
-    {
-        lock (_gate)
-        {
-            if (!_byId.Remove(workspaceId, out var descriptor))
-            {
-                return false;
-            }
-
-            _byRoot.Remove(descriptor.CanonicalRootPath);
-            return true;
-        }
-    }
-
-    internal static StringComparer PathComparer =>
-        OperatingSystem.IsWindows()
-            ? StringComparer.OrdinalIgnoreCase
-            : StringComparer.Ordinal;
 
     internal static string NormalizeCanonicalRoot(string fullPath)
     {

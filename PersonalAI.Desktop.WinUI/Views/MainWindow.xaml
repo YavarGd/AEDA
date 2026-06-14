@@ -217,12 +217,10 @@
                         <TextBlock Text="Developer workspace tools"
                                    Style="{ThemeResource CaptionTextBlockStyle}"
                                    Opacity="0.75" />
-                        <TextBox PlaceholderText="Workspace root to explicitly register"
-                                 Text="{Binding DeveloperWorkspaceRoot, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox PlaceholderText="Registered workspace ID from Settings"
+                                 Text="{Binding DeveloperWorkspaceId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <StackPanel Orientation="Horizontal"
                                     Spacing="8">
-                            <Button Content="Register workspace"
-                                    Command="{Binding RegisterDeveloperWorkspaceCommand}" />
                             <TextBox Width="220"
                                      PlaceholderText="Relative path"
                                      Text="{Binding DeveloperToolPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -370,6 +368,117 @@
                             <TextBlock Text="{Binding SettingsPath}"
                                        TextWrapping="Wrap"
                                        Opacity="0.7" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Workspaces"
+                              IsExpanded="True">
+                        <StackPanel x:Name="WorkspaceManagementPanel"
+                                    DataContext="{Binding Workspaces}"
+                                    Spacing="12">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button Content="Add workspace"
+                                        Command="{Binding PickWorkspaceFolderCommand}" />
+                                <Button Content="Refresh"
+                                        Command="{Binding RefreshCommand}" />
+                                <TextBlock Text="{Binding StatusMessage}"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           Opacity="0.7" />
+                            </StackPanel>
+
+                            <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="12"
+                                    Visibility="{Binding HasPendingWorkspace, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Review workspace"
+                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="{Binding PendingFolderPath}"
+                                               TextWrapping="Wrap"
+                                               Opacity="0.75" />
+                                    <TextBox Header="Display name"
+                                             Text="{Binding PendingDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Workspace tools may request permission to read files in this folder. Current workspace tools are read-only and cannot change files. Symlinks and junctions are rejected."
+                                               TextWrapping="Wrap"
+                                               Opacity="0.75" />
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="8">
+                                        <Button Content="Add workspace"
+                                                Command="{Binding AddPendingWorkspaceCommand}" />
+                                        <Button Content="Cancel"
+                                                Command="{Binding CancelPendingWorkspaceCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="No workspaces registered."
+                                       Opacity="0.7"
+                                       Visibility="{Binding HasNoWorkspaces, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                            <ItemsControl ItemsSource="{Binding Workspaces}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="6"
+                                                Padding="12"
+                                                Margin="0,0,0,8">
+                                            <StackPanel Spacing="8">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                   Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                        <TextBlock Text="{Binding RootPath}"
+                                                                   TextWrapping="Wrap"
+                                                                   Opacity="0.75" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding ReadOnlyBadge}"
+                                                               Margin="12,0,0,0"
+                                                               Opacity="0.75" />
+                                                </Grid>
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="8">
+                                                    <TextBlock Text="{Binding Status}" />
+                                                    <TextBlock Text="{Binding StatusDetail}"
+                                                               Opacity="0.7" />
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding WorkspaceId}"
+                                                           Opacity="0.65"
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Source}"
+                                                           Opacity="0.65" />
+                                                <TextBlock Text="{Binding AddedAt}"
+                                                           Opacity="0.65" />
+                                                <TextBlock Text="{Binding LastValidated}"
+                                                           Opacity="0.65" />
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="8">
+                                                    <TextBox Width="260"
+                                                             Header="Display name"
+                                                             Text="{Binding EditableDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Button Content="Save name"
+                                                            Command="{Binding DataContext.SaveDisplayNameCommand, ElementName=WorkspaceManagementPanel}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Content="Revalidate"
+                                                            Command="{Binding DataContext.RevalidateWorkspaceCommand, ElementName=WorkspaceManagementPanel}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Content="Remove"
+                                                            Command="{Binding DataContext.RemoveWorkspaceCommand, ElementName=WorkspaceManagementPanel}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Expander>
 

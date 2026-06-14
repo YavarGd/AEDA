@@ -19,7 +19,17 @@ Workspace tools do not write files, delete files, move files, create directories
 
 ## Workspace Registration
 
-`WorkspaceRegistry` is an in-memory registry for this milestone. Registration:
+Workspace registration is now a reviewed production flow under Settings. Users add
+a workspace through the WinUI folder picker, review the selected folder and display
+name, and explicitly choose Add workspace before it is persisted or made available
+to tools.
+
+The persisted repository is separate from the runtime registry. Saved records are
+revalidated on startup before they are registered for tool use. Invalid records
+remain visible in Settings but are unavailable to tools until revalidated or
+removed.
+
+`WorkspaceRegistry` remains the in-memory runtime boundary. Registration:
 
 - canonicalizes the requested root with `Path.GetFullPath`;
 - rejects nonexistent roots;
@@ -28,7 +38,10 @@ Workspace tools do not write files, delete files, move files, create directories
 - deduplicates equivalent canonical roots;
 - stores a stable `WorkspaceId`, display name, canonical root path, registration timestamp, read-only policy, and optional source.
 
-Workspaces are not persisted yet.
+Persisted workspace IDs remain stable across restarts. Removing a workspace marks
+the persisted record removed, unregisters the runtime workspace, and invalidates
+workspace-scoped runtime permission grants. It does not delete user files or
+conversation history.
 
 ## Path Canonicalization
 
@@ -149,15 +162,17 @@ Technical exceptions belong only in the technical logger.
 
 ## WinUI Developer Harness
 
-WinUI has a DEBUG-only developer section for manual testing. It requires explicit workspace-root registration and then invokes workspace tools through `TypedToolRuntime`, so permission dialogs still appear normally. The harness is hidden in Release builds.
+WinUI has a DEBUG-only developer section for manual testing. It no longer
+registers arbitrary roots directly. Workspaces are registered through the
+production Settings flow, and the harness accepts a registered workspace ID before
+invoking workspace tools through `TypedToolRuntime`, so permission dialogs still
+appear normally. The harness is hidden in Release builds.
 
 ## Known Limitations
 
-- Workspace registrations are in-memory only.
 - Symlinks and junctions are rejected rather than resolved.
 - Search is literal only.
 - File pattern support is intentionally small.
-- There is no workspace removal UI yet.
 - WinUI developer tooling is a minimal diagnostic harness.
 
 ## Deferred Model Tool Calls

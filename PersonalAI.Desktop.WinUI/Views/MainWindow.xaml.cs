@@ -18,6 +18,8 @@ public sealed partial class MainWindow : Window
         Root.DataContext = _viewModel;
         _viewModel.ConfirmStopGenerationAsync = ShowStopGenerationDialogAsync;
         _viewModel.ConfirmClearAllContextsAsync = ShowClearAllContextsDialogAsync;
+        _viewModel.Settings.Workspaces.ConfirmRemoveWorkspaceAsync =
+            ShowRemoveWorkspaceDialogAsync;
     }
 
     private void ConversationList_SelectionChanged(
@@ -88,6 +90,24 @@ public sealed partial class MainWindow : Window
             Content = "This removes all currently attached context from the composer.",
             PrimaryButtonText = "Clear context",
             CloseButtonText = "Keep context",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary;
+    }
+
+    private async Task<bool> ShowRemoveWorkspaceDialogAsync(
+        WorkspaceItemViewModel workspace)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "Remove workspace?",
+            Content =
+                $"Remove '{workspace.DisplayName}' from PersonalAI? The folder and conversation history will not be deleted.",
+            PrimaryButtonText = "Remove",
+            CloseButtonText = "Keep workspace",
             DefaultButton = ContentDialogButton.Close
         };
 

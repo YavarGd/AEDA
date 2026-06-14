@@ -118,6 +118,16 @@ public partial class App : Application
             toolRegistry,
             taskEventBus,
             _permissionBroker);
+        var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
+        var workspaceRegistrationService = new WorkspaceRegistrationService(
+            workspaceRepository,
+            workspaceRegistry,
+            toolRuntime);
+        await workspaceRegistrationService.InitializeAsync();
+        var workspaceManagement = new WorkspaceManagementViewModel(
+            workspaceRegistrationService,
+            new WinUiFolderPickerService(GetWindowHandle));
+        await workspaceManagement.RefreshAsync();
         _taskTimeline = new TaskTimelineViewModel(
             taskEventBus,
             DispatcherQueue.GetForCurrentThread());
@@ -128,7 +138,8 @@ public partial class App : Application
             ApplyRuntimeSettings,
             () => _placementService?.ResetRememberedPosition(),
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
-                Task.FromResult<IReadOnlyList<string>>([]));
+                Task.FromResult<IReadOnlyList<string>>([]),
+            workspaceManagement);
         var viewModel = new MainViewModel(
             conversationSession,
             clipboardContextService,

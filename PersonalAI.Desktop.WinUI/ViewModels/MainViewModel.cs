@@ -327,24 +327,8 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void RegisterDeveloperWorkspace()
     {
-        try
-        {
-            var workspace = _workspaceRegistry.Register(
-                DeveloperWorkspaceRoot,
-                displayName: "Developer workspace",
-                source: "WinUI developer diagnostics");
-            DeveloperWorkspaceId = workspace.Id.ToString();
-            DeveloperToolResult = $"Registered workspace: {workspace.DisplayName}";
-        }
-        catch (WorkspaceAccessException exception)
-        {
-            DeveloperToolResult =
-                $"Workspace registration failed ({exception.SafeErrorCode}): {exception.SafeErrorMessage}";
-        }
-        catch (Exception)
-        {
-            DeveloperToolResult = "Workspace registration failed unexpectedly.";
-        }
+        DeveloperToolResult =
+            "Register workspaces in Settings, then paste the workspace ID here for diagnostics.";
     }
 
     [RelayCommand]

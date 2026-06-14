@@ -24,7 +24,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         Func<ApplicationSettings, Task<SettingsApplyResult>> applyHotkeyAsync,
         Action<ApplicationSettings> applyRuntimeSettings,
         Action resetWindowPosition,
-        Func<CancellationToken, Task<IReadOnlyList<string>>> refreshModelsAsync)
+        Func<CancellationToken, Task<IReadOnlyList<string>>> refreshModelsAsync,
+        WorkspaceManagementViewModel workspaces)
     {
         _settingsService = settingsService;
         _startupRegistrationService = startupRegistrationService;
@@ -32,6 +33,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _applyRuntimeSettings = applyRuntimeSettings;
         _resetWindowPosition = resetWindowPosition;
         _refreshModelsAsync = refreshModelsAsync;
+        Workspaces = workspaces;
         Load(settingsService.Current);
     }
 
@@ -45,6 +47,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         Enum.GetValues<CloseBehavior>();
 
     public ObservableCollection<string> InstalledModels { get; } = [];
+
+    public WorkspaceManagementViewModel Workspaces { get; }
 
     public string SettingsPath => _settingsService.SettingsPath;
 

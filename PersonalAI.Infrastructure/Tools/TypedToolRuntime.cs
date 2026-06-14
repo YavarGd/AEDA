@@ -6,7 +6,7 @@ using PersonalAI.Core.Workspaces;
 
 namespace PersonalAI.Infrastructure.Tools;
 
-public sealed class TypedToolRuntime : ITypedToolRuntime
+public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionInvalidator
 {
     private readonly IToolRegistry _registry;
     private readonly ITaskEventBus _eventBus;
@@ -534,6 +534,20 @@ public sealed class TypedToolRuntime : ITypedToolRuntime
     private void ClearTaskPermissionCache(TaskId taskId)
     {
         foreach (var key in _allowedForTask.Keys.Where(key => key.TaskId == taskId))
+        {
+            _allowedForTask.TryRemove(key, out _);
+        }
+    }
+
+    public void InvalidateWorkspacePermissions(WorkspaceId workspaceId)
+    {
+        var prefix = PermissionGrantKey.NormalizeResourceScope(
+            $"workspace:{workspaceId}:");
+
+        foreach (var key in _allowedForTask.Keys.Where(key =>
+                     key.NormalizedResourceScope.StartsWith(
+                         prefix,
+                         StringComparison.Ordinal)))
         {
             _allowedForTask.TryRemove(key, out _);
         }
