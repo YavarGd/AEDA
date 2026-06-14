@@ -20,6 +20,8 @@ public sealed partial class MainWindow : Window
         _viewModel.ConfirmClearAllContextsAsync = ShowClearAllContextsDialogAsync;
         _viewModel.Settings.Workspaces.ConfirmRemoveWorkspaceAsync =
             ShowRemoveWorkspaceDialogAsync;
+        _viewModel.Settings.Workspaces.RequestRenameWorkspaceAsync =
+            ShowRenameWorkspaceDialogAsync;
     }
 
     private void ConversationList_SelectionChanged(
@@ -113,5 +115,31 @@ public sealed partial class MainWindow : Window
 
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
+    }
+
+    private async Task<string?> ShowRenameWorkspaceDialogAsync(
+        WorkspaceItemViewModel workspace)
+    {
+        var nameBox = new TextBox
+        {
+            Header = "Display name",
+            Text = workspace.DisplayName,
+            MaxLength = 80
+        };
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = "Rename workspace",
+            Content = nameBox,
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary
+            ? nameBox.Text
+            : null;
     }
 }

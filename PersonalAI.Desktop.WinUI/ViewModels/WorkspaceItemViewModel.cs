@@ -23,19 +23,14 @@ public sealed partial class WorkspaceItemViewModel(PersistedWorkspace workspace)
     public string LastValidated =>
         Workspace.LastValidatedAtUtc?.ToLocalTime().ToString("g") ?? "Not validated";
 
-    public string Status => Workspace.Status switch
-    {
-        WorkspaceRegistrationStatus.Available => "Available",
-        WorkspaceRegistrationStatus.Missing => "Missing",
-        WorkspaceRegistrationStatus.AccessDenied => "Access denied",
-        WorkspaceRegistrationStatus.UnsafeReparsePoint => "Unsafe link/reparse point",
-        WorkspaceRegistrationStatus.NeedsReview => "Needs review",
-        WorkspaceRegistrationStatus.ValidationFailed => "Validation failed",
-        WorkspaceRegistrationStatus.Removed => "Removed",
-        _ => "Validation failed"
-    };
+    public WorkspaceStatusPresentation Presentation =>
+        WorkspaceStatusPresentationMapper.Map(Workspace);
 
-    public string StatusDetail => Workspace.SafeStatusCode ?? "available";
+    public string Status => Presentation.Label;
+
+    public string StatusDetail => Presentation.Message;
+
+    public string StatusSymbol => Presentation.Symbol;
 
     public string ReadOnlyBadge => Workspace.IsReadOnly ? "Read-only" : "Not read-only";
 
@@ -57,8 +52,10 @@ public sealed partial class WorkspaceItemViewModel(PersistedWorkspace workspace)
         OnPropertyChanged(nameof(Source));
         OnPropertyChanged(nameof(AddedAt));
         OnPropertyChanged(nameof(LastValidated));
+        OnPropertyChanged(nameof(Presentation));
         OnPropertyChanged(nameof(Status));
         OnPropertyChanged(nameof(StatusDetail));
+        OnPropertyChanged(nameof(StatusSymbol));
         OnPropertyChanged(nameof(ReadOnlyBadge));
         OnPropertyChanged(nameof(CanUseWorkspace));
     }

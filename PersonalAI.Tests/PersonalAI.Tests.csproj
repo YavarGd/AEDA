@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PersonalAI.Core\PersonalAI.Core.csproj" />
+    <ProjectReference Include="..\PersonalAI.Desktop.WinUI\PersonalAI.Desktop.WinUI.csproj" />
     <ProjectReference Include="..\PersonalAI.Infrastructure\PersonalAI.Infrastructure.csproj" />
     <ProjectReference Include="..\PersonalAI.Providers\PersonalAI.Providers.csproj" />
   </ItemGroup>
