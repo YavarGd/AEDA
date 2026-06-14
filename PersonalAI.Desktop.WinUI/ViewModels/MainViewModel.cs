@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
@@ -463,7 +464,9 @@ public sealed partial class MainViewModel : ObservableObject
 
         foreach (var message in messages)
         {
-            Messages.Add(new ChatMessageViewModel(message.Role, message.Content));
+            Messages.Add(new ChatMessageViewModel(
+                message.Role,
+                FormatStoredMessage(message)));
         }
 
         SelectedConversation = Conversations.FirstOrDefault(
@@ -579,12 +582,36 @@ public sealed partial class MainViewModel : ObservableObject
                 contextSnapshot,
                 _settingsService.Current.Context.MaxIndividualClipboardCharacters,
                 _settingsService.Current.Context.MaxTotalTextContextCharacters);
+            var toolTaskId = TaskId.NewId();
+            var canUseWorkspaceTools =
+                _conversationSession.CanUseWorkspaceTools(model);
 
-            await foreach (var chunk in _conversationSession.StreamAsync(
+            if (canUseWorkspaceTools)
+            {
+                TaskTimeline.ObserveTask(toolTaskId);
+                StatusMessage = "Workspace tools available.";
+            }
+            else if (LooksLikeWorkspaceAccessRequest(routedPrompt) &&
+                     _workspaceRegistry.List().Count > 0)
+            {
+                StatusMessage = "This model does not support workspace tools.";
+            }
+
+            await foreach (var chunk in _conversationSession.StreamWithWorkspaceToolsAsync(
+                               conversation.Id,
+                               toolTaskId,
                                model,
                                requestMessages,
                                cancellationToken))
             {
+                if (!string.IsNullOrWhiteSpace(chunk.ActivityMessage))
+                {
+                    AddMessage(new ChatMessageViewModel(
+                        ChatRole.Tool,
+                        chunk.ActivityMessage));
+                    StatusMessage = chunk.ActivityMessage;
+                }
+
                 if (!string.IsNullOrEmpty(chunk.Content))
                 {
                     if (!requestAccepted)
@@ -965,6 +992,65 @@ public sealed partial class MainViewModel : ObservableObject
             conversation.Id,
             conversation.Title,
             $"{conversation.Model} - {conversation.Status}");
+    }
+
+    private static string FormatStoredMessage(StoredChatMessage message)
+    {
+        if (message.Role != ChatRole.Tool)
+        {
+            return message.Content;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(message.Content);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("kind", out var kind) &&
+                string.Equals(kind.GetString(), "tool_call", StringComparison.Ordinal))
+            {
+                var toolName = root.TryGetProperty("toolName", out var tool)
+                    ? tool.GetString()
+                    : "workspace tool";
+                return $"Requested workspace tool: {toolName}.";
+            }
+
+            if (root.TryGetProperty("status", out var status))
+            {
+                var toolName = root.TryGetProperty("toolName", out var tool)
+                    ? tool.GetString()
+                    : "workspace tool";
+                var safeError = root.TryGetProperty("safeErrorMessage", out var error)
+                    ? error.GetString()
+                    : null;
+                var isTruncated = root.TryGetProperty("isTruncated", out var truncated) &&
+                    truncated.ValueKind == JsonValueKind.True;
+
+                if (!string.IsNullOrWhiteSpace(safeError))
+                {
+                    return safeError;
+                }
+
+                return isTruncated
+                    ? $"Workspace tool completed with truncated results: {toolName}."
+                    : $"Workspace tool {status.GetString()?.ToLowerInvariant()}: {toolName}.";
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return "Workspace tool activity.";
+    }
+
+    private static bool LooksLikeWorkspaceAccessRequest(string prompt)
+    {
+        var value = prompt.ToLowerInvariant();
+        return value.Contains("workspace", StringComparison.Ordinal) ||
+            value.Contains("readme", StringComparison.Ordinal) ||
+            value.Contains("list files", StringComparison.Ordinal) ||
+            value.Contains("search", StringComparison.Ordinal) ||
+            value.Contains("open ", StringComparison.Ordinal);
     }
 
     private void AddMessage(ChatMessageViewModel message)

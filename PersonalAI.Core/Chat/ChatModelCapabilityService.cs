@@ -13,4 +13,9 @@ public static class ChatModelCapabilityService
     {
         return VisionModelCapabilityRegistry.SupportsImages(model, settings);
     }
+
+    public static bool SupportsTools(string model)
+    {
+        return ToolModelCapabilityRegistry.SupportsTools(model);
+    }
 }

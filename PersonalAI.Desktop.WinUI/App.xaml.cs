@@ -65,9 +65,6 @@ public partial class App : Application
         await _settingsService.InitializeAsync();
         _startupRegistrationService = new WindowsStartupRegistrationService();
         var chatSession = new ChatSessionService(chatProvider);
-        var conversationSession = new ConversationSessionService(
-            conversationRepository,
-            chatSession);
         var activeContextProvider =
             ActiveContextProviderFactory.CreateDefaultProvider();
         _foregroundWindowTracker = new ForegroundWindowTracker(
@@ -118,6 +115,12 @@ public partial class App : Application
             toolRegistry,
             taskEventBus,
             _permissionBroker);
+        var conversationSession = new ConversationSessionService(
+            conversationRepository,
+            chatSession,
+            toolRegistry,
+            toolRuntime,
+            workspaceRegistry);
         var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
         var workspaceRegistrationService = new WorkspaceRegistrationService(
             workspaceRepository,

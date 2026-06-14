@@ -7,7 +7,10 @@ using PersonalAI.Core.Chat;
 
 namespace PersonalAI.Providers.Ollama;
 
-public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
+public sealed class OllamaChatProvider :
+    IChatProvider,
+    IToolCallingChatProvider,
+    IChatModelCatalog
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -64,9 +67,34 @@ public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
                         ? null
                         : message.Images
                             .Select(image => image.Base64Data)
+                            .ToArray(),
+                    ToolCalls = message.ToolCalls.Count == 0
+                        ? null
+                        : message.ToolCalls
+                            .Select(call => new OllamaToolCall
+                            {
+                                Function = new OllamaToolCallFunction
+                                {
+                                    Name = call.Name,
+                                    Arguments = call.Arguments
+                                }
+                            })
                             .ToArray()
                 })
-                .ToArray()
+                .ToArray(),
+            Tools = request.Tools.Count == 0
+                ? null
+                : request.Tools
+                    .Select(tool => new OllamaToolDefinition
+                    {
+                        Function = new OllamaToolFunctionDefinition
+                        {
+                            Name = tool.Name,
+                            Description = tool.Description,
+                            Parameters = tool.Parameters
+                        }
+                    })
+                    .ToArray()
         };
 
         var json = JsonSerializer.Serialize(ollamaRequest, JsonOptions);
@@ -90,12 +118,8 @@ public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
 
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(
-                cancellationToken);
-
             throw new HttpRequestException(
-                $"Ollama returned {(int)response.StatusCode} " +
-                $"{response.ReasonPhrase}: {errorBody}");
+                $"Ollama returned HTTP {(int)response.StatusCode}.");
         }
 
         await using var responseStream =
@@ -130,7 +154,7 @@ public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
             catch (JsonException exception)
             {
                 throw new InvalidDataException(
-                    $"Ollama returned invalid JSON: {line}",
+                    "Ollama returned invalid JSON.",
                     exception);
             }
 
@@ -140,10 +164,14 @@ public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
             }
 
             var content = chunk.Message?.Content ?? string.Empty;
+            var toolCalls = chunk.Message?.ToolCalls is null
+                ? []
+                : ConvertToolCalls(chunk.Message.ToolCalls);
 
             yield return new ChatChunk(
-                Content: content,
-                IsComplete: chunk.Done);
+                content,
+                chunk.Done,
+                toolCalls);
 
             if (chunk.Done)
             {
@@ -199,6 +227,75 @@ public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
         };
     }
 
+    private static IReadOnlyList<ChatToolCall> ConvertToolCalls(
+        IReadOnlyList<OllamaToolCall> toolCalls)
+    {
+        var converted = new List<ChatToolCall>();
+
+        foreach (var toolCall in toolCalls)
+        {
+            var name = toolCall.Function?.Name?.Trim();
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                throw new InvalidDataException(
+                    "Ollama returned a tool call without a function name.");
+            }
+
+            var arguments = NormalizeArguments(toolCall.Function?.Arguments);
+            converted.Add(new ChatToolCall(
+                string.IsNullOrWhiteSpace(toolCall.Id)
+                    ? Guid.NewGuid().ToString("N")
+                    : toolCall.Id,
+                name,
+                arguments));
+        }
+
+        return converted;
+    }
+
+    private static JsonElement NormalizeArguments(JsonElement? arguments)
+    {
+        if (arguments is null)
+        {
+            using var emptyDocument = JsonDocument.Parse("{}");
+            return emptyDocument.RootElement.Clone();
+        }
+
+        var element = arguments.Value;
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var raw = element.GetString();
+
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                using var emptyDocument = JsonDocument.Parse("{}");
+                return emptyDocument.RootElement.Clone();
+            }
+
+            try
+            {
+                using var parsed = JsonDocument.Parse(raw);
+                return parsed.RootElement.Clone();
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidDataException(
+                    "Ollama returned invalid tool-call arguments.",
+                    exception);
+            }
+        }
+
+        if (element.ValueKind is JsonValueKind.Object)
+        {
+            return element.Clone();
+        }
+
+        throw new InvalidDataException(
+            "Ollama returned invalid tool-call arguments.");
+    }
+
     private sealed class OllamaChatRequest
     {
         [JsonPropertyName("model")]
@@ -209,6 +306,10 @@ public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
 
         [JsonPropertyName("stream")]
         public bool Stream { get; init; }
+
+        [JsonPropertyName("tools")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public OllamaToolDefinition[]? Tools { get; init; }
     }
 
     private sealed class OllamaMessage
@@ -222,6 +323,49 @@ public sealed class OllamaChatProvider : IChatProvider, IChatModelCatalog
         [JsonPropertyName("images")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string[]? Images { get; init; }
+
+        [JsonPropertyName("tool_calls")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public OllamaToolCall[]? ToolCalls { get; init; }
+    }
+
+    private sealed class OllamaToolDefinition
+    {
+        [JsonPropertyName("type")]
+        public string Type { get; init; } = "function";
+
+        [JsonPropertyName("function")]
+        public required OllamaToolFunctionDefinition Function { get; init; }
+    }
+
+    private sealed class OllamaToolFunctionDefinition
+    {
+        [JsonPropertyName("name")]
+        public required string Name { get; init; }
+
+        [JsonPropertyName("description")]
+        public required string Description { get; init; }
+
+        [JsonPropertyName("parameters")]
+        public required JsonElement Parameters { get; init; }
+    }
+
+    private sealed class OllamaToolCall
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; init; }
+
+        [JsonPropertyName("function")]
+        public OllamaToolCallFunction? Function { get; init; }
+    }
+
+    private sealed class OllamaToolCallFunction
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; init; }
+
+        [JsonPropertyName("arguments")]
+        public JsonElement? Arguments { get; init; }
     }
 
     private sealed class OllamaChatResponse
