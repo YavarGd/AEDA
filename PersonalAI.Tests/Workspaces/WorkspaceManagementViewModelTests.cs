@@ -49,6 +49,53 @@ public sealed class WorkspaceManagementViewModelTests
     }
 
     [Fact]
+    public async Task PickWorkspaceFolderAsync_SelectedFolderCreatesPendingReview()
+    {
+        var viewModel = CreateViewModel(
+            new FakeWorkspaceRegistrationService(),
+            @"C:\Workspaces\ToolUxTest");
+
+        await viewModel.PickWorkspaceFolderAsync();
+
+        Assert.True(viewModel.HasPendingWorkspace);
+        Assert.Equal(@"C:\Workspaces\ToolUxTest", viewModel.PendingFolderPath);
+        Assert.Equal("ToolUxTest", viewModel.PendingDisplayName);
+        Assert.Equal("Review the selected folder before adding it.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task PickWorkspaceFolderAsync_UserCancellationIsNoOp()
+    {
+        var viewModel = CreateViewModel(
+            new FakeWorkspaceRegistrationService(),
+            pickedPath: null);
+
+        await viewModel.PickWorkspaceFolderAsync();
+
+        Assert.False(viewModel.HasPendingWorkspace);
+        Assert.Equal(string.Empty, viewModel.PendingFolderPath);
+        Assert.Equal("Workspace selection cancelled.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task PickWorkspaceFolderAsync_PickerFailureShowsSafeMessage()
+    {
+        var pickerException = new WorkspaceAccessException(
+            "folder_picker_failed",
+            "Could not open the folder picker.");
+        var viewModel = CreateViewModel(
+            new FakeWorkspaceRegistrationService(),
+            pickerException: pickerException);
+
+        await viewModel.PickWorkspaceFolderAsync();
+
+        Assert.False(viewModel.HasPendingWorkspace);
+        Assert.Equal("Could not open the folder picker.", viewModel.StatusMessage);
+        Assert.DoesNotContain("HRESULT", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("COM", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AddPendingWorkspaceAsync_DuplicateRootUsesFreshReturnedStatus()
     {
         var service = new FakeWorkspaceRegistrationService();
@@ -334,14 +381,22 @@ public sealed class WorkspaceManagementViewModelTests
 
     private static WorkspaceManagementViewModel CreateViewModel(
         FakeWorkspaceRegistrationService service,
-        string? pickedPath = null) =>
-        new(service, new FakeFolderPicker(pickedPath));
+        string? pickedPath = null,
+        Exception? pickerException = null) =>
+        new(service, new FakeFolderPicker(pickedPath, pickerException));
 
-    private sealed class FakeFolderPicker(string? path) : IFolderPickerService
+    private sealed class FakeFolderPicker(string? path, Exception? exception) : IFolderPickerService
     {
         public Task<string?> PickSingleFolderAsync(
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(path);
+            CancellationToken cancellationToken = default)
+        {
+            if (exception is not null)
+            {
+                throw exception;
+            }
+
+            return Task.FromResult(path);
+        }
     }
 
     private sealed class FakeWorkspaceRegistrationService : IWorkspaceRegistrationService

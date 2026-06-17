@@ -120,7 +120,7 @@ public sealed class SqliteConversationRepository : IConversationRepository
             SELECT id, conversation_id, role, content, created_at_utc
             FROM messages
             WHERE conversation_id = $conversation_id
-            ORDER BY created_at_utc ASC;
+            ORDER BY created_at_utc ASC, rowid ASC;
             """;
         command.Parameters.AddWithValue("$conversation_id", conversationId.ToString());
 

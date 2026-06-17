@@ -117,6 +117,10 @@
                     <ListView.ItemTemplate>
                         <DataTemplate>
                             <Grid Padding="0,8">
+                                <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="{Binding BorderThickness}"
+                                        CornerRadius="6"
+                                        Padding="{Binding Padding}">
                                 <StackPanel MaxWidth="820">
                                     <TextBlock Text="{Binding RoleLabel}"
                                                Style="{ThemeResource CaptionTextBlockStyle}"
@@ -126,6 +130,7 @@
                                                TextWrapping="Wrap"
                                                IsTextSelectionEnabled="True" />
                                 </StackPanel>
+                                </Border>
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>

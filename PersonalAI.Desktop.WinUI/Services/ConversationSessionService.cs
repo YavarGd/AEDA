@@ -1,9 +1,14 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using PersonalAI.Core.Chat;
+using PersonalAI.Core.Diagnostics;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Workspace;
 using PersonalAI.Core.Workspaces;
+using PersonalAI.Desktop.WinUI.ViewModels;
 
 namespace PersonalAI.Desktop.WinUI.Services;
 
@@ -144,6 +149,33 @@ public sealed class ConversationSessionService
         _workspaceRegistry.List().Count > 0 &&
         GetWorkspaceToolDefinitions().Count > 0;
 
+    public string GetWorkspaceToolAvailabilityMessage(string model)
+    {
+        if (_toolRegistry is null || _toolRuntime is null)
+        {
+            return "Workspace tools are unavailable.";
+        }
+
+        if (!_chatSession.SupportsToolCalls)
+        {
+            return "The current provider does not support workspace tools.";
+        }
+
+        if (!ChatModelCapabilityService.SupportsTools(model))
+        {
+            return "This model does not support workspace tools.";
+        }
+
+        if (_workspaceRegistry is null || _workspaceRegistry.List().Count == 0)
+        {
+            return "No available workspace is registered.";
+        }
+
+        return GetWorkspaceToolDefinitions().Count == 0
+            ? "Workspace tools are unavailable."
+            : "Workspace tools available.";
+    }
+
     public async IAsyncEnumerable<ChatChunk> StreamWithWorkspaceToolsAsync(
         Guid conversationId,
         TaskId taskId,
@@ -162,9 +194,10 @@ public sealed class ConversationSessionService
             yield break;
         }
 
-        var workingMessages = messages.ToList();
+        var workingMessages = AddWorkspaceToolInstruction(messages);
         var tools = GetWorkspaceToolDefinitions();
         var totalToolCalls = 0;
+        LogWorkspaceToolRequestShape(model, workingMessages, tools);
 
         for (var round = 0; round < MaxToolRoundsPerTurn; round++)
         {
@@ -204,6 +237,11 @@ public sealed class ConversationSessionService
             foreach (var toolCall in toolCalls)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                LogToolStage(
+                    "Tool call received",
+                    toolCall.Name,
+                    toolCall.Arguments,
+                    SafeWorkspaceIdentifierPresent(toolCall.Arguments));
 
                 if (totalToolCalls >= MaxToolCallsPerTurn)
                 {
@@ -221,7 +259,8 @@ public sealed class ConversationSessionService
                 }
 
                 totalToolCalls++;
-                var requested = CreateToolCallPersistencePayload(toolCall);
+                var displayToolCall = CreateDisplayToolCall(toolCall);
+                var requested = CreateToolCallPersistencePayload(displayToolCall);
                 await AddMessageAsync(
                     conversationId,
                     ChatRole.Tool,
@@ -232,7 +271,7 @@ public sealed class ConversationSessionService
                     string.Empty,
                     false,
                     [],
-                    CreateActivityMessage(toolCall, running: true));
+                    CreateRequestedActivityMessage(displayToolCall));
 
                 var payload = await ExecuteToolCallAsync(
                     taskId,
@@ -252,7 +291,7 @@ public sealed class ConversationSessionService
                     string.Empty,
                     false,
                     [],
-                    CreateActivityMessage(toolCall, running: false, payload));
+                    CreateCompletedActivityMessage(displayToolCall, payload));
 
                 if (payload.Status == ToolExecutionStatus.Cancelled.ToString())
                 {
@@ -281,8 +320,63 @@ public sealed class ConversationSessionService
                 descriptor.IsReadOnly &&
                 !descriptor.ChangesState &&
                 !descriptor.LeavesMachine)
-            .Select(ChatToolDefinitionFactory.Create)
+            .Select(CreateWorkspaceToolDefinition)
             .ToArray();
+    }
+
+    private List<ChatMessage> AddWorkspaceToolInstruction(
+        IReadOnlyList<ChatMessage> messages)
+    {
+        if (_workspaceRegistry?.List().Count != 1)
+        {
+            return messages.ToList();
+        }
+
+        return
+        [
+            ..messages,
+            new ChatMessage(
+                ChatRole.System,
+                "Workspace identifiers are application-managed. Do not ask the user to provide workspace IDs. Use workspace tools with relative paths only; the app will bind the active workspace.")
+        ];
+    }
+
+    private ChatToolDefinition CreateWorkspaceToolDefinition(ToolDescriptor descriptor)
+    {
+        var definition = ChatToolDefinitionFactory.Create(descriptor);
+        if (_workspaceRegistry?.List().Count != 1)
+        {
+            return definition;
+        }
+
+        using var document = JsonDocument.Parse(definition.Parameters.GetRawText());
+        var root = JsonNode.Parse(document.RootElement.GetRawText())?.AsObject();
+        if (root is null ||
+            !root.TryGetPropertyValue("properties", out var propertiesNode) ||
+            propertiesNode is not JsonObject properties)
+        {
+            return definition;
+        }
+
+        properties.Remove("workspaceId");
+
+        if (root.TryGetPropertyValue("required", out var requiredNode) &&
+            requiredNode is JsonArray required)
+        {
+            for (var index = required.Count - 1; index >= 0; index--)
+            {
+                if (required[index]?.GetValue<string>() == "workspaceId")
+                {
+                    required.RemoveAt(index);
+                }
+            }
+        }
+
+        using var shapedDocument = JsonDocument.Parse(root.ToJsonString());
+        return definition with
+        {
+            Parameters = shapedDocument.RootElement.Clone()
+        };
     }
 
     private async Task<ChatToolResultPayload> ExecuteToolCallAsync(
@@ -299,6 +393,11 @@ public sealed class ConversationSessionService
         }
 
         var toolId = new ToolId(toolCall.Name);
+        LogToolStage(
+            "Tool name resolved",
+            toolCall.Name,
+            toolCall.Arguments,
+            SafeWorkspaceIdentifierPresent(toolCall.Arguments));
 
         if (!_toolRegistry.TryGetTool(toolId, out var tool) ||
             !ExposedWorkspaceToolIds.Contains(toolId))
@@ -309,19 +408,37 @@ public sealed class ConversationSessionService
                 "The requested workspace tool is not available.");
         }
 
+        var normalizedArguments = NormalizeToolArguments(toolCall, out var argumentFailure);
+        if (argumentFailure is not null)
+        {
+            return argumentFailure;
+        }
+
         object? input;
 
         try
         {
             input = JsonSerializer.Deserialize(
-                toolCall.Arguments.GetRawText(),
+                normalizedArguments.GetRawText(),
                 tool.Descriptor.InputType,
                 ChatToolJson.SerializerOptions);
+            LogToolStage(
+                "Arguments deserialized",
+                toolCall.Name,
+                normalizedArguments,
+                SafeWorkspaceIdentifierPresent(normalizedArguments));
         }
         catch (Exception exception) when (exception is JsonException ||
                                          exception is NotSupportedException ||
                                          exception is ArgumentException)
         {
+            LogToolStage(
+                "Arguments deserialization failed",
+                toolCall.Name,
+                toolCall.Arguments,
+                SafeWorkspaceIdentifierPresent(toolCall.Arguments),
+                "invalid_tool_arguments",
+                exception);
             return CreateSafeFailure(
                 toolCall,
                 "invalid_tool_arguments",
@@ -332,10 +449,21 @@ public sealed class ConversationSessionService
 
         try
         {
+            LogToolStage(
+                "Typed runtime invoked",
+                toolCall.Name,
+                normalizedArguments,
+                SafeWorkspaceIdentifierPresent(normalizedArguments));
             result = await _toolRuntime.InvokeAsync(
                 taskId,
                 new ToolInvocation(toolId, input),
                 cancellationToken);
+            LogToolStage(
+                "Tool result returned",
+                toolCall.Name,
+                normalizedArguments,
+                SafeWorkspaceIdentifierPresent(normalizedArguments),
+                result.SafeErrorCode);
         }
         catch (OperationCanceledException)
         {
@@ -343,6 +471,12 @@ public sealed class ConversationSessionService
         }
         catch (Exception)
         {
+            LogToolStage(
+                "Typed runtime failed",
+                toolCall.Name,
+                normalizedArguments,
+                SafeWorkspaceIdentifierPresent(normalizedArguments),
+                "tool_runtime_failed");
             return CreateSafeFailure(
                 toolCall,
                 "tool_runtime_failed",
@@ -350,6 +484,153 @@ public sealed class ConversationSessionService
         }
 
         return CreatePayload(toolCall, result);
+    }
+
+    private JsonElement NormalizeToolArguments(
+        ChatToolCall toolCall,
+        out ChatToolResultPayload? failure)
+    {
+        failure = null;
+
+        if (toolCall.Arguments.ValueKind != JsonValueKind.Object)
+        {
+            failure = CreateSafeFailure(
+                toolCall,
+                "invalid_tool_arguments",
+                "The tool arguments were invalid.");
+            return toolCall.Arguments;
+        }
+
+        var node = JsonNode.Parse(toolCall.Arguments.GetRawText())?.AsObject();
+        if (node is null)
+        {
+            failure = CreateSafeFailure(
+                toolCall,
+                "invalid_tool_arguments",
+                "The tool arguments were invalid.");
+            return toolCall.Arguments;
+        }
+
+        var workspaceId = GetStringProperty(node, "workspaceId");
+        LogToolStage(
+            "Workspace ID extracted",
+            toolCall.Name,
+            toolCall.Arguments,
+            !string.IsNullOrWhiteSpace(workspaceId));
+
+        var workspaces = _workspaceRegistry?.List() ?? [];
+        if (workspaces.Count == 0)
+        {
+            failure = CreateSafeFailure(
+                toolCall,
+                "workspace_unavailable",
+                "No available workspace is registered.");
+            return toolCall.Arguments;
+        }
+
+        if (workspaces.Count == 1 &&
+            (string.IsNullOrWhiteSpace(workspaceId) ||
+             !LooksLikeWorkspaceId(workspaceId)))
+        {
+            var workspace = workspaces[0];
+            node["workspaceId"] = workspace.Id.ToString();
+            LogToolStage(
+                "Workspace resolved from runtime registry",
+                toolCall.Name,
+                toolCall.Arguments,
+                safeWorkspaceIdentifierPresent: true);
+        }
+        else if (workspaces.Count == 1 &&
+                 _workspaceRegistry?.TryGet(new WorkspaceId(workspaceId!), out _) == true)
+        {
+            LogToolStage(
+                "Workspace resolved from runtime registry",
+                toolCall.Name,
+                toolCall.Arguments,
+                safeWorkspaceIdentifierPresent: true);
+        }
+        else if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            failure = CreateSafeFailure(
+                toolCall,
+                "workspace_ambiguous",
+                "Choose a workspace before using workspace tools.");
+            return toolCall.Arguments;
+        }
+        else if (_workspaceRegistry?.TryGet(new WorkspaceId(workspaceId), out _) == true)
+        {
+            LogToolStage(
+                "Workspace resolved from runtime registry",
+                toolCall.Name,
+                toolCall.Arguments,
+                safeWorkspaceIdentifierPresent: true);
+        }
+        else
+        {
+            LogToolStage(
+                "Workspace resolution failed",
+                toolCall.Name,
+                toolCall.Arguments,
+                safeWorkspaceIdentifierPresent: true,
+                "workspace_not_found");
+        }
+
+        NormalizeRelativePathAlias(toolCall.Name, node);
+
+        using var document = JsonDocument.Parse(
+            node.ToJsonString(ChatToolJson.SerializerOptions));
+        return document.RootElement.Clone();
+    }
+
+    private static void NormalizeRelativePathAlias(
+        string toolName,
+        JsonObject arguments)
+    {
+        var path = GetStringProperty(arguments, "path");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        switch (toolName)
+        {
+            case "workspace.directory.list":
+            case "workspace.file.read_text":
+                if (!arguments.ContainsKey("relativePath"))
+                {
+                    arguments["relativePath"] = path;
+                }
+
+                break;
+            case "workspace.text.search":
+                if (!arguments.ContainsKey("relativeDirectory"))
+                {
+                    arguments["relativeDirectory"] = path;
+                }
+
+                break;
+        }
+    }
+
+    private static string? GetStringProperty(JsonObject arguments, string name) =>
+        arguments.TryGetPropertyValue(name, out var node) &&
+        node is JsonValue value &&
+        value.TryGetValue<string>(out var text)
+            ? text
+            : null;
+
+    private static bool LooksLikeWorkspaceId(string value) =>
+        Guid.TryParseExact(value, "N", out _) ||
+        Guid.TryParseExact(value, "D", out _);
+
+    private ChatToolCall CreateDisplayToolCall(ChatToolCall toolCall)
+    {
+        var normalizedArguments = NormalizeToolArguments(
+            toolCall,
+            out var failure);
+        return failure is null
+            ? toolCall with { Arguments = normalizedArguments }
+            : toolCall;
     }
 
     private static ChatMessage CreateToolResultMessage(
@@ -377,6 +658,156 @@ public sealed class ConversationSessionService
         };
 
         return JsonSerializer.Serialize(payload, ChatToolJson.SerializerOptions);
+    }
+
+    private static bool SafeWorkspaceIdentifierPresent(JsonElement arguments)
+    {
+        return arguments.ValueKind == JsonValueKind.Object &&
+            arguments.TryGetProperty("workspaceId", out var workspaceId) &&
+            workspaceId.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(workspaceId.GetString());
+    }
+
+    [Conditional("DEBUG")]
+    private static void LogToolStage(
+        string stage,
+        string toolName,
+        JsonElement arguments,
+        bool safeWorkspaceIdentifierPresent,
+        string? safeErrorCode = null,
+        Exception? exception = null)
+    {
+        var fields = arguments.ValueKind == JsonValueKind.Object
+            ? string.Join(
+                ",",
+                arguments.EnumerateObject()
+                    .Select(property => property.Name)
+                    .Order(StringComparer.Ordinal))
+            : arguments.ValueKind.ToString();
+        var exceptionText = exception is null
+            ? string.Empty
+            : $" exception={exception.GetType().Name} hresult=0x{exception.HResult:X8}";
+        var safeErrorText = string.IsNullOrWhiteSpace(safeErrorCode)
+            ? string.Empty
+            : $" safeErrorCode={safeErrorCode}";
+
+        SafeDebugDiagnostics.WriteLine(
+            $"WorkspaceToolCall stage={stage} tool={toolName} workspaceIdPresent={safeWorkspaceIdentifierPresent} argumentFields={fields}{safeErrorText}{exceptionText}");
+    }
+
+    [Conditional("DEBUG")]
+    private void LogWorkspaceToolRequestShape(
+        string model,
+        IReadOnlyList<ChatMessage> messages,
+        IReadOnlyList<ChatToolDefinition> tools)
+    {
+        var workspaceCount = _workspaceRegistry?.List().Count ?? 0;
+        SafeDebugDiagnostics.WriteLine(
+            $"WorkspaceToolRequest build={CreateBuildMarker()} model={model} activeRuntimeWorkspaces={workspaceCount} singleWorkspaceMode={workspaceCount == 1}");
+        SafeDebugDiagnostics.WriteLine(
+            $"WorkspaceToolRequest messageRoles={string.Join(",", messages.Select(message => message.Role.ToString()))} workspaceInstructionPresent={ContainsWorkspaceInstruction(messages)}");
+        SafeDebugDiagnostics.WriteLine(
+            $"WorkspaceToolRequest advertisedTools={string.Join(",", tools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal))}");
+
+        foreach (var tool in tools.OrderBy(tool => tool.Name, StringComparer.Ordinal))
+        {
+            var properties = GetSchemaPropertyNames(tool.Parameters);
+            var required = GetSchemaRequiredNames(tool.Parameters);
+            SafeDebugDiagnostics.WriteLine(
+                $"WorkspaceToolRequest tool={tool.Name} properties={FormatNames(properties)} required={FormatNames(required)} workspaceIdPresent={ContainsText(tool.Parameters, "workspaceId")}");
+        }
+    }
+
+    private static bool ContainsWorkspaceInstruction(IReadOnlyList<ChatMessage> messages) =>
+        messages.Any(message =>
+            message.Role == ChatRole.System &&
+            message.Content.Contains(
+                "Workspace identifiers are application-managed",
+                StringComparison.Ordinal));
+
+    private static string CreateBuildMarker()
+    {
+        var assembly = typeof(ConversationSessionService).Assembly;
+        var version = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? assembly.GetName().Version?.ToString() ?? "unknown";
+        var location = assembly.Location;
+        var timestamp = string.IsNullOrWhiteSpace(location) || !File.Exists(location)
+            ? "unknown"
+            : File.GetLastWriteTimeUtc(location).ToString("O");
+        return $"{assembly.GetName().Name}/{version}/{timestamp}";
+    }
+
+    private static string FormatNames(IEnumerable<string> names) =>
+        string.Join(", ", names.OrderBy(name => name, StringComparer.Ordinal));
+
+    private static IReadOnlyList<string> GetSchemaPropertyNames(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        return properties
+            .EnumerateObject()
+            .Select(property => property.Name)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> GetSchemaRequiredNames(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("required", out var required) ||
+            required.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return required
+            .EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .OfType<string>()
+            .ToArray();
+    }
+
+    private static bool ContainsText(JsonElement element, string value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(
+                        property.Name,
+                        value,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    ContainsText(property.Value, value))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (ContainsText(item, value))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.String)
+        {
+            return string.Equals(
+                element.GetString(),
+                value,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     private static ChatToolResultPayload CreatePayload(
@@ -472,37 +903,18 @@ public sealed class ConversationSessionService
             null,
             false);
 
-    private static string CreateActivityMessage(
+    private string CreateRequestedActivityMessage(ChatToolCall toolCall) =>
+        ToolPresentationMapper.RequestedActivity(
+            toolCall,
+            _workspaceRegistry);
+
+    private string CreateCompletedActivityMessage(
         ChatToolCall toolCall,
-        bool running,
-        ChatToolResultPayload? result = null)
-    {
-        if (running)
-        {
-            return $"Running workspace tool: {toolCall.Name}.";
-        }
-
-        if (result is null)
-        {
-            return $"Workspace tool finished: {toolCall.Name}.";
-        }
-
-        if (result.Status == ToolExecutionStatus.PermissionDenied.ToString())
-        {
-            return "Permission denied.";
-        }
-
-        if (result.Status == ToolExecutionStatus.Cancelled.ToString())
-        {
-            return "Workspace tool cancelled.";
-        }
-
-        return result.IsSuccess
-            ? result.IsTruncated
-                ? $"Workspace tool completed with truncated results: {toolCall.Name}."
-                : $"Workspace tool completed: {toolCall.Name}."
-            : result.SafeErrorMessage ?? "Workspace tool failed.";
-    }
+        ChatToolResultPayload result) =>
+        ToolPresentationMapper.CompletedActivity(
+            toolCall,
+            result,
+            _workspaceRegistry);
 
     private static class GetWorkspaceInfoToolIds
     {

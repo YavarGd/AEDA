@@ -1,4 +1,5 @@
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using PersonalAI.Core.Permissions;
@@ -66,21 +67,30 @@ public sealed class WinUiPermissionBroker(
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(new TextBlock
         {
+            Text = viewModel.Action,
+            TextWrapping = TextWrapping.Wrap,
+            FontWeight = FontWeights.SemiBold
+        });
+        content.Children.Add(new TextBlock
+        {
             Text = viewModel.Explanation,
             TextWrapping = TextWrapping.Wrap
         });
-        content.Children.Add(new TextBlock { Text = $"Risk: {viewModel.Risk}" });
         content.Children.Add(new TextBlock
         {
-            Text = $"Permissions: {viewModel.Permissions}",
-            TextWrapping = TextWrapping.Wrap
-        });
-        content.Children.Add(new TextBlock
-        {
-            Text = $"Scope: {viewModel.Scope}",
+            Text = viewModel.Scope,
             TextWrapping = TextWrapping.Wrap
         });
         content.Children.Add(new TextBlock { Text = viewModel.Impact });
+        content.Children.Add(new Expander
+        {
+            Header = "Technical details",
+            Content = new TextBlock
+            {
+                Text = $"Permissions: {viewModel.Permissions}{Environment.NewLine}Scope: {viewModel.TechnicalDetails}",
+                TextWrapping = TextWrapping.Wrap
+            }
+        });
 
         var buttonRow = new StackPanel
         {
@@ -89,7 +99,7 @@ public sealed class WinUiPermissionBroker(
             HorizontalAlignment = HorizontalAlignment.Right
         };
         var allowOnce = new Button { Content = "Allow once" };
-        var allowForTask = new Button { Content = "Allow for task" };
+        var allowForTask = new Button { Content = "Allow for this task" };
         var cancelTask = new Button { Content = "Cancel task" };
         var deny = new Button { Content = "Deny" };
         buttonRow.Children.Add(allowOnce);
@@ -101,7 +111,7 @@ public sealed class WinUiPermissionBroker(
         var dialog = new ContentDialog
         {
             XamlRoot = xamlRoot,
-            Title = $"Approve tool: {viewModel.Title}",
+            Title = viewModel.Title,
             Content = content,
             DefaultButton = ContentDialogButton.None
         };

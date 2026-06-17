@@ -129,7 +129,8 @@ public partial class App : Application
         await workspaceRegistrationService.InitializeAsync();
         var workspaceManagement = new WorkspaceManagementViewModel(
             workspaceRegistrationService,
-            new WinUiFolderPickerService(GetWindowHandle));
+            new WinUiFolderPickerService(
+                () => _mainWindow?.AppWindow.Id));
         await workspaceManagement.RefreshAsync();
         _taskTimeline = new TaskTimelineViewModel(
             taskEventBus,

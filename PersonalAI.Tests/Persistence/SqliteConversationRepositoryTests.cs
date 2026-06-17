@@ -180,6 +180,50 @@ public sealed class SqliteConversationRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ListMessagesAsync_PreservesInsertionOrderForEqualTimestamps()
+    {
+        var repository = new SqliteConversationRepository(_databasePath);
+        await repository.InitializeAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var conversation = await CreateConversationAsync(repository, now);
+
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            conversation.Id,
+            ChatRole.User,
+            "User asks",
+            now));
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            conversation.Id,
+            ChatRole.Tool,
+            "Tool requested",
+            now));
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            conversation.Id,
+            ChatRole.Tool,
+            "Tool completed",
+            now));
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            conversation.Id,
+            ChatRole.Assistant,
+            "Final answer",
+            now));
+
+        var messages = await repository.ListMessagesAsync(conversation.Id);
+
+        Assert.Collection(
+            messages,
+            message => Assert.Equal("User asks", message.Content),
+            message => Assert.Equal("Tool requested", message.Content),
+            message => Assert.Equal("Tool completed", message.Content),
+            message => Assert.Equal("Final answer", message.Content));
+    }
+
+    [Fact]
     public async Task ToolMessages_RoundTripProviderNeutralJson()
     {
         var repository = new SqliteConversationRepository(_databasePath);

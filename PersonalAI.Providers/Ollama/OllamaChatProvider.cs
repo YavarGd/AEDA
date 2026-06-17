@@ -1,9 +1,12 @@
 using System.Net.Http.Headers;
+using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using PersonalAI.Core.Chat;
+using PersonalAI.Core.Diagnostics;
 
 namespace PersonalAI.Providers.Ollama;
 
@@ -98,6 +101,7 @@ public sealed class OllamaChatProvider :
         };
 
         var json = JsonSerializer.Serialize(ollamaRequest, JsonOptions);
+        LogOutgoingRequest(request, json);
 
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
@@ -167,6 +171,7 @@ public sealed class OllamaChatProvider :
             var toolCalls = chunk.Message?.ToolCalls is null
                 ? []
                 : ConvertToolCalls(chunk.Message.ToolCalls);
+            LogIncomingChunk(content, toolCalls, chunk.Done);
 
             yield return new ChatChunk(
                 content,
@@ -294,6 +299,166 @@ public sealed class OllamaChatProvider :
 
         throw new InvalidDataException(
             "Ollama returned invalid tool-call arguments.");
+    }
+
+    [Conditional("DEBUG")]
+    private static void LogOutgoingRequest(ChatRequest request, string serializedJson)
+    {
+        using var document = JsonDocument.Parse(serializedJson);
+        var root = document.RootElement;
+        var serializedTools = root.TryGetProperty("tools", out var toolsElement) &&
+            toolsElement.ValueKind == JsonValueKind.Array
+                ? toolsElement
+                : default;
+
+        SafeDebugDiagnostics.WriteLine(
+            $"OllamaRequest build={CreateBuildMarker()} model={request.Model} messageRoles={string.Join(",", request.Messages.Select(message => message.Role.ToString()))} toolCount={request.Tools.Count} workspaceInstructionPresent={ContainsWorkspaceInstruction(request.Messages)}");
+        SafeDebugDiagnostics.WriteLine(
+            $"OllamaRequest advertisedTools={string.Join(",", request.Tools.Select(tool => tool.Name).OrderBy(name => name, StringComparer.Ordinal))}");
+
+        if (serializedTools.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var tool in serializedTools.EnumerateArray())
+            {
+                if (!tool.TryGetProperty("function", out var function) ||
+                    function.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var toolName = function.TryGetProperty("name", out var nameElement)
+                    ? nameElement.GetString() ?? string.Empty
+                    : string.Empty;
+                var parameters = function.TryGetProperty("parameters", out var parameterElement)
+                    ? parameterElement
+                    : default;
+                var properties = GetSchemaPropertyNames(parameters);
+                var required = GetSchemaRequiredNames(parameters);
+                SafeDebugDiagnostics.WriteLine(
+                    $"OllamaRequest tool={toolName} properties={FormatNames(properties)} required={FormatNames(required)} workspaceIdPresent={ContainsText(parameters, "workspaceId")}");
+            }
+        }
+    }
+
+    [Conditional("DEBUG")]
+    private static void LogIncomingChunk(
+        string content,
+        IReadOnlyList<ChatToolCall> toolCalls,
+        bool done)
+    {
+        SafeDebugDiagnostics.WriteLine(
+            $"OllamaResponse containsText={!string.IsNullOrWhiteSpace(content)} containsStructuredToolCalls={toolCalls.Count > 0} structuredToolNames={string.Join(",", toolCalls.Select(call => call.Name).OrderBy(name => name, StringComparer.Ordinal))} done={done}");
+
+        foreach (var toolCall in toolCalls.OrderBy(call => call.Name, StringComparer.Ordinal))
+        {
+            SafeDebugDiagnostics.WriteLine(
+                $"OllamaResponse tool={toolCall.Name} argumentFields={FormatNames(GetArgumentFieldNames(toolCall.Arguments))}");
+        }
+    }
+
+    private static bool ContainsWorkspaceInstruction(IReadOnlyList<ChatMessage> messages) =>
+        messages.Any(message =>
+            message.Role == ChatRole.System &&
+            message.Content.Contains(
+                "Workspace identifiers are application-managed",
+                StringComparison.Ordinal));
+
+    private static string CreateBuildMarker()
+    {
+        var assembly = typeof(OllamaChatProvider).Assembly;
+        var version = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? assembly.GetName().Version?.ToString() ?? "unknown";
+        var location = assembly.Location;
+        var timestamp = string.IsNullOrWhiteSpace(location) || !File.Exists(location)
+            ? "unknown"
+            : File.GetLastWriteTimeUtc(location).ToString("O");
+        return $"{assembly.GetName().Name}/{version}/{timestamp}";
+    }
+
+    private static string FormatNames(IEnumerable<string> names) =>
+        string.Join(", ", names.OrderBy(name => name, StringComparer.Ordinal));
+
+    private static IReadOnlyList<string> GetArgumentFieldNames(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        return arguments
+            .EnumerateObject()
+            .Select(property => property.Name)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> GetSchemaPropertyNames(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        return properties
+            .EnumerateObject()
+            .Select(property => property.Name)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> GetSchemaRequiredNames(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("required", out var required) ||
+            required.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return required
+            .EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .OfType<string>()
+            .ToArray();
+    }
+
+    private static bool ContainsText(JsonElement element, string value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(
+                        property.Name,
+                        value,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    ContainsText(property.Value, value))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (ContainsText(item, value))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.String)
+        {
+            return string.Equals(
+                element.GetString(),
+                value,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     private sealed class OllamaChatRequest

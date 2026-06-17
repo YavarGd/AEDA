@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Text;
-using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
@@ -589,12 +588,11 @@ public sealed partial class MainViewModel : ObservableObject
             if (canUseWorkspaceTools)
             {
                 TaskTimeline.ObserveTask(toolTaskId);
-                StatusMessage = "Workspace tools available.";
+                StatusMessage = _conversationSession.GetWorkspaceToolAvailabilityMessage(model);
             }
-            else if (LooksLikeWorkspaceAccessRequest(routedPrompt) &&
-                     _workspaceRegistry.List().Count > 0)
+            else if (LooksLikeWorkspaceAccessRequest(routedPrompt))
             {
-                StatusMessage = "This model does not support workspace tools.";
+                StatusMessage = _conversationSession.GetWorkspaceToolAvailabilityMessage(model);
             }
 
             await foreach (var chunk in _conversationSession.StreamWithWorkspaceToolsAsync(
@@ -1001,46 +999,7 @@ public sealed partial class MainViewModel : ObservableObject
             return message.Content;
         }
 
-        try
-        {
-            using var document = JsonDocument.Parse(message.Content);
-            var root = document.RootElement;
-
-            if (root.TryGetProperty("kind", out var kind) &&
-                string.Equals(kind.GetString(), "tool_call", StringComparison.Ordinal))
-            {
-                var toolName = root.TryGetProperty("toolName", out var tool)
-                    ? tool.GetString()
-                    : "workspace tool";
-                return $"Requested workspace tool: {toolName}.";
-            }
-
-            if (root.TryGetProperty("status", out var status))
-            {
-                var toolName = root.TryGetProperty("toolName", out var tool)
-                    ? tool.GetString()
-                    : "workspace tool";
-                var safeError = root.TryGetProperty("safeErrorMessage", out var error)
-                    ? error.GetString()
-                    : null;
-                var isTruncated = root.TryGetProperty("isTruncated", out var truncated) &&
-                    truncated.ValueKind == JsonValueKind.True;
-
-                if (!string.IsNullOrWhiteSpace(safeError))
-                {
-                    return safeError;
-                }
-
-                return isTruncated
-                    ? $"Workspace tool completed with truncated results: {toolName}."
-                    : $"Workspace tool {status.GetString()?.ToLowerInvariant()}: {toolName}.";
-            }
-        }
-        catch (JsonException)
-        {
-        }
-
-        return "Workspace tool activity.";
+        return ToolPresentationMapper.FormatStoredToolActivity(message.Content);
     }
 
     private static bool LooksLikeWorkspaceAccessRequest(string prompt)

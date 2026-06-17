@@ -82,7 +82,7 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
             [new ChatMessage(ChatRole.User, "List files")],
             CancellationToken.None));
 
-        Assert.Contains(chunks, chunk => chunk.ActivityMessage?.Contains("Running workspace tool") == true);
+        Assert.Contains(chunks, chunk => chunk.ActivityMessage?.StartsWith("List files requested", StringComparison.Ordinal) == true);
         Assert.Contains(chunks, chunk => chunk.Content == "The workspace has files.");
         var invocation = Assert.Single(_runtime.Invocations);
         Assert.Equal(ListDirectoryTool.Id, invocation.ToolId);
@@ -207,7 +207,7 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
         var call = CreateToolCall(
             "call-1",
             ListDirectoryTool.Id.ToString(),
-            new { workspaceId = "missing-workspace", relativePath = "." });
+            new { workspaceId = WorkspaceId.NewId().ToString(), relativePath = "." });
         _provider.Enqueue([new ChatChunk("", true, [call])]);
         _provider.Enqueue([new ChatChunk("Could not list it.", true)]);
         var service = CreateService(CreateRuntime(new QueuePermissionBroker(
@@ -382,6 +382,213 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task StreamWithWorkspaceToolsAsync_LiveStyleSingleWorkspaceCallReachesPermissionBroker()
+    {
+        File.WriteAllText(Path.Combine(_root, "README.md"), "hello");
+        var broker = new QueuePermissionBroker(PermissionDecision.AllowOnce);
+        var bus = new TaskEventBus();
+        var service = CreateService(CreateRuntime(broker, bus));
+        var taskId = TaskId.NewId();
+        using var eventCancellation = new CancellationTokenSource(
+            TimeSpan.FromSeconds(10));
+        var eventsTask = CollectTaskEventsAsync(
+            bus,
+            taskId,
+            expectedCount: 5,
+            eventCancellation.Token);
+        var call = CreateToolCall(
+            "call-live",
+            ListDirectoryTool.Id.ToString(),
+            new
+            {
+                workspaceId = "model-invented-workspace-id",
+                path = ".",
+                includeHidden = false
+            });
+        _provider.Enqueue([new ChatChunk("", true, [call])]);
+        _provider.Enqueue([new ChatChunk("Files listed.", true)]);
+
+        var chunks = await CollectAsync(service.StreamWithWorkspaceToolsAsync(
+            Guid.NewGuid(),
+            taskId,
+            "qwen3",
+            [new ChatMessage(ChatRole.User, "List files")],
+            CancellationToken.None));
+        var events = await eventsTask;
+
+        var request = Assert.Single(broker.Requests);
+        Assert.Equal(ListDirectoryTool.Id, request.ToolId);
+        Assert.Contains(_workspace.Id.ToString().ToUpperInvariant(), request.ResourceScope);
+        Assert.Collection(
+            events,
+            first => Assert.Equal(TaskEventKind.ToolRequested, first.Kind),
+            second => Assert.Equal(TaskEventKind.PermissionRequested, second.Kind),
+            third => Assert.Equal(TaskEventKind.PermissionGranted, third.Kind),
+            fourth => Assert.Equal(TaskEventKind.ToolStarted, fourth.Kind),
+            fifth => Assert.Equal(TaskEventKind.ToolCompleted, fifth.Kind));
+        Assert.Contains(
+            chunks,
+            chunk => chunk.ActivityMessage?.StartsWith("List files requested", StringComparison.Ordinal) == true);
+        Assert.Contains(
+            chunks,
+            chunk => chunk.ActivityMessage?.StartsWith("List files completed", StringComparison.Ordinal) == true);
+        Assert.Contains(chunks, chunk => chunk.Content == "Files listed.");
+        Assert.Contains(
+            "\"status\":\"Succeeded\"",
+            _provider.Requests[1].Messages.Last().Content,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Tool test")]
+    [InlineData("model-invented-workspace-id")]
+    public async Task StreamWithWorkspaceToolsAsync_SingleWorkspaceBindsHumanOrMissingWorkspaceIds(
+        string? suppliedWorkspaceId)
+    {
+        var broker = new QueuePermissionBroker(PermissionDecision.AllowOnce);
+        var service = CreateService(CreateRuntime(broker));
+        var arguments = new Dictionary<string, object?>
+        {
+            ["relativePath"] = ".",
+            ["includeHidden"] = false
+        };
+
+        if (suppliedWorkspaceId is not null)
+        {
+            arguments["workspaceId"] = suppliedWorkspaceId;
+        }
+
+        var call = CreateToolCall(
+            $"call-{Guid.NewGuid():N}",
+            ListDirectoryTool.Id.ToString(),
+            arguments);
+        _provider.Enqueue([new ChatChunk("", true, [call])]);
+        _provider.Enqueue([new ChatChunk("Files listed.", true)]);
+
+        await CollectAsync(service.StreamWithWorkspaceToolsAsync(
+            Guid.NewGuid(),
+            TaskId.NewId(),
+            "qwen3",
+            [new ChatMessage(ChatRole.User, "List files")],
+            CancellationToken.None));
+
+        var request = Assert.Single(broker.Requests);
+        Assert.Contains(_workspace.Id.ToString().ToUpperInvariant(), request.ResourceScope);
+        Assert.Contains(
+            "\"status\":\"Succeeded\"",
+            _provider.Requests[1].Messages.Last().Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamWithWorkspaceToolsAsync_SingleWorkspaceSchemaDoesNotAskModelForWorkspaceId()
+    {
+        _provider.Enqueue([new ChatChunk("No tool.", true)]);
+        var service = CreateService();
+
+        await CollectAsync(service.StreamWithWorkspaceToolsAsync(
+            Guid.NewGuid(),
+            TaskId.NewId(),
+            "qwen3",
+            [new ChatMessage(ChatRole.User, "List files")],
+            CancellationToken.None));
+
+        var definition = Assert.Single(
+            _provider.Requests[0].Tools,
+            tool => tool.Name == ListDirectoryTool.Id.ToString());
+        Assert.False(
+            definition.Parameters.GetProperty("properties").TryGetProperty(
+                "workspaceId",
+                out _));
+        Assert.DoesNotContain(
+            definition.Parameters.GetProperty("required").EnumerateArray(),
+            item => item.GetString() == "workspaceId");
+        Assert.Contains(
+            _provider.Requests[0].Messages,
+            message => message.Role == ChatRole.System &&
+                message.Content.Contains("Do not ask the user to provide workspace IDs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task StreamWithWorkspaceToolsAsync_MultipleWorkspaceSchemaRequiresWorkspaceId()
+    {
+        var otherRoot = Path.Combine(_root, "other-schema");
+        Directory.CreateDirectory(otherRoot);
+        _workspaceRegistry.Register(otherRoot, "Other workspace", "test");
+        _provider.Enqueue([new ChatChunk("No tool.", true)]);
+        var service = CreateService();
+
+        await CollectAsync(service.StreamWithWorkspaceToolsAsync(
+            Guid.NewGuid(),
+            TaskId.NewId(),
+            "qwen3",
+            [new ChatMessage(ChatRole.User, "List files")],
+            CancellationToken.None));
+
+        var definition = Assert.Single(
+            _provider.Requests[0].Tools,
+            tool => tool.Name == ListDirectoryTool.Id.ToString());
+        Assert.True(
+            definition.Parameters.GetProperty("properties").TryGetProperty(
+                "workspaceId",
+                out _));
+        Assert.Contains(
+            definition.Parameters.GetProperty("required").EnumerateArray(),
+            item => item.GetString() == "workspaceId");
+    }
+
+    [Fact]
+    public async Task StreamWithWorkspaceToolsAsync_MultipleWorkspacesRequireExplicitWorkspace()
+    {
+        var otherRoot = Path.Combine(_root, "other-explicit");
+        Directory.CreateDirectory(otherRoot);
+        _workspaceRegistry.Register(otherRoot, "Other workspace", "test");
+        var call = CreateToolCall(
+            "call-ambiguous",
+            ListDirectoryTool.Id.ToString(),
+            new { path = "." });
+        _provider.Enqueue([new ChatChunk("", true, [call])]);
+        _provider.Enqueue([new ChatChunk("Need a workspace.", true)]);
+        var service = CreateService(CreateRuntime(new QueuePermissionBroker(
+            PermissionDecision.AllowOnce)));
+
+        await CollectAsync(service.StreamWithWorkspaceToolsAsync(
+            Guid.NewGuid(),
+            TaskId.NewId(),
+            "qwen3",
+            [new ChatMessage(ChatRole.User, "List files")],
+            CancellationToken.None));
+
+        Assert.Contains(
+            "workspace_ambiguous",
+            _provider.Requests[1].Messages.Last().Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamWithWorkspaceToolsAsync_NoWorkspaceDoesNotAdvertiseTools()
+    {
+        _workspaceRegistry.Remove(_workspace.Id);
+        _provider.Enqueue([new ChatChunk("Normal response.", true)]);
+        var service = CreateService(CreateRuntime(new QueuePermissionBroker(
+            PermissionDecision.AllowOnce)));
+
+        await CollectAsync(service.StreamWithWorkspaceToolsAsync(
+            Guid.NewGuid(),
+            TaskId.NewId(),
+            "qwen3",
+            [new ChatMessage(ChatRole.User, "List files")],
+            CancellationToken.None));
+
+        Assert.Empty(_provider.Requests[0].Tools);
+        Assert.DoesNotContain(
+            _provider.Requests[0].Messages,
+            message => message.Role == ChatRole.Tool);
+    }
+
+    [Fact]
     public async Task StreamWithWorkspaceToolsAsync_ApprovalForOneResourceDoesNotAuthorizeBroaderResource()
     {
         File.WriteAllText(Path.Combine(_root, "a.txt"), "a");
@@ -467,7 +674,7 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
             [new ChatMessage(ChatRole.User, "Read secret.txt")],
             CancellationToken.None));
 
-        Assert.Contains(chunks, chunk => chunk.ActivityMessage == "Permission denied.");
+        Assert.Contains(chunks, chunk => chunk.ActivityMessage?.StartsWith("Permission denied", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(
             "Exception",
             _provider.Requests[1].Messages.Last().Content,
@@ -745,7 +952,12 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
             _workspaceRegistry);
 
     private TypedToolRuntime CreateRuntime(IPermissionBroker broker) =>
-        new(_toolRegistry, new TaskEventBus(), broker);
+        CreateRuntime(broker, new TaskEventBus());
+
+    private TypedToolRuntime CreateRuntime(
+        IPermissionBroker broker,
+        ITaskEventBus eventBus) =>
+        new(_toolRegistry, eventBus, broker);
 
     private static ChatToolCall CreateToolCall(
         string id,
@@ -769,6 +981,28 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
         }
 
         return collected;
+    }
+
+    private static async Task<List<TaskEvent>> CollectTaskEventsAsync(
+        ITaskEventBus bus,
+        TaskId taskId,
+        int expectedCount,
+        CancellationToken cancellationToken)
+    {
+        var events = new List<TaskEvent>();
+
+        await foreach (var taskEvent in bus.SubscribeAsync(
+                           taskId,
+                           cancellationToken))
+        {
+            events.Add(taskEvent);
+            if (events.Count >= expectedCount)
+            {
+                break;
+            }
+        }
+
+        return events;
     }
 
     private sealed class FakeToolProvider : IToolCallingChatProvider

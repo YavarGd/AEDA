@@ -4,24 +4,22 @@ namespace PersonalAI.Desktop.WinUI.ViewModels;
 
 public sealed class PermissionRequestViewModel(PermissionRequest request)
 {
-    public string Title => request.ToolDisplayName;
+    private readonly ToolPermissionPresentation _presentation =
+        ToolPresentationMapper.ForPermission(request);
 
-    public string Explanation => request.Explanation;
+    public string Title => _presentation.Title;
 
-    public string Risk => request.RiskLevel.ToString();
+    public string Action => _presentation.Action;
 
-    public string Scope => string.IsNullOrWhiteSpace(request.ResourceScope)
-        ? "No specific resource scope"
-        : request.ResourceScope;
+    public string Explanation => _presentation.Explanation;
+
+    public string Scope => _presentation.Scope;
+
+    public string TechnicalDetails => _presentation.TechnicalDetails;
 
     public string Permissions => request.Permissions.Count == 0
         ? "No declared permissions"
         : string.Join(", ", request.Permissions);
 
-    public string Impact =>
-        request.ChangesState
-            ? "May change local state"
-            : request.LeavesMachine
-                ? "May send data outside this device"
-                : "Read-only local action";
+    public string Impact => _presentation.ReadOnlyExplanation;
 }

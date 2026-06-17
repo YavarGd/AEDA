@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using PersonalAI.Core.Permissions;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
@@ -78,6 +79,9 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
         ToolValidationResult validation;
         try
         {
+            LogRuntimeStage(
+                "Tool contract validation",
+                tool.Descriptor.Id);
             validation = await tool.ValidateAsync(invocation.Input, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -90,6 +94,11 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
         }
         catch (Exception exception)
         {
+            LogRuntimeStage(
+                "Tool contract validation exception",
+                tool.Descriptor.Id,
+                "validation_exception",
+                exception);
             _logger.ToolException(taskId, tool.Descriptor.Id, exception);
             return await FailAsync(
                 taskId,
@@ -104,6 +113,10 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
 
         if (!validation.IsValid)
         {
+            LogRuntimeStage(
+                "Tool contract validation failed",
+                tool.Descriptor.Id,
+                validation.SafeErrorCode);
             return await FailAsync(
                 taskId,
                 tool.Descriptor.Id,
@@ -138,6 +151,11 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
         }
         catch (Exception exception)
         {
+            LogRuntimeStage(
+                "Permission requirements exception",
+                tool.Descriptor.Id,
+                "permission_requirements_failed",
+                exception);
             _logger.ToolException(taskId, tool.Descriptor.Id, exception);
             return await FailAsync(
                 taskId,
@@ -337,9 +355,18 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
 
             try
             {
+                LogRuntimeStage(
+                    "Permission request created",
+                    descriptor.Id);
+                LogRuntimeStage(
+                    "Permission broker invoked",
+                    descriptor.Id);
                 response = await _permissionBroker.RequestPermissionAsync(
                     request,
                     cancellationToken);
+                LogRuntimeStage(
+                    "Permission decision returned",
+                    descriptor.Id);
             }
             catch (OperationCanceledException)
             {
@@ -349,6 +376,11 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             }
             catch (Exception exception)
             {
+                LogRuntimeStage(
+                    "Permission broker exception",
+                    descriptor.Id,
+                    "permission_broker_failed",
+                    exception);
                 response = PermissionResponse.Deny(
                     request,
                     $"Permission broker failed closed: {exception.GetType().Name}.");
@@ -551,5 +583,23 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
         {
             _allowedForTask.TryRemove(key, out _);
         }
+    }
+
+    [Conditional("DEBUG")]
+    private static void LogRuntimeStage(
+        string stage,
+        ToolId toolId,
+        string? safeErrorCode = null,
+        Exception? exception = null)
+    {
+        var safeErrorText = string.IsNullOrWhiteSpace(safeErrorCode)
+            ? string.Empty
+            : $" safeErrorCode={safeErrorCode}";
+        var exceptionText = exception is null
+            ? string.Empty
+            : $" exception={exception.GetType().Name} hresult=0x{exception.HResult:X8}";
+
+        Debug.WriteLine(
+            $"WorkspaceToolRuntime stage={stage} tool={toolId}{safeErrorText}{exceptionText}");
     }
 }
