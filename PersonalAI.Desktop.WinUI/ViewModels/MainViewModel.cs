@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
@@ -208,7 +209,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var normalized = ApplicationSettingsValidator.Normalize(settings);
         SidebarColumnWidth = new GridLength(
-            normalized.Appearance.CompactSidebar ? 180 : 280);
+            normalized.Appearance.CompactSidebar ? 240 : 280);
         SidebarPadding = new Thickness(
             normalized.Appearance.CompactSidebar ? 10 : 16);
         ShowConversationMetadata = !normalized.Appearance.CompactSidebar;
@@ -460,9 +461,15 @@ public sealed partial class MainViewModel : ObservableObject
         _activeConversation = storedConversation;
         CurrentConversationTitle = storedConversation.Title;
         Messages.Clear();
+        var supersededToolCallIds = FindSupersededToolCallIds(messages);
 
         foreach (var message in messages)
         {
+            if (IsSupersededToolCall(message, supersededToolCallIds))
+            {
+                continue;
+            }
+
             Messages.Add(new ChatMessageViewModel(
                 message.Role,
                 FormatStoredMessage(message)));
@@ -538,6 +545,8 @@ public sealed partial class MainViewModel : ObservableObject
         var assistantResponse = new StringBuilder();
         var requestAccepted = false;
         var model = ModelRoutingSettings.DefaultModel;
+        var toolActivityMessages = new Dictionary<string, ChatMessageViewModel>(
+            StringComparer.Ordinal);
 
         try
         {
@@ -569,8 +578,6 @@ public sealed partial class MainViewModel : ObservableObject
                 CancellationToken.None);
 
             AddMessage(new ChatMessageViewModel(ChatRole.User, routedPrompt));
-            assistantMessage = new ChatMessageViewModel(ChatRole.Assistant, string.Empty);
-            AddMessage(assistantMessage);
 
             Status = ChatStatus.Generating;
             StatusMessage = "Generating";
@@ -604,9 +611,9 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 if (!string.IsNullOrWhiteSpace(chunk.ActivityMessage))
                 {
-                    AddMessage(new ChatMessageViewModel(
-                        ChatRole.Tool,
-                        chunk.ActivityMessage));
+                    AddOrUpdateToolActivity(
+                        chunk,
+                        toolActivityMessages);
                     StatusMessage = chunk.ActivityMessage;
                 }
 
@@ -619,6 +626,14 @@ public sealed partial class MainViewModel : ObservableObject
                     }
 
                     assistantResponse.Append(chunk.Content);
+                    if (assistantMessage is null)
+                    {
+                        assistantMessage = new ChatMessageViewModel(
+                            ChatRole.Assistant,
+                            string.Empty);
+                        AddMessage(assistantMessage);
+                    }
+
                     AppendAssistantText(assistantMessage, chunk.Content, conversation.Id);
                 }
             }
@@ -1002,6 +1017,82 @@ public sealed partial class MainViewModel : ObservableObject
         return ToolPresentationMapper.FormatStoredToolActivity(message.Content);
     }
 
+    private static HashSet<string> FindSupersededToolCallIds(
+        IReadOnlyList<StoredChatMessage> messages)
+    {
+        var resultIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var message in messages)
+        {
+            if (message.Role != ChatRole.Tool)
+            {
+                continue;
+            }
+
+            var resultId = TryGetToolResultId(message.Content);
+            if (!string.IsNullOrWhiteSpace(resultId))
+            {
+                resultIds.Add(resultId);
+            }
+        }
+
+        return resultIds;
+    }
+
+    private static bool IsSupersededToolCall(
+        StoredChatMessage message,
+        HashSet<string> supersededToolCallIds)
+    {
+        if (message.Role != ChatRole.Tool)
+        {
+            return false;
+        }
+
+        var callId = TryGetToolCallId(message.Content);
+        return !string.IsNullOrWhiteSpace(callId) &&
+            supersededToolCallIds.Contains(callId);
+    }
+
+    private static string? TryGetToolCallId(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            if (root.TryGetProperty("kind", out var kind) &&
+                string.Equals(kind.GetString(), "tool_call", StringComparison.Ordinal) &&
+                root.TryGetProperty("toolCallId", out var id) &&
+                id.ValueKind == JsonValueKind.String)
+            {
+                return id.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
+    }
+
+    private static string? TryGetToolResultId(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            if (root.TryGetProperty("toolCallId", out var id) &&
+                id.ValueKind == JsonValueKind.String)
+            {
+                return id.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
+    }
+
     private static bool LooksLikeWorkspaceAccessRequest(string prompt)
     {
         var value = prompt.ToLowerInvariant();
@@ -1016,6 +1107,34 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Messages.Add(message);
         NotifyMessageCollectionChanged();
+    }
+
+    private void AddOrUpdateToolActivity(
+        ChatChunk chunk,
+        IDictionary<string, ChatMessageViewModel> toolActivityMessages)
+    {
+        if (string.IsNullOrWhiteSpace(chunk.ActivityMessage))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(chunk.ActivityKey) &&
+            toolActivityMessages.TryGetValue(chunk.ActivityKey, out var existing))
+        {
+            existing.Content = chunk.ActivityMessage;
+            return;
+        }
+
+        var message = new ChatMessageViewModel(
+            ChatRole.Tool,
+            chunk.ActivityMessage,
+            chunk.ActivityKey);
+        AddMessage(message);
+
+        if (!string.IsNullOrWhiteSpace(chunk.ActivityKey))
+        {
+            toolActivityMessages[chunk.ActivityKey] = message;
+        }
     }
 
     private async Task<ModelRoutingDecision> SelectModelAsync(

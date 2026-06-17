@@ -82,7 +82,7 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
             [new ChatMessage(ChatRole.User, "List files")],
             CancellationToken.None));
 
-        Assert.Contains(chunks, chunk => chunk.ActivityMessage?.StartsWith("List files requested", StringComparison.Ordinal) == true);
+        Assert.Contains(chunks, chunk => chunk.ActivityMessage?.StartsWith("List files · Waiting for permission", StringComparison.Ordinal) == true);
         Assert.Contains(chunks, chunk => chunk.Content == "The workspace has files.");
         var invocation = Assert.Single(_runtime.Invocations);
         Assert.Equal(ListDirectoryTool.Id, invocation.ToolId);
@@ -428,10 +428,12 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
             fifth => Assert.Equal(TaskEventKind.ToolCompleted, fifth.Kind));
         Assert.Contains(
             chunks,
-            chunk => chunk.ActivityMessage?.StartsWith("List files requested", StringComparison.Ordinal) == true);
+            chunk => chunk.ActivityMessage?.StartsWith("List files · Waiting for permission", StringComparison.Ordinal) == true &&
+                chunk.ActivityKey == "call-live");
         Assert.Contains(
             chunks,
-            chunk => chunk.ActivityMessage?.StartsWith("List files completed", StringComparison.Ordinal) == true);
+            chunk => chunk.ActivityMessage?.StartsWith("List files · Completed", StringComparison.Ordinal) == true &&
+                chunk.ActivityKey == "call-live");
         Assert.Contains(chunks, chunk => chunk.Content == "Files listed.");
         Assert.Contains(
             "\"status\":\"Succeeded\"",
@@ -674,7 +676,7 @@ public sealed class WorkspaceToolConversationSessionTests : IDisposable
             [new ChatMessage(ChatRole.User, "Read secret.txt")],
             CancellationToken.None));
 
-        Assert.Contains(chunks, chunk => chunk.ActivityMessage?.StartsWith("Permission denied", StringComparison.Ordinal) == true);
+        Assert.Contains(chunks, chunk => chunk.ActivityMessage?.Contains("Permission denied", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(
             "Exception",
             _provider.Requests[1].Messages.Last().Content,

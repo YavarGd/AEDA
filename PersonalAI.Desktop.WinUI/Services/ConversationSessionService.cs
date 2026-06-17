@@ -271,7 +271,8 @@ public sealed class ConversationSessionService
                     string.Empty,
                     false,
                     [],
-                    CreateRequestedActivityMessage(displayToolCall));
+                    CreateRequestedActivityMessage(displayToolCall),
+                    toolCall.Id);
 
                 var payload = await ExecuteToolCallAsync(
                     taskId,
@@ -291,7 +292,8 @@ public sealed class ConversationSessionService
                     string.Empty,
                     false,
                     [],
-                    CreateCompletedActivityMessage(displayToolCall, payload));
+                    CreateCompletedActivityMessage(displayToolCall, payload),
+                    toolCall.Id);
 
                 if (payload.Status == ToolExecutionStatus.Cancelled.ToString())
                 {

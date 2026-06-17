@@ -10,9 +10,15 @@ namespace PersonalAI.Desktop.WinUI.Services;
 
 public sealed class WinUiWindowPlacementService
 {
+    public const int DefaultWindowWidth = 1080;
+    public const int DefaultWindowHeight = 760;
+    public const int MinimumWindowWidth = 1080;
+    public const int MinimumWindowHeight = 760;
+
     private readonly string _settingsPath;
     private bool _hasRememberedPosition;
     private bool _isApplyingPosition;
+    private bool _isApplyingSize;
     private WindowPosition _rememberedPosition;
 
     public bool RememberWindowPosition { get; set; } = true;
@@ -32,9 +38,14 @@ public sealed class WinUiWindowPlacementService
 
     public void ConfigureWindow(Window window)
     {
-        window.AppWindow.Resize(new SizeInt32(1080, 760));
+        window.AppWindow.Resize(new SizeInt32(DefaultWindowWidth, DefaultWindowHeight));
         window.AppWindow.Changed += (_, args) =>
         {
+            if (args.DidSizeChange)
+            {
+                EnforceMinimumSize(window);
+            }
+
             if (_isApplyingPosition ||
                 !RememberWindowPosition ||
                 !args.DidPositionChange)
@@ -44,6 +55,34 @@ public sealed class WinUiWindowPlacementService
 
             RememberPosition(window);
         };
+    }
+
+    private void EnforceMinimumSize(Window window)
+    {
+        if (_isApplyingSize)
+        {
+            return;
+        }
+
+        var size = window.AppWindow.Size;
+        var width = Math.Max(size.Width, MinimumWindowWidth);
+        var height = Math.Max(size.Height, MinimumWindowHeight);
+
+        if (width == size.Width && height == size.Height)
+        {
+            return;
+        }
+
+        _isApplyingSize = true;
+
+        try
+        {
+            window.AppWindow.Resize(new SizeInt32(width, height));
+        }
+        finally
+        {
+            _isApplyingSize = false;
+        }
     }
 
     public void PlaceForActivation(

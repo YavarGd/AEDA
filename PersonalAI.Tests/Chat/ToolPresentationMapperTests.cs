@@ -119,9 +119,121 @@ public sealed class ToolPresentationMapperTests
             result,
             workspaceRegistry: null);
 
-        Assert.Contains("Result truncated", activity, StringComparison.Ordinal);
+        Assert.Contains("Completed, truncated", activity, StringComparison.Ordinal);
         Assert.Contains("1 matches", activity, StringComparison.Ordinal);
         Assert.Contains("WorkspaceToolUxMarker", activity, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompletedActivity_CollapsesToCompactSummary()
+    {
+        var call = CreateCall(
+            "workspace.directory.list",
+            new
+            {
+                workspaceId = "workspace-a",
+                relativePath = "."
+            });
+        using var output = JsonDocument.Parse("""{"entries":[{},{}],"isTruncated":false}""");
+        var result = new ChatToolResultPayload(
+            "call-1",
+            "workspace.directory.list",
+            true,
+            ToolExecutionStatus.Succeeded.ToString(),
+            "Tool completed successfully.",
+            null,
+            null,
+            output.RootElement.Clone(),
+            false);
+
+        var activity = ToolPresentationMapper.CompletedActivity(
+            call,
+            result,
+            workspaceRegistry: null);
+
+        Assert.Equal("List files · Completed · Workspace · . · 2 entries", activity);
+        Assert.DoesNotContain("Tool completed successfully", activity, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', activity);
+    }
+
+    [Theory]
+    [InlineData(nameof(ToolExecutionStatus.PermissionDenied), "Permission denied")]
+    [InlineData(nameof(ToolExecutionStatus.Cancelled), "Cancelled")]
+    [InlineData(nameof(ToolExecutionStatus.ValidationFailed), "Tool arguments were invalid")]
+    public void CompletedActivity_UsesDistinctFriendlyProblemSummaries(
+        string status,
+        string expectedState)
+    {
+        var call = CreateCall(
+            "workspace.file.read_text",
+            new
+            {
+                workspaceId = "workspace-a",
+                relativePath = "README.md"
+            });
+        var result = new ChatToolResultPayload(
+            "call-1",
+            "workspace.file.read_text",
+            false,
+            status,
+            "Raw summary.",
+            status == nameof(ToolExecutionStatus.ValidationFailed)
+                ? "invalid_tool_arguments"
+                : null,
+            "Raw detail.",
+            null,
+            false);
+
+        var activity = ToolPresentationMapper.CompletedActivity(
+            call,
+            result,
+            workspaceRegistry: null);
+
+        Assert.Contains("Read file", activity, StringComparison.Ordinal);
+        Assert.Contains(expectedState, activity, StringComparison.Ordinal);
+        Assert.DoesNotContain("Raw detail", activity, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', activity);
+    }
+
+    [Fact]
+    public void RequestedActivity_UsesCompactActiveState()
+    {
+        var call = CreateCall(
+            "workspace.text.search",
+            new
+            {
+                workspaceId = "workspace-a",
+                query = "WorkspaceToolUxMarker",
+                relativeDirectory = "."
+            });
+
+        var activity = ToolPresentationMapper.RequestedActivity(
+            call,
+            workspaceRegistry: null);
+
+        Assert.Equal(
+            "Search text · Waiting for permission · Workspace · . · WorkspaceToolUxMarker",
+            activity);
+    }
+
+    [Fact]
+    public void ActivityTarget_LongTextIsShortened()
+    {
+        var call = CreateCall(
+            "workspace.text.search",
+            new
+            {
+                workspaceId = "workspace-a",
+                query = new string('x', 140),
+                relativeDirectory = "."
+            });
+
+        var activity = ToolPresentationMapper.RequestedActivity(
+            call,
+            workspaceRegistry: null);
+
+        Assert.True(activity.Length < 150);
+        Assert.Contains('…', activity);
     }
 
     [Fact]
@@ -145,7 +257,8 @@ public sealed class ToolPresentationMapperTests
         var assistant = new ChatMessageViewModel(ChatRole.Assistant, "Done.");
 
         Assert.True(tool.IsToolActivity);
-        Assert.Equal("Tool activity", tool.RoleLabel);
+        Assert.Equal("Activity", tool.RoleLabel);
+        Assert.Equal(1, tool.ContentMaxLines);
         Assert.False(assistant.IsToolActivity);
         Assert.Equal("Assistant", assistant.RoleLabel);
     }

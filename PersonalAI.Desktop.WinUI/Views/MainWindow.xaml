@@ -5,9 +5,26 @@
     xmlns:converters="using:PersonalAI.Desktop.WinUI.Converters"
     Title="PersonalAI">
     <Grid x:Name="Root"
+          MinWidth="1080"
+          MinHeight="680"
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.Resources>
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <Style x:Key="IconButtonStyle"
+                   TargetType="Button">
+                <Setter Property="Width"
+                        Value="40" />
+                <Setter Property="Height"
+                        Value="40" />
+                <Setter Property="MinWidth"
+                        Value="40" />
+                <Setter Property="Padding"
+                        Value="0" />
+                <Setter Property="HorizontalAlignment"
+                        Value="Center" />
+                <Setter Property="VerticalAlignment"
+                        Value="Center" />
+            </Style>
         </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="{Binding SidebarColumnWidth}" />
@@ -15,6 +32,8 @@
         </Grid.ColumnDefinitions>
 
         <Grid Grid.Column="0"
+              MinWidth="240"
+              MaxWidth="280"
               Padding="{Binding SidebarPadding}"
               BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
               BorderThickness="0,0,1,0">
@@ -26,26 +45,37 @@
             </Grid.RowDefinitions>
 
             <Button Grid.Row="0"
+                    Style="{StaticResource IconButtonStyle}"
+                    HorizontalAlignment="Left"
                     Command="{Binding NewChatCommand}"
-                    Content="New chat"
-                    HorizontalAlignment="Stretch" />
+                    ToolTipService.ToolTip="New chat"
+                    AutomationProperties.Name="New chat">
+                <FontIcon FontFamily="Segoe MDL2 Assets"
+                          Glyph="&#xE710;"
+                          FontSize="16" />
+            </Button>
             <TextBox Grid.Row="1"
                      Margin="0,12,0,12"
+                     MinWidth="0"
                      PlaceholderText="Search conversations"
                      Text="{Binding ConversationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <ListView Grid.Row="2"
                       ItemsSource="{Binding Conversations}"
                       SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
-                      SelectionChanged="ConversationList_SelectionChanged">
+                      SelectionChanged="ConversationList_SelectionChanged"
+                      HorizontalContentAlignment="Stretch">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Spacing="4">
+                        <StackPanel Spacing="4"
+                                    MinWidth="0">
                             <TextBlock Text="{Binding Title}"
                                        Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       TextWrapping="NoWrap"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTipService.ToolTip="{Binding Title}" />
                             <TextBlock Text="{Binding Preview}"
                                        Opacity="0.7"
+                                       TextWrapping="NoWrap"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{Binding DataContext.ShowConversationMetadata, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </StackPanel>
@@ -59,13 +89,20 @@
                        Opacity="0.7"
                        Visibility="{Binding HasNoConversations, Converter={StaticResource BooleanToVisibilityConverter}}" />
             <Button Grid.Row="3"
-                    Content="Settings"
+                    Style="{StaticResource IconButtonStyle}"
+                    HorizontalAlignment="Left"
                     Command="{Binding OpenSettingsCommand}"
-                    HorizontalAlignment="Stretch" />
+                    ToolTipService.ToolTip="Settings"
+                    AutomationProperties.Name="Settings">
+                <FontIcon FontFamily="Segoe MDL2 Assets"
+                          Glyph="&#xE713;"
+                          FontSize="16" />
+            </Button>
         </Grid>
 
         <Grid Grid.Column="1"
-              Padding="24">
+              MinWidth="760"
+              Padding="24,20,24,24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -77,14 +114,17 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel>
+                <StackPanel MinWidth="0">
                     <TextBlock Text="{Binding CurrentConversationTitle}"
-                               Style="{ThemeResource TitleTextBlockStyle}" />
+                               Style="{ThemeResource TitleTextBlockStyle}"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding StatusMessage}"
-                               Opacity="0.7" />
+                               Opacity="0.7"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
                 <TextBlock Grid.Column="1"
@@ -93,43 +133,45 @@
                            Margin="16,0,0,0"
                            MaxWidth="320"
                            Opacity="0.7"
+                           TextWrapping="NoWrap"
                            TextTrimming="CharacterEllipsis"
                            ToolTipService.ToolTip="{Binding RoutingStatusMessage}" />
 
                 <ProgressRing Grid.Column="2"
                               Width="28"
                               Height="28"
-                              Margin="16,24,0,0"
+                              Margin="16,0,0,0"
                               IsActive="{Binding IsGenerating}" />
-
-                <Button Grid.Column="3"
-                        Margin="12,20,0,0"
-                        VerticalAlignment="Center"
-                        Command="{Binding RunReferenceToolCommand}"
-                        Content="Dev UTC"
-                        Visibility="{Binding IsDeveloperDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </Grid>
 
             <Grid Grid.Row="1"
-                  Margin="0,24">
+                  Margin="0,20,0,16"
+                  MinWidth="0">
                 <ListView x:Name="TimelineList"
-                          ItemsSource="{Binding Messages}">
+                          ItemsSource="{Binding Messages}"
+                          HorizontalContentAlignment="Stretch">
                     <ListView.ItemTemplate>
                         <DataTemplate>
-                            <Grid Padding="0,8">
+                            <Grid Padding="0,8"
+                                  MinWidth="0">
                                 <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                         BorderThickness="{Binding BorderThickness}"
                                         CornerRadius="6"
-                                        Padding="{Binding Padding}">
-                                <StackPanel MaxWidth="820">
-                                    <TextBlock Text="{Binding RoleLabel}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                               Opacity="0.7"
-                                               Visibility="{Binding DataContext.ShowMessageMetadata, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    <TextBlock Text="{Binding Content}"
-                                               TextWrapping="Wrap"
-                                               IsTextSelectionEnabled="True" />
-                                </StackPanel>
+                                        Padding="{Binding Padding}"
+                                        MaxWidth="840"
+                                        HorizontalAlignment="Left">
+                                    <StackPanel MinWidth="0">
+                                        <TextBlock Text="{Binding RoleLabel}"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                                   Opacity="0.7"
+                                                   Visibility="{Binding DataContext.ShowMessageMetadata, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <TextBlock Text="{Binding Content}"
+                                                   TextWrapping="{Binding ContentTextWrapping}"
+                                                   TextTrimming="{Binding ContentTextTrimming}"
+                                                   MaxLines="{Binding ContentMaxLines}"
+                                                   ToolTipService.ToolTip="{Binding Content}"
+                                                   IsTextSelectionEnabled="True" />
+                                    </StackPanel>
                                 </Border>
                             </Grid>
                         </DataTemplate>
@@ -142,197 +184,203 @@
                            Visibility="{Binding IsTimelineEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </Grid>
 
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="2"
+                  MinWidth="0">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0"
-                            Spacing="8"
-                            Margin="0,0,0,8">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8">
-                            <Button Command="{Binding CaptureApplicationContextCommand}"
-                                    Content="Capture app" />
-                            <Button Command="{Binding AttachClipboardContextCommand}"
-                                    Content="Clipboard" />
-                            <Button Command="{Binding CaptureScreenshotContextCommand}"
-                                    Content="Screenshot" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1"
-                                    Orientation="Horizontal"
-                                    Spacing="8"
-                                    VerticalAlignment="Center">
-                            <TextBlock Text="{Binding AttachedContextCount}"
-                                       Opacity="0.7" />
-                            <TextBlock Text="attached"
-                                       Opacity="0.7" />
-                            <Button Command="{Binding ClearAllContextsCommand}"
-                                    Content="Clear all"
-                                    Visibility="{Binding HasAttachedContexts, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        </StackPanel>
-                    </Grid>
-
-                    <TextBlock Text="{Binding EditorConnectionStatus}"
-                               Opacity="0.7" />
-                    <TextBlock Text="{Binding ContextStatusMessage}"
-                               Opacity="0.7" />
-
-                    <StackPanel Spacing="6"
-                                Visibility="{Binding TaskTimeline.HasEvents, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <TextBlock Text="{Binding TaskTimeline.CurrentState}"
-                                   Opacity="0.75"
-                                   TextTrimming="CharacterEllipsis" />
-                        <ListView ItemsSource="{Binding TaskTimeline.Events}"
-                                  MaxHeight="104"
-                                  SelectionMode="None">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Padding="0,4">
+                <ScrollViewer Grid.Row="0"
+                              Margin="0,0,0,8"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              Visibility="{Binding HasAttachedContexts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ItemsControl ItemsSource="{Binding AttachedContexts}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsStackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="10"
+                                        Margin="0,0,8,0"
+                                        Width="260"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        ToolTipService.ToolTip="{Binding Preview}">
+                                    <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="72" />
-                                            <ColumnDefinition Width="132" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Timestamp}"
-                                                   Opacity="0.65" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding Kind}"
-                                                   Opacity="0.75" />
-                                        <TextBlock Grid.Column="2"
-                                                   Text="{Binding Summary}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTipService.ToolTip="{Binding Detail}" />
+
+                                        <StackPanel Spacing="2"
+                                                    MinWidth="0">
+                                            <Image Source="{Binding ThumbnailDataUri}"
+                                                   MaxWidth="160"
+                                                   MaxHeight="90"
+                                                   Stretch="Uniform"
+                                                   HorizontalAlignment="Left" />
+                                            <TextBlock Text="{Binding Type}"
+                                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                                       Opacity="0.7" />
+                                            <TextBlock Text="{Binding DisplayTitle}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding SourceName}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Opacity="0.75" />
+                                            <TextBlock Text="{Binding Preview}"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="2"
+                                                       Opacity="0.75" />
+                                        </StackPanel>
+
+                                        <Button Grid.Column="1"
+                                                Style="{StaticResource IconButtonStyle}"
+                                                Width="32"
+                                                Height="32"
+                                                MinWidth="32"
+                                                Margin="8,0,0,0"
+                                                VerticalAlignment="Top"
+                                                Command="{Binding DataContext.RemoveContextCommand, ElementName=Root}"
+                                                CommandParameter="{Binding}"
+                                                ToolTipService.ToolTip="Remove context"
+                                                AutomationProperties.Name="Remove context">
+                                            <FontIcon FontFamily="Segoe MDL2 Assets"
+                                                      Glyph="&#xE711;"
+                                                      FontSize="12" />
+                                        </Button>
                                     </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
 
-                    <StackPanel Spacing="8"
-                                Visibility="{Binding IsDeveloperDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <TextBlock Text="Developer workspace tools"
-                                   Style="{ThemeResource CaptionTextBlockStyle}"
-                                   Opacity="0.75" />
-                        <TextBox PlaceholderText="Registered workspace ID from Settings"
-                                 Text="{Binding DeveloperWorkspaceId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8">
-                            <TextBox Width="220"
-                                     PlaceholderText="Relative path"
-                                     Text="{Binding DeveloperToolPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <Button Content="List"
-                                    Command="{Binding RunDeveloperListDirectoryCommand}" />
-                            <Button Content="Read"
-                                    Command="{Binding RunDeveloperReadFileCommand}" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8">
-                            <TextBox Width="360"
-                                     PlaceholderText="Literal search query"
-                                     Text="{Binding DeveloperSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <Button Content="Search"
-                                    Command="{Binding RunDeveloperSearchWorkspaceCommand}" />
-                        </StackPanel>
-                        <TextBlock Text="{Binding DeveloperToolResult}"
-                                   TextWrapping="Wrap"
-                                   MaxHeight="120"
-                                   Opacity="0.75" />
-                    </StackPanel>
-
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Disabled"
-                                  Visibility="{Binding HasAttachedContexts, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <ItemsControl ItemsSource="{Binding AttachedContexts}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <ItemsStackPanel Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="6"
-                                            Padding="10"
-                                            Margin="0,0,8,0"
-                                            MaxWidth="320"
-                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                            ToolTipService.ToolTip="{Binding Preview}">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-
-                                            <StackPanel Spacing="2">
-                                                <Image Source="{Binding ThumbnailDataUri}"
-                                                       MaxWidth="180"
-                                                       MaxHeight="100"
-                                                       Stretch="Uniform"
-                                                       HorizontalAlignment="Left" />
-                                                <TextBlock Text="{Binding Type}"
-                                                           Style="{ThemeResource CaptionTextBlockStyle}"
-                                                           Opacity="0.7" />
-                                                <TextBlock Text="{Binding DisplayTitle}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                                                <TextBlock Text="{Binding SourceName}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Opacity="0.75" />
-                                                <TextBlock Text="{Binding Preview}"
-                                                           TextWrapping="Wrap"
-                                                           MaxLines="2"
-                                                           Opacity="0.75" />
-                                            </StackPanel>
-
-                                            <Button Grid.Column="1"
-                                                    Margin="8,0,0,0"
-                                                    VerticalAlignment="Top"
-                                                    Command="{Binding DataContext.RemoveContextCommand, ElementName=Root}"
-                                                    CommandParameter="{Binding}"
-                                                    Content="Remove" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </StackPanel>
-
-                <Grid Grid.Row="1">
+                <Grid Grid.Row="1"
+                      Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8"
+                                MinWidth="0">
+                        <TextBlock Text="{Binding EditorConnectionStatus}"
+                                   VerticalAlignment="Center"
+                                   MaxWidth="260"
+                                   Opacity="0.7"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding ContextStatusMessage}"
+                                   VerticalAlignment="Center"
+                                   MaxWidth="360"
+                                   Opacity="0.7"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="{Binding AttachedContextCount}"
+                                   Opacity="0.7" />
+                        <TextBlock Text="attached"
+                                   Opacity="0.7" />
+                        <Button Command="{Binding ClearAllContextsCommand}"
+                                Content="Clear all"
+                                Visibility="{Binding HasAttachedContexts, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="2"
+                      MinWidth="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
+                    <Button Grid.Column="0"
+                            Style="{StaticResource IconButtonStyle}"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Bottom"
+                            Command="{Binding CaptureApplicationContextCommand}"
+                            ToolTipService.ToolTip="Capture active app context"
+                            AutomationProperties.Name="Capture active app context">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  Glyph="&#xE8B7;"
+                                  FontSize="16" />
+                    </Button>
+                    <Button Grid.Column="1"
+                            Style="{StaticResource IconButtonStyle}"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Bottom"
+                            Command="{Binding AttachClipboardContextCommand}"
+                            ToolTipService.ToolTip="Attach clipboard text"
+                            AutomationProperties.Name="Attach clipboard text">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  Glyph="&#xE8C8;"
+                                  FontSize="16" />
+                    </Button>
+                    <Button Grid.Column="2"
+                            Style="{StaticResource IconButtonStyle}"
+                            Margin="0,0,12,0"
+                            VerticalAlignment="Bottom"
+                            Command="{Binding CaptureScreenshotContextCommand}"
+                            ToolTipService.ToolTip="Capture screenshot"
+                            AutomationProperties.Name="Capture screenshot">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  Glyph="&#xE722;"
+                                  FontSize="16" />
+                    </Button>
+
                     <TextBox x:Name="PromptTextBox"
+                             Grid.Column="3"
                              AcceptsReturn="True"
+                             MinWidth="360"
                              MinHeight="88"
+                             MaxHeight="160"
                              PlaceholderText="Ask PersonalAI"
                              Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              TextWrapping="Wrap"
                              KeyDown="PromptTextBox_KeyDown" />
-                    <Button Grid.Column="1"
+                    <Button Grid.Column="4"
+                            Style="{StaticResource IconButtonStyle}"
                             Margin="12,0,0,0"
                             VerticalAlignment="Bottom"
                             Command="{Binding SendMessageCommand}"
-                            Content="Send" />
-                    <Button Grid.Column="2"
+                            ToolTipService.ToolTip="Send"
+                            AutomationProperties.Name="Send">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  Glyph="&#xE74A;"
+                                  FontSize="16" />
+                    </Button>
+                    <Button Grid.Column="5"
+                            Style="{StaticResource IconButtonStyle}"
                             Margin="8,0,0,0"
                             VerticalAlignment="Bottom"
                             Command="{Binding CancelGenerationCommand}"
-                            Content="Stop"
-                            Visibility="{Binding IsGenerating, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            ToolTipService.ToolTip="Stop"
+                            AutomationProperties.Name="Stop"
+                            Visibility="{Binding IsGenerating, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  Glyph="&#xE711;"
+                                  FontSize="16" />
+                    </Button>
                 </Grid>
             </Grid>
         </Grid>
@@ -640,6 +688,44 @@
                             </StackPanel>
                             <Button Content="Reset all settings"
                                     Command="{Binding ResetAllCommand}" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Developer"
+                              IsExpanded="False"
+                              DataContext="{Binding DataContext, ElementName=Root}"
+                              Visibility="{Binding IsDeveloperDiagnosticsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Developer workspace tools"
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Opacity="0.75" />
+                            <Button Content="Run UTC reference tool"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding RunReferenceToolCommand}" />
+                            <TextBox PlaceholderText="Registered workspace ID from Settings"
+                                     Text="{Binding DeveloperWorkspaceId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <TextBox Width="220"
+                                         PlaceholderText="Relative path"
+                                         Text="{Binding DeveloperToolPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Button Content="List"
+                                        Command="{Binding RunDeveloperListDirectoryCommand}" />
+                                <Button Content="Read"
+                                        Command="{Binding RunDeveloperReadFileCommand}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <TextBox Width="360"
+                                         PlaceholderText="Literal search query"
+                                         Text="{Binding DeveloperSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Button Content="Search"
+                                        Command="{Binding RunDeveloperSearchWorkspaceCommand}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding DeveloperToolResult}"
+                                       TextWrapping="Wrap"
+                                       MaxHeight="120"
+                                       Opacity="0.75" />
                         </StackPanel>
                     </Expander>
                 </StackPanel>

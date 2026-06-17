@@ -104,7 +104,10 @@ public static class ToolPresentationMapper
         ChatToolCall toolCall,
         IWorkspaceRegistry? workspaceRegistry)
     {
-        return $"{FriendlyAction(new ToolId(toolCall.Name))} requested\n{FormatCallTarget(toolCall, workspaceRegistry)}";
+        return JoinCompact(
+            FriendlyAction(new ToolId(toolCall.Name)),
+            "Waiting for permission",
+            FormatCallTarget(toolCall, workspaceRegistry));
     }
 
     public static string CompletedActivity(
@@ -114,24 +117,35 @@ public static class ToolPresentationMapper
     {
         if (result.Status == ToolExecutionStatus.PermissionDenied.ToString())
         {
-            return "Permission denied\nThe requested workspace access was not approved.";
+            return JoinCompact(
+                FriendlyAction(new ToolId(toolCall.Name)),
+                "Permission denied",
+                FormatCallTarget(toolCall, workspaceRegistry));
         }
 
         if (result.Status == ToolExecutionStatus.Cancelled.ToString())
         {
-            return "Cancelled\nThe workspace action was cancelled.";
+            return JoinCompact(
+                FriendlyAction(new ToolId(toolCall.Name)),
+                "Cancelled",
+                FormatCallTarget(toolCall, workspaceRegistry));
         }
 
         if (!result.IsSuccess)
         {
-            return $"{SafeFailureTitle(result.SafeErrorCode)}\n{result.SafeErrorMessage ?? "The workspace action could not be completed."}";
+            return JoinCompact(
+                FriendlyAction(new ToolId(toolCall.Name)),
+                SafeFailureTitle(result.SafeErrorCode),
+                FormatCallTarget(toolCall, workspaceRegistry));
         }
 
-        var suffix = result.IsTruncated ? " - Result truncated" : string.Empty;
+        var state = result.IsTruncated ? "Completed, truncated" : "Completed";
         var resultSummary = FormatResultSummary(result);
-        return string.IsNullOrWhiteSpace(resultSummary)
-            ? $"{FriendlyAction(new ToolId(toolCall.Name))} completed{suffix}\n{FormatCallTarget(toolCall, workspaceRegistry)}"
-            : $"{FriendlyAction(new ToolId(toolCall.Name))} completed{suffix}\n{FormatCallTarget(toolCall, workspaceRegistry)} - {resultSummary}";
+        return JoinCompact(
+            FriendlyAction(new ToolId(toolCall.Name)),
+            state,
+            FormatCallTarget(toolCall, workspaceRegistry),
+            resultSummary);
     }
 
     public static string FormatStoredToolActivity(string content)
@@ -165,12 +179,14 @@ public static class ToolPresentationMapper
 
                 if (!string.IsNullOrWhiteSpace(safeError))
                 {
-                    return safeError;
+                    return JoinCompact(action, safeError);
                 }
 
-                return isTruncated
-                    ? $"{action} completed - Result truncated"
-                    : $"{action} {status?.ToLowerInvariant() ?? "completed"}.";
+                return JoinCompact(
+                    action,
+                    isTruncated
+                        ? "Completed, truncated"
+                        : FormatStatus(status));
             }
         }
         catch (JsonException)
@@ -204,7 +220,7 @@ public static class ToolPresentationMapper
         IWorkspaceRegistry? workspaceRegistry)
     {
         var workspace = GetString(toolCall.Arguments, "workspaceId");
-        var workspaceName = workspace;
+        var workspaceName = "Workspace";
 
         if (!string.IsNullOrWhiteSpace(workspace) &&
             workspaceRegistry?.TryGet(new WorkspaceId(workspace), out var descriptor) == true)
@@ -219,14 +235,15 @@ public static class ToolPresentationMapper
 
         if (!string.IsNullOrWhiteSpace(query))
         {
+            var safeQuery = ShortenForActivity(query);
             return string.IsNullOrWhiteSpace(relativePath)
-                ? $"Search for \"{query}\" in {workspaceName}"
-                : $"Search for \"{query}\" under {FormatRelativeDisplay(relativePath)} in {workspaceName}";
+                ? $"{workspaceName} · {safeQuery}"
+                : $"{workspaceName} · {FormatRelativeDisplay(relativePath)} · {safeQuery}";
         }
 
         return string.IsNullOrWhiteSpace(relativePath)
-            ? $"Workspace: {workspaceName}"
-            : $"{FormatRelativeDisplay(relativePath)} in {workspaceName}";
+            ? workspaceName
+            : $"{workspaceName} · {FormatRelativeDisplay(relativePath)}";
     }
 
     private static string FormatRelativeDisplay(string value)
@@ -240,7 +257,44 @@ public static class ToolPresentationMapper
             return "Requested path";
         }
 
-        return value;
+        return ShortenForActivity(value);
+    }
+
+    private static string JoinCompact(params string?[] parts) =>
+        string.Join(
+            " · ",
+            parts
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!.Trim()));
+
+    private static string FormatStatus(string? status) =>
+        status switch
+        {
+            nameof(ToolExecutionStatus.PermissionDenied) => "Permission denied",
+            nameof(ToolExecutionStatus.Cancelled) => "Cancelled",
+            nameof(ToolExecutionStatus.Succeeded) => "Completed",
+            nameof(ToolExecutionStatus.TimedOut) => "Failed",
+            nameof(ToolExecutionStatus.ToolFailed) => "Failed",
+            nameof(ToolExecutionStatus.ValidationFailed) => "Failed",
+            _ => "Completed"
+        };
+
+    private static string ShortenForActivity(string value)
+    {
+        const int maxLength = 80;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Requested target";
+        }
+
+        var normalized = value
+            .ReplaceLineEndings(" ")
+            .Trim();
+
+        return normalized.Length <= maxLength
+            ? normalized
+            : $"{normalized[..(maxLength - 1)]}…";
     }
 
     private static string FormatResultSummary(ChatToolResultPayload result)
