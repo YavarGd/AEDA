@@ -9,17 +9,19 @@ public static class ApplicationSettingsValidator
         var value = settings ?? ApplicationSettings.CreateDefault();
         var defaults = ApplicationSettings.CreateDefault();
 
+        var normalizedVision = NormalizeVision(value.Vision ?? defaults.Vision);
+
         return value with
         {
             SchemaVersion = ApplicationSettings.CurrentSchemaVersion,
             General = value.General ?? defaults.General,
             Appearance = value.Appearance ?? defaults.Appearance,
-            Models = NormalizeModels(value.Models ?? defaults.Models),
+            Models = NormalizeModels(value.Models ?? defaults.Models, normalizedVision),
             Hotkey = HotkeySettingsValidator.Normalize(value.Hotkey ?? defaults.Hotkey),
             Window = value.Window ?? defaults.Window,
             Context = NormalizeContext(value.Context ?? defaults.Context),
             Privacy = NormalizePrivacy(value.Privacy ?? defaults.Privacy),
-            Vision = NormalizeVision(value.Vision ?? defaults.Vision)
+            Vision = normalizedVision
         };
     }
 
@@ -74,12 +76,21 @@ public static class ApplicationSettingsValidator
         return settings with { UserModelPatterns = patterns };
     }
 
-    private static ModelSettings NormalizeModels(ModelSettings settings)
+    private static ModelSettings NormalizeModels(
+        ModelSettings settings,
+        VisionSettings visionSettings)
     {
         var assignments = (settings.Assignments ??
                 ModelRoutingSettings.CreateDefaultAssignments())
             .Where(assignment => !string.IsNullOrWhiteSpace(assignment.Model))
             .Select(assignment => assignment with { Model = assignment.Model.Trim() })
+            .Select(assignment =>
+                assignment.Category == ModelRoutingCategory.Vision &&
+                !VisionModelCapabilityRegistry.SupportsImages(
+                    assignment.Model,
+                    visionSettings)
+                    ? assignment with { Model = ModelRoutingSettings.DefaultModel }
+                    : assignment)
             .GroupBy(assignment => assignment.Category)
             .Select(group => group.First())
             .ToList();

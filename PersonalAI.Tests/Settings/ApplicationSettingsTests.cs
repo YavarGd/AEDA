@@ -178,6 +178,7 @@ public sealed class ApplicationSettingsTests
     [Theory]
     [InlineData("gemma4:latest")]
     [InlineData("llama3.2-vision:11b")]
+    [InlineData("qwen3-vl:8b")]
     [InlineData("custom-vision")]
     public void VisionRegistrySupportsTaggedAndUserPatterns(string model)
     {
@@ -192,6 +193,9 @@ public sealed class ApplicationSettingsTests
         Assert.False(VisionModelCapabilityRegistry.SupportsImages(
             "notgemma4text",
             VisionSettings.Default));
+        Assert.False(VisionModelCapabilityRegistry.SupportsImages(
+            "qwen3:8b",
+            VisionSettings.Default));
     }
 
     [Fact]
@@ -199,10 +203,13 @@ public sealed class ApplicationSettingsTests
     {
         var router = new DeterministicChatModelRouter();
         var decision = await router.SelectModelAsync(new ModelRoutingRequest(
-            "/model qwen:latest\nExplain this.",
+            "Explain this.",
             [],
             ["gemma4", "qwen:latest"],
-            ModelRoutingSettings.CreateDefaultAssignments()));
+            ModelRoutingSettings.CreateDefaultAssignments())
+        {
+            ExplicitModelOverride = "qwen:latest"
+        });
 
         Assert.True(decision.ExplicitOverrideHonored);
         Assert.Equal("qwen:latest", decision.SelectedModel);
@@ -214,13 +221,17 @@ public sealed class ApplicationSettingsTests
     {
         var router = new DeterministicChatModelRouter();
         var decision = await router.SelectModelAsync(new ModelRoutingRequest(
-            "/model missing\nExplain this.",
+            "Explain this.",
             [],
             ["gemma4"],
-            ModelRoutingSettings.CreateDefaultAssignments()));
+            ModelRoutingSettings.CreateDefaultAssignments())
+        {
+            ExplicitModelOverride = "missing"
+        });
 
         Assert.False(decision.ExplicitOverrideHonored);
-        Assert.Equal("gemma4", decision.SelectedModel);
+        Assert.Equal("missing", decision.SelectedModel);
+        Assert.True(decision.IsCapabilityBlocked);
         Assert.Contains("not installed", decision.FallbackReason);
     }
 
@@ -242,6 +253,181 @@ public sealed class ApplicationSettingsTests
 
         Assert.Equal("gemma4:latest", decision.SelectedModel);
         Assert.Equal(ModelRoutingCategory.Vision, decision.Category);
+    }
+
+    [Fact]
+    public async Task RouterFallsBackWhenInstalledVisionAssignmentIsTextOnly()
+    {
+        var router = new DeterministicChatModelRouter();
+        var decision = await router.SelectModelAsync(new ModelRoutingRequest(
+            "Describe screenshot",
+            [new AttachedContextSignal("Screenshot", HasImage: true)],
+            ["qwen3:8b", "qwen3-vl:8b"],
+            [
+                new ModelRoutingAssignment(ModelRoutingCategory.General, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Coding, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Vision, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Fast, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "qwen3:8b")
+            ]));
+
+        Assert.Equal("qwen3-vl:8b", decision.SelectedModel);
+        Assert.Equal(ModelRoutingCategory.Vision, decision.Category);
+        Assert.Contains("cannot accept images", decision.FallbackReason);
+    }
+
+    [Fact]
+    public async Task RouterBlocksExplicitTextOnlyOverrideForImageRequest()
+    {
+        var router = new DeterministicChatModelRouter();
+        var decision = await router.SelectModelAsync(new ModelRoutingRequest(
+            "What is in this image?",
+            [new AttachedContextSignal("Screenshot", HasImage: true)],
+            ["qwen3:8b", "qwen3-vl:8b"],
+            [
+                new ModelRoutingAssignment(ModelRoutingCategory.General, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Coding, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Vision, "qwen3-vl:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Fast, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "qwen3:8b")
+            ])
+        {
+            ExplicitModelOverride = "qwen3:8b"
+        });
+
+        Assert.True(decision.IsCapabilityBlocked);
+        Assert.Equal("qwen3:8b", decision.SelectedModel);
+        Assert.Equal("What is in this image?", decision.RoutedPrompt);
+    }
+
+    [Fact]
+    public async Task RouterUsesConversationOverrideBeforeAutomaticRouting()
+    {
+        var router = new DeterministicChatModelRouter();
+        var decision = await router.SelectModelAsync(new ModelRoutingRequest(
+            "Write a summary",
+            [],
+            ["gemma4:12b", "qwen3:8b"],
+            [
+                new ModelRoutingAssignment(ModelRoutingCategory.General, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Coding, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Vision, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Fast, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "gemma4:12b")
+            ])
+        {
+            ConversationModelOverride = "qwen3:8b"
+        });
+
+        Assert.Equal("qwen3:8b", decision.SelectedModel);
+        Assert.Equal(ModelRoutingSource.ConversationOverride, decision.Source);
+        Assert.Equal("Conversation override · qwen3:8b", decision.UserVisibleReason);
+    }
+
+    [Fact]
+    public async Task RouterAllowsVisionCapableConversationOverrideForImage()
+    {
+        var router = new DeterministicChatModelRouter();
+        var decision = await router.SelectModelAsync(new ModelRoutingRequest(
+            "What is in this image?",
+            [new AttachedContextSignal("Screenshot", HasImage: true)],
+            ["gemma4:12b", "qwen3-vl:8b"],
+            [
+                new ModelRoutingAssignment(ModelRoutingCategory.General, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Coding, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Vision, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Fast, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "gemma4:12b")
+            ])
+        {
+            ConversationModelOverride = "qwen3-vl:8b"
+        });
+
+        Assert.False(decision.IsCapabilityBlocked);
+        Assert.Equal("qwen3-vl:8b", decision.SelectedModel);
+        Assert.Equal(ModelRoutingSource.ConversationOverride, decision.Source);
+    }
+
+    [Fact]
+    public async Task RouterUsesSettingsVisionAssignmentInAutomaticMode()
+    {
+        var router = new DeterministicChatModelRouter();
+        var decision = await router.SelectModelAsync(new ModelRoutingRequest(
+            "What is in this image?",
+            [new AttachedContextSignal("Screenshot", HasImage: true)],
+            ["gemma4:12b", "qwen3-vl:8b"],
+            [
+                new ModelRoutingAssignment(ModelRoutingCategory.General, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Coding, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Vision, "gemma4:12b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Fast, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "qwen3:8b")
+            ]));
+
+        Assert.Equal("gemma4:12b", decision.SelectedModel);
+        Assert.Equal("Automatic · Vision: gemma4:12b", decision.UserVisibleReason);
+    }
+
+    [Fact]
+    public async Task RouterAutomaticModeMayResolveQwenVisionModel()
+    {
+        var router = new DeterministicChatModelRouter();
+        var decision = await router.SelectModelAsync(new ModelRoutingRequest(
+            "What is in this image?",
+            [new AttachedContextSignal("Screenshot", HasImage: true)],
+            ["gemma4:12b", "qwen3-vl:8b"],
+            [
+                new ModelRoutingAssignment(ModelRoutingCategory.General, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Coding, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Vision, "qwen3-vl:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Fast, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "qwen3:8b")
+            ]));
+
+        Assert.Equal("qwen3-vl:8b", decision.SelectedModel);
+        Assert.Equal("Automatic · Vision: qwen3-vl:8b", decision.UserVisibleReason);
+    }
+
+    [Fact]
+    public async Task RouterBlocksImageRequestWhenNoInstalledVisionModelExists()
+    {
+        var router = new DeterministicChatModelRouter();
+        var decision = await router.SelectModelAsync(new ModelRoutingRequest(
+            "What is in this image?",
+            [new AttachedContextSignal("Screenshot", HasImage: true)],
+            ["qwen3:8b"],
+            [
+                new ModelRoutingAssignment(ModelRoutingCategory.General, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Coding, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Vision, "qwen3-vl:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Fast, "qwen3:8b"),
+                new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "qwen3:8b")
+            ]));
+
+        Assert.True(decision.IsCapabilityBlocked);
+        Assert.Contains("No installed vision-capable model", decision.FallbackReason);
+    }
+
+    [Fact]
+    public void SettingsNormalizationRejectsTextOnlyVisionAssignment()
+    {
+        var settings = ApplicationSettings.CreateDefault() with
+        {
+            Models = new ModelSettings(
+                [
+                    new ModelRoutingAssignment(ModelRoutingCategory.General, "qwen3:8b"),
+                    new ModelRoutingAssignment(ModelRoutingCategory.Coding, "qwen3:8b"),
+                    new ModelRoutingAssignment(ModelRoutingCategory.Vision, "qwen3:8b"),
+                    new ModelRoutingAssignment(ModelRoutingCategory.Fast, "qwen3:8b"),
+                    new ModelRoutingAssignment(ModelRoutingCategory.Reasoning, "qwen3:8b")
+                ])
+        };
+
+        var normalized = ApplicationSettingsValidator.Normalize(settings);
+
+        Assert.Contains(normalized.Models.Assignments, assignment =>
+            assignment.Category == ModelRoutingCategory.Vision &&
+            assignment.Model == ModelRoutingSettings.DefaultModel);
     }
 
     [Fact]

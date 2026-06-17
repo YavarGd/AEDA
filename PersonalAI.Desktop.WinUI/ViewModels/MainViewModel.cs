@@ -32,14 +32,18 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IChatModelRouter _modelRouter;
     private readonly ITypedToolRuntime _toolRuntime;
     private readonly IWorkspaceRegistry _workspaceRegistry;
+    private readonly IClipboardWriter _clipboardWriter;
     private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _listModelsAsync;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly GenerationNavigationGuard _navigationGuard = new();
     private readonly AttachedContextCollection _attachedContextCollection = new();
     private readonly List<Conversation> _allConversations = [];
+    private readonly Dictionary<Guid, string> _conversationPreviews = new();
+    private readonly Dictionary<Guid, string> _conversationModelOverrides = new();
     private CancellationTokenSource? _generationCancellation;
     private Conversation? _activeConversation;
     private Task? _activeGenerationTask;
+    private string? _draftConversationModelOverride;
     private bool _hasRequestedGenerationCancellation;
     private bool _isSending;
 
@@ -54,6 +58,7 @@ public sealed partial class MainViewModel : ObservableObject
         ITypedToolRuntime toolRuntime,
         TaskTimelineViewModel taskTimeline,
         IWorkspaceRegistry workspaceRegistry,
+        IClipboardWriter clipboardWriter,
         Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync)
     {
         _conversationSession = conversationSession;
@@ -66,6 +71,7 @@ public sealed partial class MainViewModel : ObservableObject
         _toolRuntime = toolRuntime;
         TaskTimeline = taskTimeline;
         _workspaceRegistry = workspaceRegistry;
+        _clipboardWriter = clipboardWriter;
         _listModelsAsync = listModelsAsync;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         ApplySettings(settingsService.Current);
@@ -112,10 +118,27 @@ public sealed partial class MainViewModel : ObservableObject
     private string _editorConnectionStatus = "VS Code disconnected";
 
     [ObservableProperty]
-    private string _contextStatusMessage = "No context attached";
+    private string _contextStatusMessage = string.Empty;
 
     [ObservableProperty]
     private string _routingStatusMessage = "Model will be selected automatically.";
+
+    public string? ActiveConversationModelOverride =>
+        _activeConversation is null
+            ? _draftConversationModelOverride
+            : _conversationModelOverrides.TryGetValue(
+                _activeConversation.Id,
+                out var model)
+                ? model
+                : null;
+
+    public bool HasConversationModelOverride =>
+        !string.IsNullOrWhiteSpace(ActiveConversationModelOverride);
+
+    public string ConversationModelOverrideLabel =>
+        HasConversationModelOverride
+            ? $"Model override: {ActiveConversationModelOverride}"
+            : "Automatic routing";
 
     [ObservableProperty]
     private bool _isSettingsOpen;
@@ -186,6 +209,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         _allConversations.Clear();
         _allConversations.AddRange(conversations);
+        await LoadConversationPreviewsAsync(conversations, cancellationToken);
         ApplyConversationFilter();
 
         if (_allConversations.Count > 0 &&
@@ -231,6 +255,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(CanModifyContexts));
         SendMessageCommand.NotifyCanExecuteChanged();
         CancelGenerationCommand.NotifyCanExecuteChanged();
+        RegenerateMessageCommand.NotifyCanExecuteChanged();
+        RetryMessageCommand.NotifyCanExecuteChanged();
         AttachClipboardContextCommand.NotifyCanExecuteChanged();
         CaptureApplicationContextCommand.NotifyCanExecuteChanged();
         CaptureScreenshotContextCommand.NotifyCanExecuteChanged();
@@ -436,9 +462,13 @@ public sealed partial class MainViewModel : ObservableObject
         Messages.Clear();
         ClearAttachedContextItems();
         Prompt = string.Empty;
+        _draftConversationModelOverride = null;
         CurrentConversationTitle = NewChatTitle;
         Status = ChatStatus.Ready;
         StatusMessage = "Ready";
+        RoutingStatusMessage = "Automatic routing";
+        NotifyConversationModelOverrideChanged();
+        RefreshMessageActionEligibility();
         NotifyMessageCollectionChanged();
     }
 
@@ -459,7 +489,11 @@ public sealed partial class MainViewModel : ObservableObject
             storedConversation.Id);
 
         _activeConversation = storedConversation;
+        _draftConversationModelOverride = null;
         CurrentConversationTitle = storedConversation.Title;
+        RoutingStatusMessage = HasConversationModelOverride
+            ? $"Conversation override · {ActiveConversationModelOverride}"
+            : "Automatic routing";
         Messages.Clear();
         var supersededToolCallIds = FindSupersededToolCallIds(messages);
 
@@ -479,6 +513,7 @@ public sealed partial class MainViewModel : ObservableObject
             item => item.Id == storedConversation.Id);
         Status = ChatStatus.Ready;
         StatusMessage = "Ready";
+        RefreshMessageActionEligibility();
         NotifyMessageCollectionChanged();
     }
 
@@ -487,6 +522,128 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var prompt = Prompt.Trim();
         if (_isSending || string.IsNullOrWhiteSpace(prompt))
+        {
+            return;
+        }
+
+        var command = ExplicitModelOverrideParser.ParseCommand(prompt);
+        if (command.Kind != ModelCommandKind.None)
+        {
+            await HandleModelCommandAsync(command);
+            return;
+        }
+
+        Prompt = string.Empty;
+        var contextSnapshot = _attachedContextCollection.Snapshot();
+        await RunGenerationWithStateAsync(() => ExecuteGenerationAsync(
+            prompt,
+            contextSnapshot,
+            persistUserMessage: true,
+            clearAttachedContexts: true,
+            priorHistory: null,
+            completionStatus: ChatMessageDisplayStatus.Completed,
+            existingAssistantMessage: null,
+            explicitOneTurnModelOverride: null,
+            cancellationToken: _generationCancellation!.Token));
+    }
+
+    [RelayCommand]
+    public void UseAutomaticRouting()
+    {
+        ClearConversationModelOverride();
+        StatusMessage = "Automatic routing enabled.";
+        RoutingStatusMessage = "Automatic routing";
+    }
+
+    [RelayCommand]
+    public void ChooseVisionModel()
+    {
+        IsSettingsOpen = true;
+        StatusMessage = "Choose a vision-capable model in Settings.";
+    }
+
+    private async Task HandleModelCommandAsync(ModelCommandParseResult command)
+    {
+        if (command.Kind == ModelCommandKind.Malformed)
+        {
+            StatusMessage = command.ErrorMessage ?? "Model command was not understood.";
+            RoutingStatusMessage = "Model command invalid";
+            return;
+        }
+
+        if (command.Kind == ModelCommandKind.ClearConversationOverride)
+        {
+            Prompt = string.Empty;
+            ClearConversationModelOverride();
+            StatusMessage = "Automatic routing enabled.";
+            RoutingStatusMessage = "Automatic routing";
+            return;
+        }
+
+        if (command.Kind == ModelCommandKind.ConversationOverride)
+        {
+            if (!await TryValidateRequestedModelAsync(command.Model, CancellationToken.None))
+            {
+                return;
+            }
+
+            Prompt = string.Empty;
+            SetConversationModelOverride(command.Model!);
+            StatusMessage = $"Conversation model override set to {command.Model}.";
+            RoutingStatusMessage = $"Conversation override · {command.Model}";
+            return;
+        }
+
+        if (command.Kind == ModelCommandKind.OneTurnOverride)
+        {
+            if (!await TryValidateRequestedModelAsync(command.Model, CancellationToken.None))
+            {
+                return;
+            }
+
+            Prompt = string.Empty;
+            var contextSnapshot = _attachedContextCollection.Snapshot();
+            await RunGenerationWithStateAsync(() => ExecuteGenerationAsync(
+                command.Prompt!,
+                contextSnapshot,
+                persistUserMessage: true,
+                clearAttachedContexts: true,
+                priorHistory: null,
+                completionStatus: ChatMessageDisplayStatus.Completed,
+                existingAssistantMessage: null,
+                explicitOneTurnModelOverride: command.Model,
+                cancellationToken: _generationCancellation!.Token));
+        }
+    }
+
+    private async Task<bool> TryValidateRequestedModelAsync(
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            StatusMessage = "Specify a model name or auto.";
+            RoutingStatusMessage = "Model command invalid";
+            return false;
+        }
+
+        var installed = await GetInstalledModelsForRoutingAsync(cancellationToken);
+        var resolved = installed.FirstOrDefault(candidate =>
+            candidate.Equals(model.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (resolved is not null)
+        {
+            return true;
+        }
+
+        StatusMessage = $"Requested model '{model.Trim()}' is not installed.";
+        RoutingStatusMessage = "Model unavailable";
+        return false;
+    }
+
+    private async Task RunGenerationWithStateAsync(Func<Task> createGenerationTask)
+    {
+        if (_isSending)
         {
             return;
         }
@@ -500,13 +657,7 @@ public sealed partial class MainViewModel : ObservableObject
         _hasRequestedGenerationCancellation = false;
         Status = ChatStatus.Connecting;
         StatusMessage = "Connecting";
-        Prompt = string.Empty;
-
-        var contextSnapshot = _attachedContextCollection.Snapshot();
-        var generationTask = ExecuteGenerationAsync(
-            prompt,
-            contextSnapshot,
-            _generationCancellation.Token);
+        var generationTask = createGenerationTask();
         _activeGenerationTask = generationTask;
 
         try
@@ -528,6 +679,8 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CanModifyContexts));
             SendMessageCommand.NotifyCanExecuteChanged();
             CancelGenerationCommand.NotifyCanExecuteChanged();
+            RegenerateMessageCommand.NotifyCanExecuteChanged();
+            RetryMessageCommand.NotifyCanExecuteChanged();
             AttachClipboardContextCommand.NotifyCanExecuteChanged();
             CaptureApplicationContextCommand.NotifyCanExecuteChanged();
             CaptureScreenshotContextCommand.NotifyCanExecuteChanged();
@@ -539,9 +692,15 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task ExecuteGenerationAsync(
         string prompt,
         IReadOnlyList<AttachedContextItem> contextSnapshot,
+        bool persistUserMessage,
+        bool clearAttachedContexts,
+        IReadOnlyList<ChatMessage>? priorHistory,
+        ChatMessageDisplayStatus completionStatus,
+        ChatMessageViewModel? existingAssistantMessage,
+        string? explicitOneTurnModelOverride,
         CancellationToken cancellationToken)
     {
-        ChatMessageViewModel? assistantMessage = null;
+        ChatMessageViewModel? assistantMessage = existingAssistantMessage;
         var assistantResponse = new StringBuilder();
         var requestAccepted = false;
         var model = ModelRoutingSettings.DefaultModel;
@@ -550,15 +709,31 @@ public sealed partial class MainViewModel : ObservableObject
 
         try
         {
-            var previousHistory = Messages
-                .Select(message => new ChatMessage(message.Role, message.Content))
-                .ToArray();
+            var previousHistory = priorHistory ??
+                Messages
+                    .Select(message => new ChatMessage(message.Role, message.Content))
+                    .ToArray();
             var routingDecision = await SelectModelAsync(
                 prompt,
                 contextSnapshot,
+                explicitOneTurnModelOverride,
                 cancellationToken);
             RoutingStatusMessage = routingDecision.UserVisibleReason;
             model = routingDecision.SelectedModel;
+            assistantMessage?.SetModelMetadata(
+                model,
+                GetRoutingSourceLabel(routingDecision.Source));
+
+            if (TryBlockUnsupportedImageRequest(
+                    prompt,
+                    contextSnapshot,
+                    routingDecision,
+                    persistUserMessage,
+                    assistantMessage))
+            {
+                return;
+            }
+
             var routedPrompt = routingDecision.RoutedPrompt.Trim();
 
             if (string.IsNullOrWhiteSpace(routedPrompt))
@@ -571,16 +746,27 @@ public sealed partial class MainViewModel : ObservableObject
                 model,
                 CancellationToken.None);
 
-            await _conversationSession.AddMessageAsync(
-                conversation.Id,
-                ChatRole.User,
-                routedPrompt,
-                CancellationToken.None);
+            if (persistUserMessage)
+            {
+                await _conversationSession.AddMessageAsync(
+                    conversation.Id,
+                    ChatRole.User,
+                    routedPrompt,
+                    CancellationToken.None);
 
-            AddMessage(new ChatMessageViewModel(ChatRole.User, routedPrompt));
+                _conversationPreviews[conversation.Id] =
+                    ConversationTitleGenerator.CreatePreview(routedPrompt);
+                AddMessage(new ChatMessageViewModel(ChatRole.User, routedPrompt));
+            }
 
             Status = ChatStatus.Generating;
-            StatusMessage = "Generating";
+            StatusMessage = "Generating - Press Esc to stop";
+            if (assistantMessage is not null)
+            {
+                assistantMessage.Content = string.Empty;
+                assistantMessage.StartStreaming();
+                RefreshMessageActionEligibility();
+            }
 
             var requestMessages = AttachedContextPromptComposer.Compose(
                 previousHistory,
@@ -622,7 +808,10 @@ public sealed partial class MainViewModel : ObservableObject
                     if (!requestAccepted)
                     {
                         requestAccepted = true;
-                        ClearAttachedContextItemsAfterSend();
+                        if (clearAttachedContexts)
+                        {
+                            ClearAttachedContextItemsAfterSend();
+                        }
                     }
 
                     assistantResponse.Append(chunk.Content);
@@ -630,7 +819,14 @@ public sealed partial class MainViewModel : ObservableObject
                     {
                         assistantMessage = new ChatMessageViewModel(
                             ChatRole.Assistant,
-                            string.Empty);
+                            string.Empty,
+                            status: ChatMessageDisplayStatus.Streaming,
+                            modelName: model,
+                            routingSourceLabel: GetRoutingSourceLabel(
+                                routingDecision.Source))
+                        {
+                            IsStreaming = true
+                        };
                         AddMessage(assistantMessage);
                     }
 
@@ -640,7 +836,10 @@ public sealed partial class MainViewModel : ObservableObject
 
             if (!requestAccepted)
             {
-                ClearAttachedContextItemsAfterSend();
+                if (clearAttachedContexts)
+                {
+                    ClearAttachedContextItemsAfterSend();
+                }
             }
 
             var completedContent = assistantResponse.ToString();
@@ -654,6 +853,9 @@ public sealed partial class MainViewModel : ObservableObject
                     CancellationToken.None);
             }
 
+            assistantMessage?.CompleteRendering(completionStatus);
+            RefreshMessageActionEligibility();
+
             _activeConversation = await _conversationSession.UpdateConversationAsync(
                 conversation,
                 ConversationStatus.Completed,
@@ -666,21 +868,44 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            if (assistantMessage is not null &&
+                string.IsNullOrWhiteSpace(assistantMessage.Content))
+            {
+                assistantMessage.Content = "Cancelled";
+            }
+
+            assistantMessage ??= AddAssistantStatusMessage(
+                "Cancelled",
+                ChatMessageDisplayStatus.Cancelled);
             await PersistInterruptedGenerationAsync(
                 assistantResponse.ToString(),
                 ConversationStatus.Cancelled,
-                model);
+                model,
+                assistantMessage,
+                ChatMessageDisplayStatus.Cancelled);
             Status = ChatStatus.Cancelled;
             StatusMessage = "Cancelled";
         }
-        catch (Exception exception)
+        catch (Exception)
         {
+            if (assistantMessage is not null &&
+                string.IsNullOrWhiteSpace(assistantMessage.Content))
+            {
+                assistantMessage.Content =
+                    "The assistant response could not be completed.";
+            }
+
+            assistantMessage ??= AddAssistantStatusMessage(
+                "The assistant response could not be completed.",
+                ChatMessageDisplayStatus.Failed);
             await PersistInterruptedGenerationAsync(
                 assistantResponse.ToString(),
                 ConversationStatus.Error,
-                model);
+                model,
+                assistantMessage,
+                ChatMessageDisplayStatus.Failed);
             Status = ChatStatus.Failed;
-            StatusMessage = $"Failed: {exception.Message}";
+            StatusMessage = "Failed: The assistant response could not be completed.";
         }
     }
 
@@ -688,6 +913,79 @@ public sealed partial class MainViewModel : ObservableObject
     public void CancelGeneration()
     {
         RequestGenerationCancellation();
+    }
+
+    [RelayCommand]
+    public async Task CopyMessageAsync(ChatMessageViewModel? message)
+    {
+        if (message is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var text = message.IsAssistantMessage
+                ? message.RenderedContent.PlainText
+                : message.Content;
+            await _clipboardWriter.CopyTextAsync(text);
+            StatusMessage = "Copied";
+        }
+        catch (Exception exception) when (
+            exception is UnauthorizedAccessException ||
+            exception is InvalidOperationException ||
+            exception is System.Runtime.InteropServices.COMException)
+        {
+            StatusMessage = "Copy failed.";
+        }
+    }
+
+    private bool CanRegenerateMessage(ChatMessageViewModel? message) =>
+        message?.CanRegenerate == true && !IsGenerating && !_isSending;
+
+    [RelayCommand(CanExecute = nameof(CanRegenerateMessage))]
+    public async Task RegenerateMessageAsync(ChatMessageViewModel? message)
+    {
+        if (!CanRegenerateMessage(message) ||
+            !TryGetGenerationPromptFor(message!, out var prompt, out var priorHistory))
+        {
+            return;
+        }
+
+        await RunGenerationWithStateAsync(() => ExecuteGenerationAsync(
+            prompt,
+            [],
+            persistUserMessage: false,
+            clearAttachedContexts: false,
+            priorHistory: priorHistory,
+            completionStatus: ChatMessageDisplayStatus.Regenerated,
+            existingAssistantMessage: null,
+            explicitOneTurnModelOverride: null,
+            cancellationToken: _generationCancellation!.Token));
+    }
+
+    private bool CanRetryMessage(ChatMessageViewModel? message) =>
+        message?.CanRetry == true && !IsGenerating && !_isSending;
+
+    [RelayCommand(CanExecute = nameof(CanRetryMessage))]
+    public async Task RetryMessageAsync(ChatMessageViewModel? message)
+    {
+        if (!CanRetryMessage(message) ||
+            !TryGetGenerationPromptFor(message!, out var prompt, out var priorHistory))
+        {
+            return;
+        }
+
+        await RunGenerationWithStateAsync(() => ExecuteGenerationAsync(
+            prompt,
+            [],
+            persistUserMessage: false,
+            clearAttachedContexts: false,
+            priorHistory: priorHistory,
+            completionStatus: ChatMessageDisplayStatus.Completed,
+            existingAssistantMessage: message,
+            explicitOneTurnModelOverride: null,
+            cancellationToken: _generationCancellation!.Token));
     }
 
     private async Task StopActiveGenerationAsync()
@@ -841,6 +1139,14 @@ public sealed partial class MainViewModel : ObservableObject
             cancellationToken);
 
         _activeConversation = conversation;
+        if (!string.IsNullOrWhiteSpace(_draftConversationModelOverride))
+        {
+            _conversationModelOverrides[conversation.Id] =
+                _draftConversationModelOverride;
+            _draftConversationModelOverride = null;
+            NotifyConversationModelOverrideChanged();
+        }
+
         CurrentConversationTitle = conversation.Title;
         await ReloadConversationListAsync(conversation.Id);
         return conversation;
@@ -849,7 +1155,9 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task PersistInterruptedGenerationAsync(
         string assistantContent,
         ConversationStatus status,
-        string model)
+        string model,
+        ChatMessageViewModel? assistantMessage = null,
+        ChatMessageDisplayStatus displayStatus = ChatMessageDisplayStatus.Completed)
     {
         if (_activeConversation is null)
         {
@@ -871,6 +1179,8 @@ public sealed partial class MainViewModel : ObservableObject
             model,
             CancellationToken.None);
 
+        assistantMessage?.CompleteRendering(displayStatus);
+        RefreshMessageActionEligibility();
         await ReloadConversationListAsync(_activeConversation.Id);
     }
 
@@ -950,14 +1260,155 @@ public sealed partial class MainViewModel : ObservableObject
         StatusMessage = message;
     }
 
+    private void SetConversationModelOverride(string model)
+    {
+        var normalized = model.Trim();
+
+        if (_activeConversation is null)
+        {
+            _draftConversationModelOverride = normalized;
+        }
+        else
+        {
+            _conversationModelOverrides[_activeConversation.Id] = normalized;
+        }
+
+        NotifyConversationModelOverrideChanged();
+    }
+
+    private void ClearConversationModelOverride()
+    {
+        if (_activeConversation is null)
+        {
+            _draftConversationModelOverride = null;
+        }
+        else
+        {
+            _conversationModelOverrides.Remove(_activeConversation.Id);
+        }
+
+        NotifyConversationModelOverrideChanged();
+    }
+
+    private void NotifyConversationModelOverrideChanged()
+    {
+        OnPropertyChanged(nameof(ActiveConversationModelOverride));
+        OnPropertyChanged(nameof(HasConversationModelOverride));
+        OnPropertyChanged(nameof(ConversationModelOverrideLabel));
+        OnPropertyChanged(nameof(CanSend));
+        SendMessageCommand.NotifyCanExecuteChanged();
+    }
+
     private void UpdateImageCapabilityStatus()
     {
         if (HasUnsupportedImageContext)
         {
             SetContextStatus(
-                "No configured vision model can accept the attached screenshot.");
+                CreateVisionCapabilityMessage(
+                    GetConfiguredVisionModel(),
+                    fallbackReason: null));
         }
     }
+
+    private bool TryBlockUnsupportedImageRequest(
+        string prompt,
+        IReadOnlyList<AttachedContextItem> contextSnapshot,
+        ModelRoutingDecision routingDecision,
+        bool restorePrompt,
+        ChatMessageViewModel? assistantMessage)
+    {
+        if (!HasAttachedImageContext(contextSnapshot) ||
+            (!routingDecision.IsCapabilityBlocked &&
+                ChatModelCapabilityService.SupportsImages(
+                    routingDecision.SelectedModel,
+                    _settingsService.Current.Vision)))
+        {
+            return false;
+        }
+
+        var message = CreateVisionCapabilityMessage(
+            routingDecision.SelectedModel,
+            routingDecision.FallbackReason);
+        RoutingStatusMessage = "Vision model required";
+        Status = ChatStatus.Ready;
+        StatusMessage = "Select a vision-capable model to retry.";
+        ContextStatusMessage = message;
+
+        if (restorePrompt && string.IsNullOrWhiteSpace(Prompt))
+        {
+            Prompt = prompt;
+        }
+
+        if (assistantMessage is null)
+        {
+            assistantMessage = AddAssistantStatusMessage(
+                message,
+                ChatMessageDisplayStatus.Blocked);
+            assistantMessage.SetModelMetadata(
+                routingDecision.SelectedModel,
+                GetRoutingSourceLabel(routingDecision.Source));
+        }
+        else
+        {
+            assistantMessage.Content = message;
+            assistantMessage.CompleteRendering(ChatMessageDisplayStatus.Blocked);
+        }
+
+        RefreshMessageActionEligibility();
+        return true;
+    }
+
+    private bool ConfiguredVisionModelSupportsImages()
+    {
+        var visionModel = GetConfiguredVisionModel();
+        return ChatModelCapabilityService.SupportsImages(
+            visionModel,
+            _settingsService.Current.Vision);
+    }
+
+    private string GetConfiguredVisionModel()
+    {
+        return _settingsService.Current.Models.Assignments
+            .FirstOrDefault(assignment =>
+                assignment.Category == ModelRoutingCategory.Vision)
+            ?.Model ?? string.Empty;
+    }
+
+    private static bool HasAttachedImageContext(
+        IEnumerable<AttachedContextItem> attachedContexts)
+    {
+        return attachedContexts.Any(context => context.Images.Count > 0);
+    }
+
+    private static string CreateVisionCapabilityMessage(
+        string? model,
+        string? fallbackReason)
+    {
+        if (!string.IsNullOrWhiteSpace(fallbackReason) &&
+            fallbackReason.Contains(
+                "No installed vision-capable model",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "No installed vision-capable model is available.";
+        }
+
+        var modelName = string.IsNullOrWhiteSpace(model)
+            ? "The selected model"
+            : model.Trim();
+
+        return $"{modelName} cannot analyze images.";
+    }
+
+    private static string GetRoutingSourceLabel(ModelRoutingSource source) =>
+        source switch
+        {
+            ModelRoutingSource.ExplicitOneTurnOverride => "Explicit model",
+            ModelRoutingSource.ConversationOverride => "Conversation override",
+            ModelRoutingSource.SettingsOverride => "Settings",
+            ModelRoutingSource.SafeFallback => "Fallback",
+            ModelRoutingSource.IncompatibleOverride => "Blocked model",
+            _ => "Automatic"
+        };
 
     private void ReleaseContextResources(AttachedContextItem item)
     {
@@ -972,7 +1423,29 @@ public sealed partial class MainViewModel : ObservableObject
         var conversations = await _conversationSession.LoadConversationsAsync();
         _allConversations.Clear();
         _allConversations.AddRange(conversations);
+        await LoadConversationPreviewsAsync(conversations);
         ApplyConversationFilter(selectedConversationId ?? _activeConversation?.Id);
+    }
+
+    private async Task LoadConversationPreviewsAsync(
+        IReadOnlyList<Conversation> conversations,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var conversation in conversations)
+        {
+            if (_conversationPreviews.ContainsKey(conversation.Id))
+            {
+                continue;
+            }
+
+            var messages = await _conversationSession.LoadMessagesAsync(
+                conversation.Id,
+                cancellationToken);
+            var firstUser = messages.FirstOrDefault(message => message.Role == ChatRole.User);
+            _conversationPreviews[conversation.Id] = firstUser is null
+                ? string.Empty
+                : ConversationTitleGenerator.CreatePreview(firstUser.Content);
+        }
     }
 
     private void ApplyConversationFilter(Guid? selectedConversationId = null)
@@ -999,12 +1472,18 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoConversations));
     }
 
-    private static ConversationListItem CreateListItem(Conversation conversation)
+    private ConversationListItem CreateListItem(Conversation conversation)
     {
+        _conversationPreviews.TryGetValue(conversation.Id, out var preview);
+        if (string.Equals(preview, conversation.Title, StringComparison.Ordinal))
+        {
+            preview = string.Empty;
+        }
+
         return new ConversationListItem(
             conversation.Id,
             conversation.Title,
-            $"{conversation.Model} - {conversation.Status}");
+            preview ?? string.Empty);
     }
 
     private static string FormatStoredMessage(StoredChatMessage message)
@@ -1106,7 +1585,82 @@ public sealed partial class MainViewModel : ObservableObject
     private void AddMessage(ChatMessageViewModel message)
     {
         Messages.Add(message);
+        RefreshMessageActionEligibility();
         NotifyMessageCollectionChanged();
+    }
+
+    private ChatMessageViewModel AddAssistantStatusMessage(
+        string content,
+        ChatMessageDisplayStatus status)
+    {
+        var message = new ChatMessageViewModel(
+            ChatRole.Assistant,
+            content,
+            status: status);
+        message.CompleteRendering(status);
+        AddMessage(message);
+        return message;
+    }
+
+    private bool TryGetGenerationPromptFor(
+        ChatMessageViewModel assistantMessage,
+        out string prompt,
+        out IReadOnlyList<ChatMessage> priorHistory)
+    {
+        prompt = string.Empty;
+        priorHistory = [];
+        var assistantIndex = Messages.IndexOf(assistantMessage);
+
+        if (assistantIndex < 0)
+        {
+            return false;
+        }
+
+        var userIndex = -1;
+        for (var index = assistantIndex - 1; index >= 0; index--)
+        {
+            if (Messages[index].Role == ChatRole.User)
+            {
+                userIndex = index;
+                break;
+            }
+        }
+
+        if (userIndex < 0)
+        {
+            return false;
+        }
+
+        prompt = Messages[userIndex].Content;
+        priorHistory = Messages
+            .Take(userIndex)
+            .Select(message => new ChatMessage(message.Role, message.Content))
+            .ToArray();
+        return !string.IsNullOrWhiteSpace(prompt);
+    }
+
+    private void RefreshMessageActionEligibility()
+    {
+        ChatMessageViewModel? latestAssistant = null;
+
+        for (var index = Messages.Count - 1; index >= 0; index--)
+        {
+            if (Messages[index].Role == ChatRole.Assistant)
+            {
+                latestAssistant = Messages[index];
+                break;
+            }
+        }
+
+        foreach (var message in Messages)
+        {
+            message.SetCanRegenerate(
+                ReferenceEquals(message, latestAssistant) &&
+                message.Status == ChatMessageDisplayStatus.Completed);
+        }
+
+        RegenerateMessageCommand.NotifyCanExecuteChanged();
+        RetryMessageCommand.NotifyCanExecuteChanged();
     }
 
     private void AddOrUpdateToolActivity(
@@ -1140,6 +1694,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task<ModelRoutingDecision> SelectModelAsync(
         string prompt,
         IReadOnlyList<AttachedContextItem> contextSnapshot,
+        string? explicitOneTurnModelOverride,
         CancellationToken cancellationToken)
     {
         var installedModels = await GetInstalledModelsForRoutingAsync(
@@ -1152,7 +1707,11 @@ public sealed partial class MainViewModel : ObservableObject
                     context.Images.Count > 0))
                 .ToArray(),
             installedModels,
-            _settingsService.Current.Models.Assignments);
+            _settingsService.Current.Models.Assignments)
+        {
+            ExplicitModelOverride = explicitOneTurnModelOverride,
+            ConversationModelOverride = ActiveConversationModelOverride
+        };
 
         var decision = await _modelRouter.SelectModelAsync(
             request,

@@ -16,6 +16,10 @@
                              Color="#EAF2FF" />
             <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush"
                              Color="#F3F6FA" />
+            <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush"
+                             Color="#F8FAFC" />
+            <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush"
+                             Color="#EEF2F7" />
             <SolidColorBrush x:Key="PersonalAiBorderBrush"
                              Color="#1F000000" />
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush"
@@ -44,6 +48,10 @@
                              Color="#23324A" />
             <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush"
                              Color="#292F36" />
+            <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush"
+                             Color="#171A1F" />
+            <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush"
+                             Color="#222831" />
             <SolidColorBrush x:Key="PersonalAiBorderBrush"
                              Color="#33FFFFFF" />
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush"

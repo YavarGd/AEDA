@@ -1,43 +1,100 @@
 namespace PersonalAI.Core.Chat;
 
-public sealed record ExplicitModelOverride(
-    string Model,
-    string PromptWithoutDirective);
+public enum ModelCommandKind
+{
+    None,
+    ConversationOverride,
+    ClearConversationOverride,
+    OneTurnOverride,
+    Malformed
+}
+
+public sealed record ModelCommandParseResult(
+    ModelCommandKind Kind,
+    string? Model = null,
+    string? Prompt = null,
+    string? ErrorMessage = null);
 
 public static class ExplicitModelOverrideParser
 {
-    private const string Directive = "/model ";
+    private const string Directive = "/model";
 
-    public static ExplicitModelOverride? Parse(string prompt)
+    public static ModelCommandParseResult ParseCommand(string prompt)
     {
         if (string.IsNullOrWhiteSpace(prompt))
         {
-            return null;
+            return new ModelCommandParseResult(ModelCommandKind.None);
         }
 
-        var trimmedStart = prompt.TrimStart();
+        var trimmed = prompt.Trim();
 
-        if (!trimmedStart.StartsWith(Directive, StringComparison.OrdinalIgnoreCase))
+        if (!trimmed.StartsWith(Directive, StringComparison.OrdinalIgnoreCase))
         {
-            return null;
+            return new ModelCommandParseResult(ModelCommandKind.None);
         }
 
-        var firstLineEnd = trimmedStart.IndexOfAny(['\r', '\n']);
-        var firstLine = firstLineEnd < 0
-            ? trimmedStart
-            : trimmedStart[..firstLineEnd];
-        var model = firstLine[Directive.Length..].Trim();
+        if (trimmed.Length > Directive.Length &&
+            !char.IsWhiteSpace(trimmed[Directive.Length]))
+        {
+            return new ModelCommandParseResult(ModelCommandKind.None);
+        }
+
+        if (trimmed.Contains('\r', StringComparison.Ordinal) ||
+            trimmed.Contains('\n', StringComparison.Ordinal))
+        {
+            return new ModelCommandParseResult(
+                ModelCommandKind.Malformed,
+                ErrorMessage: "Use /model <name>, /model auto, or /model <name> -- <prompt>.");
+        }
+
+        var body = trimmed[Directive.Length..].Trim();
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return new ModelCommandParseResult(
+                ModelCommandKind.Malformed,
+                ErrorMessage: "Specify a model name or auto.");
+        }
+
+        if (body.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ModelCommandParseResult(
+                ModelCommandKind.ClearConversationOverride);
+        }
+
+        var separatorIndex = body.IndexOf(" -- ", StringComparison.Ordinal);
+        var model = separatorIndex < 0
+            ? body
+            : body[..separatorIndex].Trim();
+        var remaining = separatorIndex < 0
+            ? string.Empty
+            : body[(separatorIndex + 4)..].Trim();
 
         if (string.IsNullOrWhiteSpace(model) ||
             model.Contains(' ', StringComparison.Ordinal))
         {
-            return null;
+            return new ModelCommandParseResult(
+                ModelCommandKind.Malformed,
+                ErrorMessage: "Use /model <name>, /model auto, or /model <name> -- <prompt>.");
         }
 
-        var remaining = firstLineEnd < 0
-            ? string.Empty
-            : trimmedStart[firstLineEnd..].TrimStart('\r', '\n');
+        if (separatorIndex >= 0)
+        {
+            if (string.IsNullOrWhiteSpace(remaining))
+            {
+                return new ModelCommandParseResult(
+                    ModelCommandKind.Malformed,
+                    ErrorMessage: "Add a prompt after -- or use standalone /model <name>.");
+            }
 
-        return new ExplicitModelOverride(model, remaining);
+            return new ModelCommandParseResult(
+                ModelCommandKind.OneTurnOverride,
+                model,
+                remaining);
+        }
+
+        return new ModelCommandParseResult(
+            ModelCommandKind.ConversationOverride,
+            model);
     }
 }

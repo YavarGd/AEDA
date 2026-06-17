@@ -9,6 +9,7 @@ public static class VisionModelCapabilityRegistry
         "moondream",
         "llama3.2-vision",
         "llama3.2vision",
+        "qwen3-vl",
         "minicpm-v",
         "gemma3",
         "gemma4"

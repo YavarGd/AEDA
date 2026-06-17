@@ -155,6 +155,7 @@ public partial class App : Application
             toolRuntime,
             _taskTimeline,
             workspaceRegistry,
+            new WinUiClipboardWriter(),
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
                 Task.FromResult<IReadOnlyList<string>>([]));
         _viewModel = viewModel;

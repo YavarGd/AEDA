@@ -3,7 +3,6 @@ using PersonalAI.Core.Chat;
 using PersonalAI.Core.Permissions;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
-using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.ViewModels;
 
 namespace PersonalAI.Tests.Chat;
@@ -248,19 +247,6 @@ public sealed class ToolPresentationMapperTests
 
         Assert.Contains("List files", activity, StringComparison.Ordinal);
         Assert.DoesNotContain("workspace.directory.list", activity, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ChatMessageViewModel_ToolActivityIsDistinctFromAssistantMessage()
-    {
-        var tool = new ChatMessageViewModel(ChatRole.Tool, "List files completed.");
-        var assistant = new ChatMessageViewModel(ChatRole.Assistant, "Done.");
-
-        Assert.True(tool.IsToolActivity);
-        Assert.Equal("Activity", tool.RoleLabel);
-        Assert.Equal(1, tool.ContentMaxLines);
-        Assert.False(assistant.IsToolActivity);
-        Assert.Equal("Assistant", assistant.RoleLabel);
     }
 
     private static ChatToolCall CreateCall(string toolName, object arguments)

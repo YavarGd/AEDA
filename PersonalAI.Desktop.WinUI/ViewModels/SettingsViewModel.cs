@@ -48,6 +48,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<string> InstalledModels { get; } = [];
 
+    public ObservableCollection<string> VisionModels { get; } = [];
+
     public WorkspaceManagementViewModel Workspaces { get; }
 
     public string SettingsPath => _settingsService.SettingsPath;
@@ -297,10 +299,17 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             var models = await _refreshModelsAsync(CancellationToken.None);
             InstalledModels.Clear();
+            VisionModels.Clear();
 
             foreach (var model in models)
             {
                 InstalledModels.Add(model);
+                if (VisionModelCapabilityRegistry.SupportsImages(
+                        model,
+                        _settingsService.Current.Vision))
+                {
+                    VisionModels.Add(model);
+                }
             }
 
             ModelRefreshStatus = models.Count == 0
@@ -344,13 +353,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         var vision = models.FirstOrDefault(model =>
             VisionModelCapabilityRegistry.SupportsImages(
                 model,
-                new VisionSettings(models)));
+                _settingsService.Current.Vision));
 
         GeneralModel = general;
         CodingModel = general;
         FastModel = general;
         ReasoningModel = general;
-        VisionModel = vision ?? general;
+            VisionModel = vision ?? string.Empty;
         await SaveSettingsAsync();
         StatusMessage = "Model assignments reset to detected defaults.";
     }
@@ -567,7 +576,12 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         if (VisionModelCapabilityRegistry.SupportsImages(
                 VisionModel,
-                new VisionSettings([VisionModel])))
+                new VisionSettings(
+                    VisionPatternsText
+                        .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                        .Select(line => line.Trim())
+                        .Where(line => line.Length > 0)
+                        .ToArray())))
         {
             errorMessage = string.Empty;
             return true;
@@ -589,7 +603,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var firstVision = models.FirstOrDefault(model =>
             VisionModelCapabilityRegistry.SupportsImages(
                 model,
-                new VisionSettings([VisionModel])));
+                _settingsService.Current.Vision));
 
         GeneralModel = ChooseExistingOrDefault(GeneralModel, models, first);
         CodingModel = ChooseExistingOrDefault(CodingModel, models, GeneralModel);
@@ -598,10 +612,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ReasoningModel,
             models,
             GeneralModel);
-        VisionModel = ChooseExistingOrDefault(
-            VisionModel,
-            models,
-            firstVision ?? GeneralModel);
+        VisionModel = ChooseVisionOrEmpty(VisionModel, models, firstVision);
     }
 
     private void RestoreHotkeyDraft()
@@ -639,5 +650,21 @@ public sealed partial class SettingsViewModel : ObservableObject
         return models.FirstOrDefault(model =>
             model.Equals(current, StringComparison.OrdinalIgnoreCase)) ??
             fallback;
+    }
+
+    private static string ChooseVisionOrEmpty(
+        string current,
+        IReadOnlyList<string> models,
+        string? fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(current) &&
+            models.Any(model =>
+                model.Equals(current, StringComparison.OrdinalIgnoreCase)) &&
+            VisionModelCapabilityRegistry.SupportsImages(current, VisionSettings.Default))
+        {
+            return current;
+        }
+
+        return fallback ?? string.Empty;
     }
 }

@@ -1,6 +1,4 @@
 using System.Xml.Linq;
-using PersonalAI.Core.Chat;
-using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Tests.Ui;
@@ -20,18 +18,20 @@ public sealed class ShellLayoutTests
     [InlineData("New chat", "NewChatCommand", "\uE710")]
     [InlineData("Settings", "OpenSettingsCommand", "\uE713")]
     [InlineData("Send", "SendMessageCommand", "\uE74A")]
-    [InlineData("Attach clipboard text", "AttachClipboardContextCommand", "\uE8C8")]
-    [InlineData("Capture screenshot", "CaptureScreenshotContextCommand", "\uE722")]
-    [InlineData("Capture active app context", "CaptureApplicationContextCommand", "\uE8B7")]
+    [InlineData("Add context", null, "\uE898")]
     public void IconOnlyPrimaryButtons_KeepAccessibleLabelsAndCommands(
         string accessibleName,
-        string commandName,
+        string? commandName,
         string glyph)
     {
         var button = FindButtonByAccessibleName(accessibleName);
 
         Assert.Equal(accessibleName, AttributeValue(button, "ToolTipService.ToolTip"));
-        Assert.Equal($"{{Binding {commandName}}}", AttributeValue(button, "Command"));
+        if (commandName is not null)
+        {
+            Assert.Equal($"{{Binding {commandName}}}", AttributeValue(button, "Command"));
+        }
+
         Assert.Null(AttributeValue(button, "Content"));
         Assert.Contains(
             button.Descendants().Where(element => element.Name.LocalName == "FontIcon"),
@@ -83,6 +83,8 @@ public sealed class ShellLayoutTests
             "PersonalAiSubtleSurfaceBrush",
             "PersonalAiMessageSurfaceBrush",
             "PersonalAiToolActivitySurfaceBrush",
+            "PersonalAiCodeBackgroundBrush",
+            "PersonalAiCodeHeaderBrush",
             "PersonalAiBorderBrush",
             "PersonalAiMutedTextBrush",
             "PersonalAiSecondaryTextBrush",
@@ -129,17 +131,191 @@ public sealed class ShellLayoutTests
     }
 
     [Fact]
-    public void ChatMessageViewModel_RolesHaveDistinctPresentation()
+    public void ChatSurface_RemovesVisibleStopButtonAndKeepsJumpToLatestAccessible()
     {
-        var user = new ChatMessageViewModel(ChatRole.User, "Hello");
-        var assistant = new ChatMessageViewModel(ChatRole.Assistant, "Hi");
-        var tool = new ChatMessageViewModel(ChatRole.Tool, "Search completed.");
+        var document = LoadShellXaml();
 
-        Assert.Equal(Microsoft.UI.Xaml.HorizontalAlignment.Right, user.MessageHorizontalAlignment);
-        Assert.Equal(Microsoft.UI.Xaml.HorizontalAlignment.Left, assistant.MessageHorizontalAlignment);
-        Assert.True(user.MessageMaxWidth < assistant.MessageMaxWidth);
-        Assert.True(tool.ContentMaxLines > assistant.ContentMaxLines);
-        Assert.True(tool.BorderThickness.Left > assistant.BorderThickness.Left);
+        Assert.DoesNotContain(
+            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            button => AttributeValue(button, "AutomationProperties.Name") == "Stop");
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            button => AttributeValue(button, "AutomationProperties.Name") == "Jump to latest");
+    }
+
+    [Fact]
+    public void Composer_UsesAttachmentMenuAndNoPermanentEmptyContextText()
+    {
+        var document = LoadShellXaml();
+        var buttons = document.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToArray();
+        var menuItems = document.Descendants()
+            .Where(element => element.Name.LocalName == "MenuFlyoutItem")
+            .ToArray();
+
+        Assert.DoesNotContain(
+            document.Descendants(),
+            element => AttributeValue(element, "Text") == "No context attached");
+        Assert.Contains(
+            buttons,
+            button => AttributeValue(button, "AutomationProperties.Name") == "Add context");
+        Assert.DoesNotContain(
+            buttons,
+            button => AttributeValue(button, "AutomationProperties.Name") == "Capture active app context");
+        Assert.DoesNotContain(
+            buttons,
+            button => AttributeValue(button, "AutomationProperties.Name") == "Attach clipboard text");
+        Assert.DoesNotContain(
+            buttons,
+            button => AttributeValue(button, "AutomationProperties.Name") == "Capture screenshot");
+        Assert.Contains(
+            menuItems,
+            item => AttributeValue(item, "Command") == "{Binding CaptureApplicationContextCommand}");
+        Assert.Contains(
+            menuItems,
+            item => AttributeValue(item, "Command") == "{Binding AttachClipboardContextCommand}");
+        Assert.Contains(
+            menuItems,
+            item => AttributeValue(item, "Command") == "{Binding CaptureScreenshotContextCommand}");
+    }
+
+    [Fact]
+    public void ConversationRows_ShowTitleAndPreviewOnly()
+    {
+        var document = LoadShellXaml();
+        var row = document.Descendants()
+            .Where(element => element.Name.LocalName == "StackPanel")
+            .Single(element =>
+                element.Descendants().Any(child =>
+                    child.Name.LocalName == "TextBlock" &&
+                    AttributeValue(child, "Text") == "{Binding Title}") &&
+                element.Descendants().Any(child =>
+                    child.Name.LocalName == "TextBlock" &&
+                    AttributeValue(child, "Text") == "{Binding Preview}" &&
+                    AttributeValue(child, "TextWrapping") == "NoWrap"));
+        var preview = row.Descendants().Single(element =>
+            element.Name.LocalName == "TextBlock" &&
+            AttributeValue(element, "Text") == "{Binding Preview}" &&
+            AttributeValue(element, "TextWrapping") == "NoWrap");
+
+        Assert.Equal("1", AttributeValue(preview, "MaxLines"));
+        Assert.DoesNotContain(
+            row.Descendants(),
+            element => AttributeValue(element, "Text") == "{Binding Model}");
+        Assert.DoesNotContain(
+            row.Descendants(),
+            element => AttributeValue(element, "Text") == "{Binding Status}");
+    }
+
+    [Fact]
+    public void ChatTimeline_BindsRolePresentationWithoutCreatingWinUiObjects()
+    {
+        var document = LoadShellXaml();
+        var timeline = document
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "ListView" &&
+                AttributeValue(element, "Name") == "TimelineList");
+        var messageBorder = document
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "Border" &&
+                AttributeValue(element, "MaxWidth") == "{Binding MessageMaxWidth}");
+        var contentText = document
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "TextBlock" &&
+                AttributeValue(element, "Text") == "{Binding Content}");
+
+        Assert.Equal("Top", AttributeValue(timeline, "VerticalContentAlignment"));
+        Assert.Equal("{Binding BorderThickness}", AttributeValue(messageBorder, "BorderThickness"));
+        Assert.Equal("{Binding MessageHorizontalAlignment}", AttributeValue(messageBorder, "HorizontalAlignment"));
+        Assert.Equal("{Binding ContentMaxLines}", AttributeValue(contentText, "MaxLines"));
+        Assert.Equal("{Binding ContentTextWrapping}", AttributeValue(contentText, "TextWrapping"));
+    }
+
+    [Fact]
+    public void AttachmentCards_AreCompactAndHideTechnicalDetails()
+    {
+        var document = LoadShellXaml();
+        var attachmentCard = document.Descendants()
+            .Where(element => element.Name.LocalName == "Border")
+            .Single(element =>
+                AttributeValue(element, "ToolTipService.ToolTip") == "{Binding Preview}" &&
+                AttributeValue(element, "Width") == "184");
+
+        Assert.Contains(
+            attachmentCard.Descendants(),
+            element => element.Name.LocalName == "FontIcon" &&
+                AttributeValue(element, "Glyph") == "\uE722");
+        Assert.DoesNotContain(
+            attachmentCard.Descendants(),
+            element => element.Name.LocalName == "Image");
+        Assert.DoesNotContain(
+            attachmentCard.Descendants(),
+            element => AttributeValue(element, "Text") == "{Binding Preview}");
+        Assert.DoesNotContain(
+            attachmentCard.Descendants(),
+            element => AttributeValue(element, "Text") == "{Binding Type}");
+    }
+
+    [Fact]
+    public void VisionSelector_ListsOnlyVisionModels()
+    {
+        var document = LoadShellXaml();
+        var visionSelector = document.Descendants()
+            .Where(element => element.Name.LocalName == "ComboBox")
+            .Single(element => AttributeValue(element, "Header") == "Vision");
+
+        Assert.Equal("{Binding VisionModels}", AttributeValue(visionSelector, "ItemsSource"));
+        Assert.Equal("False", AttributeValue(visionSelector, "IsEditable"));
+    }
+
+    [Fact]
+    public void Header_ShowsConversationModelOverrideSeparatelyFromRoutingStatus()
+    {
+        var document = LoadShellXaml();
+
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Border"),
+            border =>
+                AttributeValue(border, "Visibility")?.Contains(
+                    "HasConversationModelOverride",
+                    StringComparison.Ordinal) == true &&
+                AttributeValue(border, "ToolTipService.ToolTip") ==
+                    "{Binding ConversationModelOverrideLabel}");
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
+            text => AttributeValue(text, "Text") == "{Binding RoutingStatusMessage}");
+    }
+
+    [Fact]
+    public void BlockedVisionCard_OffersAutomaticRoutingAndSettingsActions()
+    {
+        var document = LoadShellXaml();
+        var buttons = document.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToArray();
+
+        Assert.Contains(
+            buttons,
+            button =>
+                AttributeValue(button, "Content") == "Use automatic routing" &&
+                AttributeValue(button, "Command") ==
+                    "{Binding DataContext.UseAutomaticRoutingCommand, ElementName=Root}" &&
+                AttributeValue(button, "Visibility")?.Contains(
+                    "IsCapabilityBlocked",
+                    StringComparison.Ordinal) == true);
+        Assert.Contains(
+            buttons,
+            button =>
+                AttributeValue(button, "Content") == "Choose vision model" &&
+                AttributeValue(button, "Command") ==
+                    "{Binding DataContext.ChooseVisionModelCommand, ElementName=Root}" &&
+                AttributeValue(button, "Visibility")?.Contains(
+                    "IsCapabilityBlocked",
+                    StringComparison.Ordinal) == true);
     }
 
     private static XElement FindButtonByAccessibleName(string accessibleName)

@@ -23,7 +23,12 @@ public sealed record ModelRoutingRequest(
     string UserPrompt,
     IReadOnlyList<AttachedContextSignal> AttachedContexts,
     IReadOnlyList<string> InstalledModels,
-    IReadOnlyList<ModelRoutingAssignment> Assignments);
+    IReadOnlyList<ModelRoutingAssignment> Assignments)
+{
+    public string? ExplicitModelOverride { get; init; }
+
+    public string? ConversationModelOverride { get; init; }
+}
 
 public sealed record AttachedContextSignal(
     string Type,
@@ -35,7 +40,22 @@ public sealed record ModelRoutingDecision(
     string UserVisibleReason,
     bool ExplicitOverrideHonored,
     string? FallbackReason,
-    string RoutedPrompt);
+    string RoutedPrompt)
+{
+    public bool IsCapabilityBlocked { get; init; }
+
+    public ModelRoutingSource Source { get; init; } = ModelRoutingSource.Automatic;
+}
+
+public enum ModelRoutingSource
+{
+    Automatic,
+    SettingsOverride,
+    ConversationOverride,
+    ExplicitOneTurnOverride,
+    SafeFallback,
+    IncompatibleOverride
+}
 
 public interface IChatModelRouter
 {

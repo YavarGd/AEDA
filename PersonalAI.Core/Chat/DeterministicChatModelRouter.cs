@@ -18,53 +18,27 @@ public sealed class DeterministicChatModelRouter : IChatModelRouter
         var hasImage = request.AttachedContexts.Any(context => context.HasImage);
         var hasEditorContext = request.AttachedContexts.Any(context =>
             context.Type.Equals("VsCodeEditor", StringComparison.OrdinalIgnoreCase));
-        var overrideDirective = ExplicitModelOverrideParser.Parse(request.UserPrompt);
-        var routedPrompt = overrideDirective?.PromptWithoutDirective ?? request.UserPrompt;
+        var routedPrompt = request.UserPrompt;
 
-        if (overrideDirective is not null)
+        if (!string.IsNullOrWhiteSpace(request.ExplicitModelOverride))
         {
-            var knownModel = FindInstalled(installed, overrideDirective.Model);
+            return Task.FromResult(ChooseOverrideModel(
+                request.ExplicitModelOverride,
+                ModelRoutingSource.ExplicitOneTurnOverride,
+                "Explicit model",
+                installed,
+                hasImage,
+                routedPrompt));
+        }
 
-            if (knownModel is null)
-            {
-                return Task.FromResult(ChooseCategory(
-                    request,
-                    installed,
-                    hasImage,
-                    hasEditorContext,
-                    $"Requested model '{overrideDirective.Model}' is not installed.",
-                    overrideHonored: false,
-                    routedPrompt));
-            }
-
-            if (hasImage &&
-                !VisionModelCapabilityRegistry.SupportsImages(
-                    knownModel,
-                    new VisionSettings(
-                        request.Assignments
-                            .Where(assignment =>
-                                assignment.Category == ModelRoutingCategory.Vision)
-                            .Select(assignment => assignment.Model)
-                            .ToArray())))
-            {
-                return Task.FromResult(ChooseCategory(
-                    request,
-                    installed,
-                    hasImage,
-                    hasEditorContext,
-                    $"Requested model '{knownModel}' cannot accept images.",
-                    overrideHonored: false,
-                    routedPrompt));
-            }
-
-            return Task.FromResult(new ModelRoutingDecision(
-                knownModel,
-                hasImage
-                    ? ModelRoutingCategory.Vision
-                    : ModelRoutingCategory.General,
-                $"Using requested model: {knownModel}",
-                ExplicitOverrideHonored: true,
-                FallbackReason: null,
+        if (!string.IsNullOrWhiteSpace(request.ConversationModelOverride))
+        {
+            return Task.FromResult(ChooseOverrideModel(
+                request.ConversationModelOverride,
+                ModelRoutingSource.ConversationOverride,
+                "Conversation override",
+                installed,
+                hasImage,
                 routedPrompt));
         }
 
@@ -76,6 +50,64 @@ public sealed class DeterministicChatModelRouter : IChatModelRouter
             fallbackPrefix: null,
             overrideHonored: false,
             routedPrompt));
+    }
+
+    private static ModelRoutingDecision ChooseOverrideModel(
+        string? requestedModel,
+        ModelRoutingSource source,
+        string sourceLabel,
+        IReadOnlyList<string> installed,
+        bool hasImage,
+        string routedPrompt)
+    {
+        var knownModel = FindInstalled(installed, requestedModel);
+
+        if (knownModel is null)
+        {
+            var requested = string.IsNullOrWhiteSpace(requestedModel)
+                ? "unknown"
+                : requestedModel.Trim();
+
+            return new ModelRoutingDecision(
+                requested,
+                hasImage ? ModelRoutingCategory.Vision : ModelRoutingCategory.General,
+                $"Model unavailable · {requested}",
+                ExplicitOverrideHonored: false,
+                FallbackReason: $"Requested model '{requested}' is not installed.",
+                routedPrompt)
+            {
+                IsCapabilityBlocked = true,
+                Source = ModelRoutingSource.IncompatibleOverride
+            };
+        }
+
+        if (hasImage && !VisionModelCapabilityRegistry.SupportsImages(
+                knownModel,
+                VisionSettings.Default))
+        {
+            return new ModelRoutingDecision(
+                knownModel,
+                ModelRoutingCategory.Vision,
+                "Model incompatible with image",
+                ExplicitOverrideHonored: source == ModelRoutingSource.ExplicitOneTurnOverride,
+                FallbackReason: $"{knownModel} cannot analyze images.",
+                routedPrompt)
+            {
+                IsCapabilityBlocked = true,
+                Source = ModelRoutingSource.IncompatibleOverride
+            };
+        }
+
+        return new ModelRoutingDecision(
+            knownModel,
+            hasImage ? ModelRoutingCategory.Vision : ModelRoutingCategory.General,
+            $"{sourceLabel} · {knownModel}",
+            ExplicitOverrideHonored: source == ModelRoutingSource.ExplicitOneTurnOverride,
+            FallbackReason: null,
+            routedPrompt)
+        {
+            Source = source
+        };
     }
 
     private static ModelRoutingDecision ChooseCategory(
@@ -95,23 +127,32 @@ public sealed class DeterministicChatModelRouter : IChatModelRouter
         var preferred = FindAssignment(request.Assignments, category);
         var selected = FindInstalled(installed, preferred);
         string? fallbackReason = fallbackPrefix;
+        var capabilityBlocked = false;
+
+        if (selected is not null &&
+            hasImage &&
+            !VisionModelCapabilityRegistry.SupportsImages(
+                selected,
+                VisionSettings.Default))
+        {
+            selected = null;
+            fallbackReason = CombineFallback(
+                fallbackReason,
+                $"Vision assignment '{preferred}' cannot accept images.");
+        }
 
         if (selected is null && hasImage)
         {
             selected = installed.FirstOrDefault(model =>
                 VisionModelCapabilityRegistry.SupportsImages(
                     model,
-                    new VisionSettings(
-                        request.Assignments
-                            .Where(assignment =>
-                                assignment.Category == ModelRoutingCategory.Vision)
-                            .Select(assignment => assignment.Model)
-                            .ToArray())));
+                    VisionSettings.Default));
             fallbackReason = CombineFallback(
                 fallbackReason,
                 selected is null
                     ? "No installed vision-capable model is available."
                     : $"Vision assignment '{preferred}' is unavailable; using '{selected}'.");
+            capabilityBlocked = selected is null;
         }
 
         if (selected is null && !hasImage)
@@ -134,15 +175,23 @@ public sealed class DeterministicChatModelRouter : IChatModelRouter
             category,
             category switch
             {
-                ModelRoutingCategory.Vision => $"Using vision model: {selected}",
-                ModelRoutingCategory.Coding => $"Using coding model: {selected}",
-                ModelRoutingCategory.Fast => $"Using fast model: {selected}",
-                ModelRoutingCategory.Reasoning => $"Using reasoning model: {selected}",
-                _ => $"Using general model: {selected}"
+                ModelRoutingCategory.Vision => $"Automatic · Vision: {selected}",
+                ModelRoutingCategory.Coding => $"Automatic · Coding: {selected}",
+                ModelRoutingCategory.Fast => $"Settings · Fast: {selected}",
+                ModelRoutingCategory.Reasoning => $"Settings · Reasoning: {selected}",
+                _ => $"Automatic · General: {selected}"
             },
             overrideHonored,
             fallbackReason,
-            routedPrompt);
+            routedPrompt)
+        {
+            IsCapabilityBlocked = capabilityBlocked,
+            Source = capabilityBlocked
+                ? ModelRoutingSource.IncompatibleOverride
+                : fallbackReason is null
+                    ? ModelRoutingSource.SettingsOverride
+                    : ModelRoutingSource.SafeFallback
+        };
     }
 
     private static string FindAssignment(
