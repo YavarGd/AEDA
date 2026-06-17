@@ -16,6 +16,8 @@ public sealed partial class WorkspaceItemViewModel(PersistedWorkspace workspace)
 
     public string RootPath => Workspace.CanonicalRootPath;
 
+    public string ShortRootPath => ShortenPath(Workspace.CanonicalRootPath);
+
     public string Source => Workspace.Source;
 
     public string AddedAt => Workspace.AddedAtUtc.ToLocalTime().ToString("g");
@@ -49,6 +51,7 @@ public sealed partial class WorkspaceItemViewModel(PersistedWorkspace workspace)
         OnPropertyChanged(nameof(WorkspaceId));
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(RootPath));
+        OnPropertyChanged(nameof(ShortRootPath));
         OnPropertyChanged(nameof(Source));
         OnPropertyChanged(nameof(AddedAt));
         OnPropertyChanged(nameof(LastValidated));
@@ -58,5 +61,26 @@ public sealed partial class WorkspaceItemViewModel(PersistedWorkspace workspace)
         OnPropertyChanged(nameof(StatusSymbol));
         OnPropertyChanged(nameof(ReadOnlyBadge));
         OnPropertyChanged(nameof(CanUseWorkspace));
+    }
+
+    private static string ShortenPath(string path)
+    {
+        const int maxLength = 64;
+
+        if (string.IsNullOrWhiteSpace(path) || path.Length <= maxLength)
+        {
+            return path;
+        }
+
+        var root = Path.GetPathRoot(path) ?? string.Empty;
+        var fileName = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        if (!string.IsNullOrWhiteSpace(fileName) &&
+            root.Length + fileName.Length + 5 < maxLength)
+        {
+            return $"{root}...\\{fileName}";
+        }
+
+        return $"...{path[^Math.Min(path.Length, maxLength - 3)..]}";
     }
 }

@@ -1,7 +1,158 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush"
+                             Color="#F7F7F8" />
+            <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush"
+                             Color="#F2F3F5" />
+            <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush"
+                             Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush"
+                             Color="#F7F8FA" />
+            <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush"
+                             Color="#EAF2FF" />
+            <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush"
+                             Color="#F3F6FA" />
+            <SolidColorBrush x:Key="PersonalAiBorderBrush"
+                             Color="#1F000000" />
+            <SolidColorBrush x:Key="PersonalAiMutedTextBrush"
+                             Color="#8A000000" />
+            <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush"
+                             Color="#B3000000" />
+            <SolidColorBrush x:Key="PersonalAiSuccessBrush"
+                             Color="#0F7B0F" />
+            <SolidColorBrush x:Key="PersonalAiWarningBrush"
+                             Color="#9D5D00" />
+            <SolidColorBrush x:Key="PersonalAiErrorBrush"
+                             Color="#C42B1C" />
+            <SolidColorBrush x:Key="PersonalAiActiveBrush"
+                             Color="#005FB8" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush"
+                             Color="#202020" />
+            <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush"
+                             Color="#191919" />
+            <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush"
+                             Color="#2B2B2B" />
+            <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush"
+                             Color="#252525" />
+            <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush"
+                             Color="#23324A" />
+            <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush"
+                             Color="#292F36" />
+            <SolidColorBrush x:Key="PersonalAiBorderBrush"
+                             Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiMutedTextBrush"
+                             Color="#99FFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush"
+                             Color="#CCFFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiSuccessBrush"
+                             Color="#6CCB5F" />
+            <SolidColorBrush x:Key="PersonalAiWarningBrush"
+                             Color="#F3C45B" />
+            <SolidColorBrush x:Key="PersonalAiErrorBrush"
+                             Color="#FF8A80" />
+            <SolidColorBrush x:Key="PersonalAiActiveBrush"
+                             Color="#60CDFF" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <x:Double x:Key="Space4">4</x:Double>
+    <x:Double x:Key="Space8">8</x:Double>
+    <x:Double x:Key="Space12">12</x:Double>
+    <x:Double x:Key="Space16">16</x:Double>
+    <x:Double x:Key="Space24">24</x:Double>
+    <x:Double x:Key="Space32">32</x:Double>
+
     <Thickness x:Key="PagePadding">24</Thickness>
-    <Thickness x:Key="ControlSpacing">8</Thickness>
+    <Thickness x:Key="SectionPadding">16</Thickness>
+    <Thickness x:Key="CardPadding">12</Thickness>
+    <Thickness x:Key="CompactControlPadding">8,4</Thickness>
     <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="PillCornerRadius">999</CornerRadius>
+    <CornerRadius x:Key="ComposerCornerRadius">12</CornerRadius>
+    <x:Double x:Key="ControlHeight">36</x:Double>
+    <x:Double x:Key="IconButtonSize">40</x:Double>
+    <x:Double x:Key="CompactIconButtonSize">32</x:Double>
+
+    <Style x:Key="PersonalAiIconButtonStyle"
+           TargetType="Button">
+        <Setter Property="Width"
+                Value="{StaticResource IconButtonSize}" />
+        <Setter Property="Height"
+                Value="{StaticResource IconButtonSize}" />
+        <Setter Property="MinWidth"
+                Value="{StaticResource IconButtonSize}" />
+        <Setter Property="Padding"
+                Value="0" />
+        <Setter Property="HorizontalAlignment"
+                Value="Center" />
+        <Setter Property="VerticalAlignment"
+                Value="Center" />
+    </Style>
+
+    <Style x:Key="PersonalAiCompactIconButtonStyle"
+           TargetType="Button"
+           BasedOn="{StaticResource PersonalAiIconButtonStyle}">
+        <Setter Property="Width"
+                Value="{StaticResource CompactIconButtonSize}" />
+        <Setter Property="Height"
+                Value="{StaticResource CompactIconButtonSize}" />
+        <Setter Property="MinWidth"
+                Value="{StaticResource CompactIconButtonSize}" />
+    </Style>
+
+    <Style x:Key="PersonalAiPageTitleTextStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource TitleTextBlockStyle}">
+        <Setter Property="FontFamily"
+                Value="Segoe UI Variable Text" />
+        <Setter Property="FontWeight"
+                Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="PersonalAiSectionTitleTextStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+        <Setter Property="FontWeight"
+                Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="PersonalAiSecondaryTextStyle"
+           TargetType="TextBlock">
+        <Setter Property="Foreground"
+                Value="{ThemeResource PersonalAiSecondaryTextBrush}" />
+        <Setter Property="TextTrimming"
+                Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="PersonalAiMetadataTextStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground"
+                Value="{ThemeResource PersonalAiMutedTextBrush}" />
+        <Setter Property="TextTrimming"
+                Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="PersonalAiPillTextStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground"
+                Value="{ThemeResource PersonalAiSecondaryTextBrush}" />
+        <Setter Property="TextWrapping"
+                Value="NoWrap" />
+        <Setter Property="TextTrimming"
+                Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="PersonalAiSettingsExpanderStyle"
+           TargetType="Expander">
+        <Setter Property="Margin"
+                Value="0,0,0,12" />
+    </Style>
 </ResourceDictionary>

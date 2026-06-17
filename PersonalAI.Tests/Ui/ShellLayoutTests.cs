@@ -1,4 +1,6 @@
 using System.Xml.Linq;
+using PersonalAI.Core.Chat;
+using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Tests.Ui;
@@ -64,9 +66,80 @@ public sealed class ShellLayoutTests
             AttributeValue(element, "Name") == "PromptTextBox");
 
         Assert.Equal("1080", AttributeValue(root, "MinWidth"));
-        Assert.Equal("680", AttributeValue(root, "MinHeight"));
+        Assert.Equal("760", AttributeValue(root, "MinHeight"));
         Assert.Equal("360", AttributeValue(prompt, "MinWidth"));
-        Assert.Equal("88", AttributeValue(prompt, "MinHeight"));
+        Assert.Equal("84", AttributeValue(prompt, "MinHeight"));
+    }
+
+    [Fact]
+    public void ThemeResources_DefineSharedVisualSystemTokens()
+    {
+        var document = LoadThemeResources();
+        var requiredKeys = new[]
+        {
+            "PersonalAiPageBackgroundBrush",
+            "PersonalAiSidebarBackgroundBrush",
+            "PersonalAiElevatedSurfaceBrush",
+            "PersonalAiSubtleSurfaceBrush",
+            "PersonalAiMessageSurfaceBrush",
+            "PersonalAiToolActivitySurfaceBrush",
+            "PersonalAiBorderBrush",
+            "PersonalAiMutedTextBrush",
+            "PersonalAiSecondaryTextBrush",
+            "PersonalAiSuccessBrush",
+            "PersonalAiWarningBrush",
+            "PersonalAiErrorBrush",
+            "PersonalAiActiveBrush",
+            "CardCornerRadius",
+            "PillCornerRadius",
+            "ComposerCornerRadius",
+            "IconButtonSize",
+            "PersonalAiIconButtonStyle",
+            "PersonalAiPageTitleTextStyle",
+            "PersonalAiSettingsExpanderStyle"
+        };
+
+        foreach (var key in requiredKeys)
+        {
+            Assert.Contains(
+                document.Descendants(),
+                element => AttributeValue(element, "Key") == key);
+        }
+    }
+
+    [Fact]
+    public void SettingsSurface_UsesClearGroupsAndKeepsDeveloperCollapsed()
+    {
+        var document = LoadShellXaml();
+        var headers = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Expander")
+            .Select(element => AttributeValue(element, "Header"))
+            .ToArray();
+
+        Assert.Contains("General", headers);
+        Assert.Contains("Workspaces", headers);
+        Assert.Contains("Models", headers);
+        Assert.Contains("Appearance", headers);
+        Assert.Contains("Integrations", headers);
+        Assert.Contains("Privacy", headers);
+        Assert.Contains("Developer", headers);
+        Assert.DoesNotContain("Advanced model routing", headers);
+        Assert.DoesNotContain("Context and privacy", headers);
+    }
+
+    [Fact]
+    public void ChatMessageViewModel_RolesHaveDistinctPresentation()
+    {
+        var user = new ChatMessageViewModel(ChatRole.User, "Hello");
+        var assistant = new ChatMessageViewModel(ChatRole.Assistant, "Hi");
+        var tool = new ChatMessageViewModel(ChatRole.Tool, "Search completed.");
+
+        Assert.Equal(Microsoft.UI.Xaml.HorizontalAlignment.Right, user.MessageHorizontalAlignment);
+        Assert.Equal(Microsoft.UI.Xaml.HorizontalAlignment.Left, assistant.MessageHorizontalAlignment);
+        Assert.True(user.MessageMaxWidth < assistant.MessageMaxWidth);
+        Assert.True(tool.ContentMaxLines > assistant.ContentMaxLines);
+        Assert.True(tool.BorderThickness.Left > assistant.BorderThickness.Left);
     }
 
     private static XElement FindButtonByAccessibleName(string accessibleName)
@@ -81,15 +154,21 @@ public sealed class ShellLayoutTests
 
     private static XDocument LoadShellXaml()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        return LoadProjectXaml("Views", "MainWindow.xaml");
+    }
 
+    private static XDocument LoadThemeResources()
+    {
+        return LoadProjectXaml("Themes", "ThemeResources.xaml");
+    }
+
+    private static XDocument LoadProjectXaml(params string[] segments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
             var candidate = Path.Combine(
-                directory.FullName,
-                "PersonalAI.Desktop.WinUI",
-                "Views",
-                "MainWindow.xaml");
+                [directory.FullName, "PersonalAI.Desktop.WinUI", .. segments]);
 
             if (File.Exists(candidate))
             {
@@ -99,7 +178,8 @@ public sealed class ShellLayoutTests
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate MainWindow.xaml.");
+        throw new FileNotFoundException(
+            $"Could not locate {Path.Combine(segments)}.");
     }
 
     private static string? AttributeValue(XElement element, string localName)

@@ -64,7 +64,11 @@ public sealed class WinUiPermissionBroker(
         }
 
         var viewModel = new PermissionRequestViewModel(request);
-        var content = new StackPanel { Spacing = 8 };
+        var content = new StackPanel
+        {
+            Spacing = 12,
+            MaxWidth = 520
+        };
         content.Children.Add(new TextBlock
         {
             Text = viewModel.Action,
@@ -74,20 +78,29 @@ public sealed class WinUiPermissionBroker(
         content.Children.Add(new TextBlock
         {
             Text = viewModel.Explanation,
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.86
         });
-        content.Children.Add(new TextBlock
+        content.Children.Add(CreateLabelValue("Target", viewModel.Scope));
+        content.Children.Add(new Border
         {
-            Text = viewModel.Scope,
-            TextWrapping = TextWrapping.Wrap
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12),
+            Child = new TextBlock
+            {
+                Text = viewModel.Impact,
+                TextWrapping = TextWrapping.Wrap
+            }
         });
-        content.Children.Add(new TextBlock { Text = viewModel.Impact });
         content.Children.Add(new Expander
         {
             Header = "Technical details",
+            IsExpanded = false,
             Content = new TextBlock
             {
-                Text = $"Permissions: {viewModel.Permissions}{Environment.NewLine}Scope: {viewModel.TechnicalDetails}",
+                Text =
+                    $"Permissions: {viewModel.Permissions}{Environment.NewLine}Scope: {viewModel.TechnicalDetails}",
                 TextWrapping = TextWrapping.Wrap
             }
         });
@@ -100,12 +113,12 @@ public sealed class WinUiPermissionBroker(
         };
         var allowOnce = new Button { Content = "Allow once" };
         var allowForTask = new Button { Content = "Allow for this task" };
-        var cancelTask = new Button { Content = "Cancel task" };
         var deny = new Button { Content = "Deny" };
+        var cancelTask = new Button { Content = "Cancel task" };
         buttonRow.Children.Add(allowOnce);
         buttonRow.Children.Add(allowForTask);
-        buttonRow.Children.Add(cancelTask);
         buttonRow.Children.Add(deny);
+        buttonRow.Children.Add(cancelTask);
         content.Children.Add(buttonRow);
 
         var dialog = new ContentDialog
@@ -149,6 +162,24 @@ public sealed class WinUiPermissionBroker(
 
         _ = await dialog.ShowAsync();
         return session.OutcomeOr(PermissionDialogOutcome.Dismissed);
+    }
+
+    private static StackPanel CreateLabelValue(string label, string value)
+    {
+        var panel = new StackPanel { Spacing = 2 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 12,
+            Opacity = 0.72
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = value,
+            TextWrapping = TextWrapping.Wrap,
+            FontWeight = FontWeights.SemiBold
+        });
+        return panel;
     }
 
     private Task HideDialogOnUiThreadAsync(ContentDialog dialog)
