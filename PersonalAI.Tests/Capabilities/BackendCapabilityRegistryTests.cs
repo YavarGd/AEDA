@@ -23,6 +23,7 @@ public sealed class BackendCapabilityRegistryTests
         Assert.True(registry.GetStatus(BackendCapability.VoiceOutput).IsAvailable);
         Assert.True(registry.GetStatus(BackendCapability.StructuredToolCalls).IsAvailable);
         Assert.False(registry.GetStatus(BackendCapability.WebResearch).IsAvailable);
+        Assert.False(registry.GetStatus(BackendCapability.Memory).IsAvailable);
     }
 
     [Fact]
@@ -65,5 +66,65 @@ public sealed class BackendCapabilityRegistryTests
 
         Assert.False(status.IsAvailable);
         Assert.Equal("capability_unavailable", status.SafeReasonCode);
+    }
+
+    [Fact]
+    public void MemoryAndRagCapabilities_ReportConfiguredAndUnconfiguredStates()
+    {
+        var registry = BackendCapabilityRegistry.CreateDefault(
+            hasTaskRuntime: true,
+            hasDurableTaskHistory: true,
+            hasWorkflowManifestLoader: true,
+            hasSpeechToTextProvider: false,
+            hasTextToSpeechProvider: false,
+            hasLocalWorkerSupervisor: true,
+            hasStructuredToolRuntime: true,
+            hasMemoryRepository: true,
+            explicitMemoryEnabled: true,
+            projectMemoryEnabled: true,
+            taskOutcomeMemoryEnabled: true,
+            retrievalEnabled: true,
+            workspaceIndexingEnabled: false,
+            hasEmbeddingProvider: false,
+            hasVectorIndex: false);
+
+        Assert.True(registry.GetStatus(BackendCapability.Memory).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.ExplicitMemory).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.ProjectMemory).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.TaskOutcomeMemory).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.Retrieval).IsAvailable);
+        Assert.Equal(
+            "retrieval_text_search_only",
+            registry.GetStatus(BackendCapability.Retrieval).SafeReasonCode);
+        Assert.False(registry.GetStatus(BackendCapability.WorkspaceIndexing).IsAvailable);
+        Assert.Equal(
+            "workspace_indexing_disabled",
+            registry.GetStatus(BackendCapability.WorkspaceIndexing).SafeReasonCode);
+        Assert.False(registry.GetStatus(BackendCapability.Embeddings).IsAvailable);
+        Assert.Equal(
+            "embeddings_unconfigured",
+            registry.GetStatus(BackendCapability.Embeddings).SafeReasonCode);
+        Assert.False(registry.GetStatus(BackendCapability.VectorSearch).IsAvailable);
+    }
+
+    [Fact]
+    public void EmbeddingAndVectorCapabilities_AvailableWithConfiguredProviders()
+    {
+        var registry = BackendCapabilityRegistry.CreateDefault(
+            hasTaskRuntime: true,
+            hasDurableTaskHistory: true,
+            hasWorkflowManifestLoader: true,
+            hasSpeechToTextProvider: false,
+            hasTextToSpeechProvider: false,
+            hasLocalWorkerSupervisor: true,
+            hasStructuredToolRuntime: true,
+            hasMemoryRepository: true,
+            workspaceIndexingEnabled: true,
+            hasEmbeddingProvider: true,
+            hasVectorIndex: true);
+
+        Assert.True(registry.GetStatus(BackendCapability.WorkspaceIndexing).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.Embeddings).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.VectorSearch).IsAvailable);
     }
 }

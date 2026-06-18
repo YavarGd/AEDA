@@ -23,7 +23,8 @@ public static class ApplicationSettingsValidator
             Context = NormalizeContext(value.Context ?? defaults.Context),
             Privacy = NormalizePrivacy(value.Privacy ?? defaults.Privacy),
             Vision = normalizedVision,
-            Voice = NormalizeVoice(value.Voice ?? defaults.Voice)
+            Voice = NormalizeVoice(value.Voice ?? defaults.Voice),
+            MemoryRag = NormalizeMemoryRag(value.MemoryRag ?? defaults.MemoryRag)
         };
     }
 
@@ -97,6 +98,29 @@ public static class ApplicationSettingsValidator
             SelectedVoiceId = NormalizeOptional(settings.SelectedVoiceId),
             MicrophoneDeviceId = NormalizeOptional(settings.MicrophoneDeviceId),
             OutputDeviceId = NormalizeOptional(settings.OutputDeviceId)
+        };
+    }
+
+    public static MemoryRagSettings NormalizeMemoryRag(MemoryRagSettings settings)
+    {
+        return settings with
+        {
+            AutomaticMemoryEnabled = settings.AutomaticMemoryEnabled && settings.MemoryEnabled,
+            ExplicitMemoryEnabled = settings.ExplicitMemoryEnabled && settings.MemoryEnabled,
+            ProjectMemoryEnabled = settings.ProjectMemoryEnabled && settings.MemoryEnabled,
+            TaskOutcomeMemoryEnabled = settings.TaskOutcomeMemoryEnabled && settings.MemoryEnabled,
+            SensitiveMemoryRequiresApproval = true,
+            LocalOnlyMemoryMode = true,
+            RetentionDays = Clamp(settings.RetentionDays, 1, 3650),
+            MaxMemoryResults = Clamp(settings.MaxMemoryResults, 1, 100),
+            WorkspaceIndexingEnabled = settings.WorkspaceIndexingEnabled && settings.RagEnabled,
+            MaxFileSizeForIndexingBytes = Clamp(
+                settings.MaxFileSizeForIndexingBytes,
+                1024,
+                5 * 1024 * 1024),
+            MaxChunksPerRun = Clamp(settings.MaxChunksPerRun, 1, 1000),
+            SelectedEmbeddingProvider = NormalizeOptional(settings.SelectedEmbeddingProvider),
+            VectorIndexProvider = NormalizeOptional(settings.VectorIndexProvider)
         };
     }
 

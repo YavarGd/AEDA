@@ -13,9 +13,10 @@ public sealed record ApplicationSettings(
     ContextSettings Context,
     PrivacySettings Privacy,
     VisionSettings Vision,
-    VoiceSettings Voice)
+    VoiceSettings Voice,
+    MemoryRagSettings MemoryRag)
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public static ApplicationSettings CreateDefault()
     {
@@ -29,7 +30,8 @@ public sealed record ApplicationSettings(
             ContextSettings.Default,
             PrivacySettings.Default,
             VisionSettings.Default,
-            VoiceSettings.CreateDefault());
+            VoiceSettings.CreateDefault(),
+            MemoryRagSettings.Default);
     }
 }
 
@@ -146,6 +148,41 @@ public sealed record VisionSettings(
     IReadOnlyList<string> UserModelPatterns)
 {
     public static VisionSettings Default { get; } = new([]);
+}
+
+public sealed record MemoryRagSettings(
+    bool MemoryEnabled,
+    bool ExplicitMemoryEnabled,
+    bool AutomaticMemoryEnabled,
+    bool ProjectMemoryEnabled,
+    bool TaskOutcomeMemoryEnabled,
+    bool SensitiveMemoryRequiresApproval,
+    bool LocalOnlyMemoryMode,
+    int RetentionDays,
+    int MaxMemoryResults,
+    bool RagEnabled,
+    bool WorkspaceIndexingEnabled,
+    int MaxFileSizeForIndexingBytes,
+    int MaxChunksPerRun,
+    string? SelectedEmbeddingProvider,
+    string? VectorIndexProvider)
+{
+    public static MemoryRagSettings Default { get; } = new(
+        MemoryEnabled: true,
+        ExplicitMemoryEnabled: true,
+        AutomaticMemoryEnabled: false,
+        ProjectMemoryEnabled: true,
+        TaskOutcomeMemoryEnabled: true,
+        SensitiveMemoryRequiresApproval: true,
+        LocalOnlyMemoryMode: true,
+        RetentionDays: 365,
+        MaxMemoryResults: 20,
+        RagEnabled: true,
+        WorkspaceIndexingEnabled: false,
+        MaxFileSizeForIndexingBytes: 256 * 1024,
+        MaxChunksPerRun: 200,
+        SelectedEmbeddingProvider: null,
+        VectorIndexProvider: null);
 }
 
 public enum LaunchDestination

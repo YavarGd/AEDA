@@ -222,7 +222,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 IncludeExecutablePathInProviderMetadata,
                 IncludeWindowTitleInProviderContext),
             new VisionSettings(visionPatterns),
-            _voiceSettings));
+            _voiceSettings,
+            _settingsService.Current.MemoryRag ?? MemoryRagSettings.Default));
     }
 
     public async Task SaveSettingsAsync(CancellationToken cancellationToken = default)

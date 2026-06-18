@@ -37,7 +37,15 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool hasLocalWorkerSupervisor,
         bool hasStructuredToolRuntime,
         bool hasAudioCaptureService = false,
-        bool hasAudioPlaybackService = false)
+        bool hasAudioPlaybackService = false,
+        bool hasMemoryRepository = false,
+        bool explicitMemoryEnabled = true,
+        bool projectMemoryEnabled = true,
+        bool taskOutcomeMemoryEnabled = true,
+        bool retrievalEnabled = true,
+        bool workspaceIndexingEnabled = false,
+        bool hasEmbeddingProvider = false,
+        bool hasVectorIndex = false)
     {
         var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
         var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
@@ -65,7 +73,22 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasVoiceOutput ? null : "speak_response_unavailable"),
             new(BackendCapability.LocalWorkerSupervision, hasLocalWorkerSupervisor,
                 hasLocalWorkerSupervisor ? null : "local_worker_supervision_unavailable"),
-            new(BackendCapability.Embeddings, false, "embeddings_unavailable"),
+            new(BackendCapability.Memory, hasMemoryRepository,
+                hasMemoryRepository ? null : "memory_repository_unavailable"),
+            new(BackendCapability.ExplicitMemory, hasMemoryRepository && explicitMemoryEnabled,
+                hasMemoryRepository && explicitMemoryEnabled ? null : "explicit_memory_unavailable"),
+            new(BackendCapability.ProjectMemory, hasMemoryRepository && projectMemoryEnabled,
+                hasMemoryRepository && projectMemoryEnabled ? null : "project_memory_unavailable"),
+            new(BackendCapability.TaskOutcomeMemory, hasMemoryRepository && taskOutcomeMemoryEnabled,
+                hasMemoryRepository && taskOutcomeMemoryEnabled ? null : "task_outcome_memory_unavailable"),
+            new(BackendCapability.Retrieval, hasMemoryRepository && retrievalEnabled,
+                hasMemoryRepository && retrievalEnabled ? "retrieval_text_search_only" : "retrieval_unavailable"),
+            new(BackendCapability.WorkspaceIndexing, hasMemoryRepository && workspaceIndexingEnabled,
+                hasMemoryRepository && workspaceIndexingEnabled ? null : "workspace_indexing_disabled"),
+            new(BackendCapability.Embeddings, hasEmbeddingProvider,
+                hasEmbeddingProvider ? null : "embeddings_unconfigured"),
+            new(BackendCapability.VectorSearch, hasVectorIndex && hasEmbeddingProvider,
+                hasVectorIndex && hasEmbeddingProvider ? null : "vector_search_unconfigured"),
             new(BackendCapability.Vision, false, "vision_provider_unavailable"),
             new(BackendCapability.WebResearch, false, "web_research_unavailable"),
             new(BackendCapability.CodePatchProposal, false, "code_patch_proposal_unavailable")

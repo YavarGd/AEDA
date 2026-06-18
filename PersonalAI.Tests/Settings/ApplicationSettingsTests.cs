@@ -19,6 +19,12 @@ public sealed class ApplicationSettingsTests
         Assert.True(settings.Hotkey.Control);
         Assert.True(settings.Hotkey.Alt);
         Assert.Equal("Space", settings.Hotkey.Key);
+        Assert.True(settings.MemoryRag.MemoryEnabled);
+        Assert.True(settings.MemoryRag.ExplicitMemoryEnabled);
+        Assert.False(settings.MemoryRag.AutomaticMemoryEnabled);
+        Assert.False(settings.MemoryRag.WorkspaceIndexingEnabled);
+        Assert.True(settings.MemoryRag.LocalOnlyMemoryMode);
+        Assert.True(settings.MemoryRag.SensitiveMemoryRequiresApproval);
     }
 
     [Fact]
@@ -196,6 +202,38 @@ public sealed class ApplicationSettingsTests
         Assert.False(VisionModelCapabilityRegistry.SupportsImages(
             "qwen3:8b",
             VisionSettings.Default));
+    }
+
+    [Fact]
+    public void MemoryRagValidationClampsUnsafeRangesAndSafeFlags()
+    {
+        var normalized = ApplicationSettingsValidator.NormalizeMemoryRag(
+            new MemoryRagSettings(
+                MemoryEnabled: true,
+                ExplicitMemoryEnabled: true,
+                AutomaticMemoryEnabled: true,
+                ProjectMemoryEnabled: true,
+                TaskOutcomeMemoryEnabled: true,
+                SensitiveMemoryRequiresApproval: false,
+                LocalOnlyMemoryMode: false,
+                RetentionDays: 99_999,
+                MaxMemoryResults: 999,
+                RagEnabled: false,
+                WorkspaceIndexingEnabled: true,
+                MaxFileSizeForIndexingBytes: 10,
+                MaxChunksPerRun: 10_000,
+                SelectedEmbeddingProvider: " fake ",
+                VectorIndexProvider: " memory "));
+
+        Assert.True(normalized.SensitiveMemoryRequiresApproval);
+        Assert.True(normalized.LocalOnlyMemoryMode);
+        Assert.Equal(3650, normalized.RetentionDays);
+        Assert.Equal(100, normalized.MaxMemoryResults);
+        Assert.False(normalized.WorkspaceIndexingEnabled);
+        Assert.Equal(1024, normalized.MaxFileSizeForIndexingBytes);
+        Assert.Equal(1000, normalized.MaxChunksPerRun);
+        Assert.Equal("fake", normalized.SelectedEmbeddingProvider);
+        Assert.Equal("memory", normalized.VectorIndexProvider);
     }
 
     [Fact]
@@ -552,6 +590,7 @@ public sealed class ApplicationSettingsTests
 
         Assert.Equal(ApplicationSettings.CurrentSchemaVersion, service.Current.SchemaVersion);
         Assert.True(service.Current.Appearance.CompactSidebar);
+        Assert.Equal(MemoryRagSettings.Default, service.Current.MemoryRag);
         Assert.Contains(service.Current.Models.Assignments, assignment =>
             assignment.Category == ModelRoutingCategory.General &&
             assignment.Model == "gemma4");
