@@ -114,12 +114,20 @@ public static class ApplicationSettingsValidator
             RetentionDays = Clamp(settings.RetentionDays, 1, 3650),
             MaxMemoryResults = Clamp(settings.MaxMemoryResults, 1, 100),
             WorkspaceIndexingEnabled = settings.WorkspaceIndexingEnabled && settings.RagEnabled,
+            EmbeddingEnabled = settings.EmbeddingEnabled && settings.RagEnabled,
             MaxFileSizeForIndexingBytes = Clamp(
                 settings.MaxFileSizeForIndexingBytes,
                 1024,
                 5 * 1024 * 1024),
             MaxChunksPerRun = Clamp(settings.MaxChunksPerRun, 1, 1000),
+            MaxEmbeddingInputCharacters = Clamp(
+                settings.MaxEmbeddingInputCharacters,
+                100,
+                100_000),
+            EmbeddingBatchSize = Clamp(settings.EmbeddingBatchSize, 1, 128),
+            LocalOnlyEmbeddingMode = true,
             SelectedEmbeddingProvider = NormalizeOptional(settings.SelectedEmbeddingProvider),
+            SelectedEmbeddingModel = NormalizeOptional(settings.SelectedEmbeddingModel),
             VectorIndexProvider = NormalizeOptional(settings.VectorIndexProvider)
         };
     }

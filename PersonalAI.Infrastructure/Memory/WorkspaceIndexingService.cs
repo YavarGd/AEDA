@@ -1,4 +1,5 @@
 using PersonalAI.Core.Memory;
+using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
 
 namespace PersonalAI.Infrastructure.Memory;
@@ -7,8 +8,12 @@ public sealed class WorkspaceIndexingService(
     IWorkspaceReader reader,
     IEmbeddingProvider? embeddingProvider = null,
     IVectorIndex? vectorIndex = null,
+    IKnowledgeRepository? knowledgeRepository = null,
+    ITaskRuntime? taskRuntime = null,
     int maxFileSizeBytes = 256 * 1024,
-    int maxChunksPerRun = 200) : IWorkspaceIndexingService
+    int maxChunksPerRun = 200,
+    int maxFilesPerRun = 500,
+    int embeddingBatchSize = 8) : IWorkspaceIndexingService
 {
     private static readonly HashSet<string> ExcludedDirectoryNames = new(
         [".git", "bin", "obj", "node_modules", ".vs", ".idea"],
@@ -23,25 +28,40 @@ public sealed class WorkspaceIndexingService(
         WorkspaceId workspaceId,
         CancellationToken cancellationToken = default)
     {
+        _ = reader.GetWorkspace(workspaceId);
+        var task = taskRuntime is null
+            ? null
+            : await taskRuntime.StartTaskAsync(
+                "Workspace indexing",
+                "workspace_indexing",
+                cancellationToken: cancellationToken);
         SetStatus(workspaceId, WorkspaceIndexingState.Queued);
         cancellationToken.ThrowIfCancellationRequested();
         SetStatus(workspaceId, WorkspaceIndexingState.Running);
+        await AppendAsync(task?.Id, TaskEventKind.WorkspaceIndexingStarted, "Workspace indexing started.", cancellationToken);
 
         var indexed = 0;
         var skipped = 0;
+        var unchanged = 0;
+        var queued = 0;
         try
         {
             foreach (var entry in reader.ListDirectory(
                          workspaceId,
                          ".",
-                         500,
+                         maxFilesPerRun,
                          includeHidden: false,
                          cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_cancelled.Remove(workspaceId))
                 {
-                    SetStatus(workspaceId, WorkspaceIndexingState.Cancelled, indexed, skipped);
+                    SetStatus(workspaceId, WorkspaceIndexingState.Cancelled, indexed, skipped, unchanged, queued);
+                    await AppendAsync(task?.Id, TaskEventKind.WorkspaceIndexingCancelled, "Workspace indexing cancelled.", CancellationToken.None);
+                    if (task is not null)
+                    {
+                        await taskRuntime!.CancelTaskAsync(task.Id, TaskCancellationReason.UserRequested, CancellationToken.None);
+                    }
                     return;
                 }
 
@@ -50,28 +70,40 @@ public sealed class WorkspaceIndexingService(
                     if (ExcludedDirectoryNames.Contains(entry.Name))
                     {
                         skipped++;
+                        await AppendAsync(task?.Id, TaskEventKind.WorkspaceFileSkipped, "Workspace file skipped.", cancellationToken);
                     }
 
                     continue;
                 }
 
+                queued++;
+                await AppendAsync(task?.Id, TaskEventKind.WorkspaceFileQueued, "Workspace file queued.", cancellationToken);
                 if (entry.SizeBytes > maxFileSizeBytes)
                 {
                     skipped++;
+                    await AppendAsync(task?.Id, TaskEventKind.WorkspaceFileSkipped, "Workspace file skipped.", cancellationToken);
                     continue;
                 }
 
-                var fileIndexed = await IndexFileAsync(
+                var result = await IndexFileAsync(
                     workspaceId,
                     entry.RelativePath,
+                    task?.Id,
                     cancellationToken);
-                if (fileIndexed)
+                if (result == FileIndexResult.Indexed)
                 {
                     indexed++;
+                    await AppendAsync(task?.Id, TaskEventKind.WorkspaceFileIndexed, "Workspace file indexed.", cancellationToken);
+                }
+                else if (result == FileIndexResult.Unchanged)
+                {
+                    unchanged++;
+                    await AppendAsync(task?.Id, TaskEventKind.WorkspaceFileSkipped, "Workspace file unchanged.", cancellationToken);
                 }
                 else
                 {
                     skipped++;
+                    await AppendAsync(task?.Id, TaskEventKind.WorkspaceFileSkipped, "Workspace file skipped.", cancellationToken);
                 }
 
                 if (PendingChunkCount(workspaceId) >= maxChunksPerRun)
@@ -80,16 +112,27 @@ public sealed class WorkspaceIndexingService(
                 }
             }
 
-            SetStatus(workspaceId, WorkspaceIndexingState.Completed, indexed, skipped);
+            SetStatus(workspaceId, WorkspaceIndexingState.Completed, indexed, skipped, unchanged, queued);
+            await AppendAsync(task?.Id, TaskEventKind.WorkspaceIndexingCompleted, "Workspace indexing completed.", cancellationToken);
+            if (task is not null)
+            {
+                await taskRuntime!.CompleteTaskAsync(task.Id, cancellationToken);
+            }
         }
         catch (OperationCanceledException)
         {
-            SetStatus(workspaceId, WorkspaceIndexingState.Cancelled, indexed, skipped);
+            SetStatus(workspaceId, WorkspaceIndexingState.Cancelled, indexed, skipped, unchanged, queued);
+            await AppendAsync(task?.Id, TaskEventKind.WorkspaceIndexingCancelled, "Workspace indexing cancelled.", CancellationToken.None);
             throw;
         }
         catch (WorkspaceAccessException)
         {
-            SetStatus(workspaceId, WorkspaceIndexingState.Failed, indexed, skipped, "workspace_indexing_failed");
+            SetStatus(workspaceId, WorkspaceIndexingState.Failed, indexed, skipped, unchanged, queued, "workspace_indexing_failed");
+            await AppendAsync(task?.Id, TaskEventKind.WorkspaceIndexingFailed, "Workspace indexing failed.", CancellationToken.None);
+            if (task is not null)
+            {
+                await taskRuntime!.FailTaskAsync(task.Id, "workspace_indexing_failed", CancellationToken.None);
+            }
         }
     }
 
@@ -98,13 +141,16 @@ public sealed class WorkspaceIndexingService(
         string relativePath,
         CancellationToken cancellationToken = default)
     {
+        _ = reader.GetWorkspace(workspaceId);
         SetStatus(workspaceId, WorkspaceIndexingState.Running);
-        var indexed = await IndexFileAsync(workspaceId, relativePath, cancellationToken);
+        var result = await IndexFileAsync(workspaceId, relativePath, taskId: null, cancellationToken);
         SetStatus(
             workspaceId,
             WorkspaceIndexingState.Completed,
-            indexed ? 1 : 0,
-            indexed ? 0 : 1);
+            result == FileIndexResult.Indexed ? 1 : 0,
+            result == FileIndexResult.Skipped ? 1 : 0,
+            result == FileIndexResult.Unchanged ? 1 : 0,
+            FilesQueued: 1);
     }
 
     public Task CancelAsync(
@@ -124,7 +170,7 @@ public sealed class WorkspaceIndexingService(
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(_statuses.TryGetValue(workspaceId, out var status)
             ? status
-            : new WorkspaceIndexingStatus(workspaceId, WorkspaceIndexingState.Idle, 0, 0, 0));
+            : new WorkspaceIndexingStatus(workspaceId, WorkspaceIndexingState.Idle, 0, 0, 0, 0, 0));
     }
 
     public Task<IReadOnlyList<KnowledgeDocument>> ListIndexedDocumentsAsync(
@@ -132,26 +178,45 @@ public sealed class WorkspaceIndexingService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (knowledgeRepository is not null)
+        {
+            return knowledgeRepository.ListDocumentsAsync(
+                workspaceId.ToString(),
+                cancellationToken: cancellationToken);
+        }
+
         return Task.FromResult<IReadOnlyList<KnowledgeDocument>>(
             _documents.TryGetValue(workspaceId, out var documents)
                 ? documents.ToArray()
                 : []);
     }
 
-    public Task ClearWorkspaceIndexAsync(
+    public async Task ClearWorkspaceIndexAsync(
         WorkspaceId workspaceId,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         _documents.Remove(workspaceId);
         _pendingChunks.Remove(workspaceId);
+        if (knowledgeRepository is not null)
+        {
+            await knowledgeRepository.ClearWorkspaceAsync(workspaceId.ToString(), cancellationToken);
+        }
+
+        if (vectorIndex is SqliteVectorIndex sqliteVectorIndex)
+        {
+            await sqliteVectorIndex.DeleteBySourcePrefixAsync(
+                $"{workspaceId}:",
+                cancellationToken);
+        }
+
         SetStatus(workspaceId, WorkspaceIndexingState.Idle);
-        return Task.CompletedTask;
     }
 
-    private async Task<bool> IndexFileAsync(
+    private async Task<FileIndexResult> IndexFileAsync(
         WorkspaceId workspaceId,
         string relativePath,
+        TaskId? taskId,
         CancellationToken cancellationToken)
     {
         WorkspaceTextFile file;
@@ -165,7 +230,7 @@ public sealed class WorkspaceIndexingService(
         }
         catch (WorkspaceAccessException)
         {
-            return false;
+            return FileIndexResult.Skipped;
         }
 
         var source = new KnowledgeSource(
@@ -181,37 +246,79 @@ public sealed class WorkspaceIndexingService(
             source,
             ChunkingOptions.Default with { MaxChunks = maxChunksPerRun });
 
-        AddDocument(workspaceId, result.Document);
         if (result.IsSkipped)
         {
-            return false;
+            AddDocument(workspaceId, result.Document);
+            if (knowledgeRepository is not null)
+            {
+                await knowledgeRepository.UpsertDocumentAsync(result.Document, [], cancellationToken);
+            }
+
+            return FileIndexResult.Skipped;
+        }
+
+        var existing = knowledgeRepository is null
+            ? _documents.TryGetValue(workspaceId, out var documents)
+                ? documents.FirstOrDefault(document => document.Id == result.Document.Id)
+                : null
+            : await knowledgeRepository.GetDocumentAsync(result.Document.Id, cancellationToken);
+        if (existing is not null &&
+            string.Equals(existing.ContentHash, result.Document.ContentHash, StringComparison.Ordinal))
+        {
+            return FileIndexResult.Unchanged;
+        }
+
+        AddDocument(workspaceId, result.Document with { State = DocumentIndexState.Indexed });
+        if (knowledgeRepository is not null)
+        {
+            await knowledgeRepository.UpsertDocumentAsync(
+                result.Document with { State = DocumentIndexState.Indexed },
+                result.Chunks,
+                cancellationToken);
+        }
+
+        if (vectorIndex is SqliteVectorIndex sqliteVectorIndex)
+        {
+            await sqliteVectorIndex.DeleteBySourcePrefixAsync(result.Document.Id + ":", cancellationToken);
         }
 
         if (embeddingProvider is null || vectorIndex is null ||
             embeddingProvider.GetStatus().Status != EmbeddingProviderStatus.Available)
         {
             AddPendingChunks(workspaceId, result.Chunks);
-            return true;
+            return FileIndexResult.Indexed;
         }
 
-        foreach (var chunk in result.Chunks)
+        foreach (var batch in result.Chunks.Chunk(Math.Clamp(embeddingBatchSize, 1, embeddingProvider.ModelInfo.MaxBatchSize)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var embedding = await embeddingProvider.EmbedAsync(
-                new EmbeddingRequest([chunk.Text]),
+                new EmbeddingRequest(batch.Select(chunk => chunk.Text).ToArray()),
                 cancellationToken);
-            await vectorIndex.UpsertAsync(
-                new VectorDocument(
-                    chunk.Id,
-                    embedding.Vectors[0],
-                    chunk.Text,
-                    MemoryScope.Workspace,
-                    WorkspaceId: workspaceId.ToString(),
-                    SourceId: chunk.Id),
-                cancellationToken);
+            for (var index = 0; index < batch.Length; index++)
+            {
+                var chunk = batch[index];
+                await vectorIndex.UpsertAsync(
+                    new VectorDocument(
+                        chunk.Id,
+                        embedding.Vectors[index],
+                        chunk.Text,
+                        MemoryScope.Workspace,
+                        WorkspaceId: workspaceId.ToString(),
+                        SourceKind: KnowledgeSourceType.WorkspaceFile.ToString(),
+                        SourceId: chunk.Id,
+                        Metadata: new Dictionary<string, string>
+                        {
+                            ["document_id"] = chunk.DocumentId,
+                            ["relative_path"] = chunk.Source.RelativePath ?? string.Empty,
+                            ["content_hash"] = chunk.ContentHash,
+                            ["ordinal"] = chunk.Ordinal.ToString()
+                        }),
+                    cancellationToken);
+            }
         }
 
-        return true;
+        return FileIndexResult.Indexed;
     }
 
     private void AddDocument(WorkspaceId workspaceId, KnowledgeDocument document)
@@ -247,6 +354,8 @@ public sealed class WorkspaceIndexingService(
         WorkspaceIndexingState state,
         int documentsIndexed = 0,
         int documentsSkipped = 0,
+        int DocumentsUnchanged = 0,
+        int FilesQueued = 0,
         string? safeReasonCode = null)
     {
         _statuses[workspaceId] = new WorkspaceIndexingStatus(
@@ -254,7 +363,30 @@ public sealed class WorkspaceIndexingService(
             state,
             documentsIndexed,
             documentsSkipped,
+            DocumentsUnchanged,
+            FilesQueued,
             PendingChunkCount(workspaceId),
             safeReasonCode);
+    }
+
+    private async ValueTask AppendAsync(
+        TaskId? taskId,
+        TaskEventKind kind,
+        string summary,
+        CancellationToken cancellationToken)
+    {
+        if (taskId is null || taskRuntime is null)
+        {
+            return;
+        }
+
+        await taskRuntime.AppendEventAsync(taskId.Value, kind, summary, cancellationToken);
+    }
+
+    private enum FileIndexResult
+    {
+        Indexed,
+        Skipped,
+        Unchanged
     }
 }

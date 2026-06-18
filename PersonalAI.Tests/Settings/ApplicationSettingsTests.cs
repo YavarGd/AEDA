@@ -220,9 +220,14 @@ public sealed class ApplicationSettingsTests
                 MaxMemoryResults: 999,
                 RagEnabled: false,
                 WorkspaceIndexingEnabled: true,
+                EmbeddingEnabled: true,
                 MaxFileSizeForIndexingBytes: 10,
                 MaxChunksPerRun: 10_000,
+                MaxEmbeddingInputCharacters: 10,
+                EmbeddingBatchSize: 999,
+                LocalOnlyEmbeddingMode: false,
                 SelectedEmbeddingProvider: " fake ",
+                SelectedEmbeddingModel: " nomic ",
                 VectorIndexProvider: " memory "));
 
         Assert.True(normalized.SensitiveMemoryRequiresApproval);
@@ -230,9 +235,14 @@ public sealed class ApplicationSettingsTests
         Assert.Equal(3650, normalized.RetentionDays);
         Assert.Equal(100, normalized.MaxMemoryResults);
         Assert.False(normalized.WorkspaceIndexingEnabled);
+        Assert.False(normalized.EmbeddingEnabled);
         Assert.Equal(1024, normalized.MaxFileSizeForIndexingBytes);
         Assert.Equal(1000, normalized.MaxChunksPerRun);
+        Assert.Equal(100, normalized.MaxEmbeddingInputCharacters);
+        Assert.Equal(128, normalized.EmbeddingBatchSize);
+        Assert.True(normalized.LocalOnlyEmbeddingMode);
         Assert.Equal("fake", normalized.SelectedEmbeddingProvider);
+        Assert.Equal("nomic", normalized.SelectedEmbeddingModel);
         Assert.Equal("memory", normalized.VectorIndexProvider);
     }
 

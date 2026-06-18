@@ -45,7 +45,8 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool retrievalEnabled = true,
         bool workspaceIndexingEnabled = false,
         bool hasEmbeddingProvider = false,
-        bool hasVectorIndex = false)
+        bool hasVectorIndex = false,
+        bool localOnlyRag = true)
     {
         var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
         var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
@@ -89,6 +90,10 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasEmbeddingProvider ? null : "embeddings_unconfigured"),
             new(BackendCapability.VectorSearch, hasVectorIndex && hasEmbeddingProvider,
                 hasVectorIndex && hasEmbeddingProvider ? null : "vector_search_unconfigured"),
+            new(BackendCapability.SemanticRetrieval, hasMemoryRepository && retrievalEnabled && hasEmbeddingProvider && hasVectorIndex,
+                hasMemoryRepository && retrievalEnabled && hasEmbeddingProvider && hasVectorIndex ? null : "semantic_retrieval_unconfigured"),
+            new(BackendCapability.LocalOnlyRag, hasMemoryRepository && retrievalEnabled && localOnlyRag,
+                hasMemoryRepository && retrievalEnabled && localOnlyRag ? null : "local_only_rag_unavailable"),
             new(BackendCapability.Vision, false, "vision_provider_unavailable"),
             new(BackendCapability.WebResearch, false, "web_research_unavailable"),
             new(BackendCapability.CodePatchProposal, false, "code_patch_proposal_unavailable")

@@ -17,6 +17,8 @@ public sealed record WorkspaceIndexingStatus(
     WorkspaceIndexingState State,
     int DocumentsIndexed,
     int DocumentsSkipped,
+    int DocumentsUnchanged,
+    int FilesQueued,
     int PendingChunks,
     string? SafeReasonCode = null);
 

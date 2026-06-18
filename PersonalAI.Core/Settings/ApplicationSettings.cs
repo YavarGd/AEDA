@@ -162,9 +162,14 @@ public sealed record MemoryRagSettings(
     int MaxMemoryResults,
     bool RagEnabled,
     bool WorkspaceIndexingEnabled,
+    bool EmbeddingEnabled,
     int MaxFileSizeForIndexingBytes,
     int MaxChunksPerRun,
+    int MaxEmbeddingInputCharacters,
+    int EmbeddingBatchSize,
+    bool LocalOnlyEmbeddingMode,
     string? SelectedEmbeddingProvider,
+    string? SelectedEmbeddingModel,
     string? VectorIndexProvider)
 {
     public static MemoryRagSettings Default { get; } = new(
@@ -179,9 +184,14 @@ public sealed record MemoryRagSettings(
         MaxMemoryResults: 20,
         RagEnabled: true,
         WorkspaceIndexingEnabled: false,
+        EmbeddingEnabled: false,
         MaxFileSizeForIndexingBytes: 256 * 1024,
         MaxChunksPerRun: 200,
+        MaxEmbeddingInputCharacters: 8192,
+        EmbeddingBatchSize: 8,
+        LocalOnlyEmbeddingMode: true,
         SelectedEmbeddingProvider: null,
+        SelectedEmbeddingModel: null,
         VectorIndexProvider: null);
 }
 

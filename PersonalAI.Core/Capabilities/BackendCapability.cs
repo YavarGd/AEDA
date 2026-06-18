@@ -21,6 +21,8 @@ public enum BackendCapability
     WorkspaceIndexing,
     Embeddings,
     VectorSearch,
+    SemanticRetrieval,
+    LocalOnlyRag,
     Vision,
     WebResearch,
     CodePatchProposal

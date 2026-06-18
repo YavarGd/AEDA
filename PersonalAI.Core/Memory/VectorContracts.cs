@@ -7,6 +7,7 @@ public sealed record VectorDocument(
     MemoryScope Scope,
     string? ProjectId = null,
     string? WorkspaceId = null,
+    string? SourceKind = null,
     string? SourceId = null,
     IReadOnlyDictionary<string, string>? Metadata = null);
 
@@ -15,7 +16,8 @@ public sealed record VectorSearchQuery(
     int TopK,
     MemoryScope? Scope = null,
     string? ProjectId = null,
-    string? WorkspaceId = null);
+    string? WorkspaceId = null,
+    string? SourceKind = null);
 
 public sealed record VectorSearchResult(
     VectorDocument Document,

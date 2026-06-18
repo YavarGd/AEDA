@@ -105,6 +105,8 @@ public sealed class BackendCapabilityRegistryTests
             "embeddings_unconfigured",
             registry.GetStatus(BackendCapability.Embeddings).SafeReasonCode);
         Assert.False(registry.GetStatus(BackendCapability.VectorSearch).IsAvailable);
+        Assert.False(registry.GetStatus(BackendCapability.SemanticRetrieval).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.LocalOnlyRag).IsAvailable);
     }
 
     [Fact]
@@ -126,5 +128,7 @@ public sealed class BackendCapabilityRegistryTests
         Assert.True(registry.GetStatus(BackendCapability.WorkspaceIndexing).IsAvailable);
         Assert.True(registry.GetStatus(BackendCapability.Embeddings).IsAvailable);
         Assert.True(registry.GetStatus(BackendCapability.VectorSearch).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.SemanticRetrieval).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.LocalOnlyRag).IsAvailable);
     }
 }

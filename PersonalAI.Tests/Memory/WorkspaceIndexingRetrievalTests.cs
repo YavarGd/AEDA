@@ -1,4 +1,5 @@
 using PersonalAI.Core.Memory;
+using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
 using PersonalAI.Infrastructure.Memory;
 
@@ -31,6 +32,7 @@ public sealed class WorkspaceIndexingRetrievalTests : IDisposable
         Assert.Equal(WorkspaceIndexingState.Completed, status.State);
         Assert.Equal(1, status.DocumentsIndexed);
         Assert.Equal(2, status.DocumentsSkipped);
+        Assert.Equal(2, status.FilesQueued);
         Assert.True(status.PendingChunks > 0);
         Assert.Single(documents);
         Assert.Equal(0, reader.WriteCount);
@@ -43,10 +45,13 @@ public sealed class WorkspaceIndexingRetrievalTests : IDisposable
         var reader = new FakeWorkspaceReader(workspaceId);
         reader.AddFile("notes.txt", "alpha project notes");
         var vectorIndex = new InMemoryVectorIndex(4);
+        var knowledge = new SqliteKnowledgeRepository(Path.Combine(_directory, "indexing-knowledge.db"));
+        await knowledge.InitializeAsync();
         var service = new WorkspaceIndexingService(
             reader,
             new FakeEmbeddingProvider(),
             vectorIndex,
+            knowledge,
             maxFileSizeBytes: 1000,
             maxChunksPerRun: 10);
 
@@ -59,6 +64,63 @@ public sealed class WorkspaceIndexingRetrievalTests : IDisposable
 
         await service.ClearWorkspaceIndexAsync(workspaceId);
         Assert.Empty(await service.ListIndexedDocumentsAsync(workspaceId));
+    }
+
+    [Fact]
+    public async Task WorkspaceIndexing_UnchangedAndChangedFilesAreHandledIncrementally()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var reader = new FakeWorkspaceReader(workspaceId);
+        reader.AddFile("notes.txt", "first version");
+        var knowledge = new SqliteKnowledgeRepository(Path.Combine(_directory, "incremental.db"));
+        await knowledge.InitializeAsync();
+        var service = new WorkspaceIndexingService(
+            reader,
+            new FakeEmbeddingProvider(),
+            new InMemoryVectorIndex(4),
+            knowledge);
+
+        await service.EnqueueFileReindexAsync(workspaceId, "notes.txt");
+        await service.EnqueueFileReindexAsync(workspaceId, "notes.txt");
+        var unchanged = await service.GetStatusAsync(workspaceId);
+        reader.AddFile("notes.txt", "changed version");
+        await service.EnqueueFileReindexAsync(workspaceId, "notes.txt");
+        var changed = await service.GetStatusAsync(workspaceId);
+
+        Assert.Equal(1, unchanged.DocumentsUnchanged);
+        Assert.Equal(1, changed.DocumentsIndexed);
+    }
+
+    [Fact]
+    public async Task WorkspaceIndexing_RejectsUnregisteredWorkspace()
+    {
+        var service = new WorkspaceIndexingService(
+            new FakeWorkspaceReader(WorkspaceId.NewId()) { RejectWorkspace = true });
+
+        await Assert.ThrowsAsync<WorkspaceAccessException>(
+            () => service.EnqueueWorkspaceScanAsync(WorkspaceId.NewId()));
+    }
+
+    [Fact]
+    public async Task WorkspaceIndexing_EmitsSafeTaskEvents()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var reader = new FakeWorkspaceReader(workspaceId);
+        reader.AddFile("notes.txt", "alpha project notes");
+        var runtime = new RecordingTaskRuntime();
+        var service = new WorkspaceIndexingService(
+            reader,
+            new FakeEmbeddingProvider(),
+            new InMemoryVectorIndex(4),
+            taskRuntime: runtime);
+
+        await service.EnqueueWorkspaceScanAsync(workspaceId);
+
+        Assert.Contains(runtime.Events, item => item.Kind == TaskEventKind.WorkspaceIndexingStarted);
+        Assert.Contains(runtime.Events, item => item.Kind == TaskEventKind.WorkspaceFileQueued);
+        Assert.Contains(runtime.Events, item => item.Kind == TaskEventKind.WorkspaceFileIndexed);
+        Assert.Contains(runtime.Events, item => item.Kind == TaskEventKind.WorkspaceIndexingCompleted);
+        Assert.DoesNotContain(runtime.Events, item => item.Summary.Contains("alpha project notes", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -126,8 +188,12 @@ public sealed class WorkspaceIndexingRetrievalTests : IDisposable
 
         public int WriteCount { get; private set; }
 
+        public bool RejectWorkspace { get; init; }
+
         public WorkspaceDescriptor GetWorkspace(WorkspaceId id) =>
-            new(workspaceId, "Test", "C:\\safe", DateTimeOffset.UtcNow, WorkspaceAccessPolicy.ReadOnly);
+            RejectWorkspace
+                ? throw new WorkspaceAccessException("workspace_not_found", "Workspace was not registered.")
+                : new(workspaceId, "Test", "C:\\safe", DateTimeOffset.UtcNow, WorkspaceAccessPolicy.ReadOnly);
 
         public IReadOnlyList<WorkspaceDirectoryEntry> ListDirectory(
             WorkspaceId id,
@@ -185,5 +251,73 @@ public sealed class WorkspaceIndexingRetrievalTests : IDisposable
 
         public void AddFile(string relativePath, string content) =>
             _files[relativePath] = content;
+    }
+
+    private sealed class RecordingTaskRuntime : ITaskRuntime
+    {
+        public List<(TaskEventKind Kind, string Summary)> Events { get; } = [];
+
+        public ValueTask<TaskRun> StartTaskAsync(
+            string title,
+            CancellationToken cancellationToken) =>
+            StartTaskAsync(
+                title,
+                source: "unknown",
+                conversationId: null,
+                model: null,
+                provider: null,
+                cancellationToken);
+
+        public ValueTask<TaskRun> StartTaskAsync(
+            string title,
+            string source = "unknown",
+            Guid? conversationId = null,
+            string? model = null,
+            string? provider = null,
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(TaskRun.Create(title, source, conversationId, model, provider));
+        }
+
+        public ValueTask AppendEventAsync(
+            TaskId taskId,
+            TaskEventKind kind,
+            string summary,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add((kind, summary));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask AttachArtifactAsync(
+            TaskId taskId,
+            TaskArtifact artifact,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask CompleteTaskAsync(
+            TaskId taskId,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add((TaskEventKind.TaskCompleted, "Task completed."));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask CancelTaskAsync(
+            TaskId taskId,
+            TaskCancellationReason reason,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask FailTaskAsync(
+            TaskId taskId,
+            string safeErrorCode,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask<TaskRunRecord?> GetTaskAsync(
+            TaskId taskId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<TaskRunRecord?>(null);
     }
 }

@@ -2,7 +2,8 @@ namespace PersonalAI.Core.Memory;
 
 public sealed record EmbeddingRequest(
     IReadOnlyList<string> Inputs,
-    string? Model = null);
+    string? Model = null,
+    int? Dimensions = null);
 
 public sealed record EmbeddingVector(
     IReadOnlyList<float> Values)
@@ -20,7 +21,8 @@ public sealed record EmbeddingModelInfo(
     string Model,
     int Dimension,
     int MaxInputCharacters,
-    bool SupportsBatch);
+    bool SupportsBatch,
+    int MaxBatchSize = 16);
 
 public enum EmbeddingProviderStatus
 {

@@ -48,6 +48,44 @@ public sealed record KnowledgeChunk(
     KnowledgeSource Source,
     DateTimeOffset UpdatedAtUtc);
 
+public interface IKnowledgeRepository
+{
+    Task InitializeAsync(CancellationToken cancellationToken = default);
+
+    Task UpsertDocumentAsync(
+        KnowledgeDocument document,
+        IReadOnlyList<KnowledgeChunk> chunks,
+        CancellationToken cancellationToken = default);
+
+    Task<KnowledgeDocument?> GetDocumentAsync(
+        string documentId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<KnowledgeDocument>> ListDocumentsAsync(
+        string? workspaceId = null,
+        int limit = 200,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<KnowledgeChunk>> ListChunksAsync(
+        string documentId,
+        int limit = 200,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<KnowledgeChunk>> SearchChunksAsync(
+        string text,
+        string? workspaceId = null,
+        int limit = 20,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteDocumentAsync(
+        string documentId,
+        CancellationToken cancellationToken = default);
+
+    Task ClearWorkspaceAsync(
+        string workspaceId,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed record ChunkingOptions(
     int MaxChunkCharacters,
     int OverlapCharacters,
