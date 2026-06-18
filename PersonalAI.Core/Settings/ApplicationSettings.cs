@@ -1,6 +1,7 @@
 namespace PersonalAI.Core.Settings;
 
 using PersonalAI.Core.Chat;
+using PersonalAI.Core.Voice;
 
 public sealed record ApplicationSettings(
     int SchemaVersion,
@@ -11,9 +12,10 @@ public sealed record ApplicationSettings(
     WindowSettings Window,
     ContextSettings Context,
     PrivacySettings Privacy,
-    VisionSettings Vision)
+    VisionSettings Vision,
+    VoiceSettings Voice)
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public static ApplicationSettings CreateDefault()
     {
@@ -26,7 +28,8 @@ public sealed record ApplicationSettings(
             WindowSettings.Default,
             ContextSettings.Default,
             PrivacySettings.Default,
-            VisionSettings.Default);
+            VisionSettings.Default,
+            VoiceSettings.CreateDefault());
     }
 }
 

@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Settings;
+using PersonalAI.Core.Voice;
 using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;
@@ -17,6 +18,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _refreshModelsAsync;
     private bool _isLoading;
     private bool _isApplyingHotkey;
+    private VoiceSettings _voiceSettings = VoiceSettings.CreateDefault();
 
     public SettingsViewModel(
         IApplicationSettingsService settingsService,
@@ -219,7 +221,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 exclusions,
                 IncludeExecutablePathInProviderMetadata,
                 IncludeWindowTitleInProviderContext),
-            new VisionSettings(visionPatterns)));
+            new VisionSettings(visionPatterns),
+            _voiceSettings));
     }
 
     public async Task SaveSettingsAsync(CancellationToken cancellationToken = default)
@@ -530,6 +533,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             VisionPatternsText = string.Join(
                 Environment.NewLine,
                 settings.Vision.UserModelPatterns);
+            _voiceSettings = ApplicationSettingsValidator.NormalizeVoice(settings.Voice);
         }
         finally
         {

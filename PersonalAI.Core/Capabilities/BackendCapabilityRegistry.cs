@@ -35,8 +35,13 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool hasSpeechToTextProvider,
         bool hasTextToSpeechProvider,
         bool hasLocalWorkerSupervisor,
-        bool hasStructuredToolRuntime)
+        bool hasStructuredToolRuntime,
+        bool hasAudioCaptureService = false,
+        bool hasAudioPlaybackService = false)
     {
+        var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
+        var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
+
         return new BackendCapabilityRegistry(
         [
             new(BackendCapability.Chat, true),
@@ -50,10 +55,14 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasDurableTaskHistory ? null : "durable_task_history_unavailable"),
             new(BackendCapability.WorkflowManifests, hasWorkflowManifestLoader,
                 hasWorkflowManifestLoader ? null : "workflow_manifests_unavailable"),
-            new(BackendCapability.VoiceInput, hasSpeechToTextProvider,
-                hasSpeechToTextProvider ? null : "voice_input_unavailable"),
-            new(BackendCapability.VoiceOutput, hasTextToSpeechProvider,
-                hasTextToSpeechProvider ? null : "voice_output_unavailable"),
+            new(BackendCapability.VoiceInput, hasVoiceInput,
+                hasVoiceInput ? null : "voice_input_unavailable"),
+            new(BackendCapability.VoiceOutput, hasVoiceOutput,
+                hasVoiceOutput ? null : "voice_output_unavailable"),
+            new(BackendCapability.PushToTalk, hasVoiceInput,
+                hasVoiceInput ? null : "push_to_talk_unavailable"),
+            new(BackendCapability.SpeakResponse, hasVoiceOutput,
+                hasVoiceOutput ? null : "speak_response_unavailable"),
             new(BackendCapability.LocalWorkerSupervision, hasLocalWorkerSupervisor,
                 hasLocalWorkerSupervisor ? null : "local_worker_supervision_unavailable"),
             new(BackendCapability.Embeddings, false, "embeddings_unavailable"),

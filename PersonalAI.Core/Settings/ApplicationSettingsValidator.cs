@@ -1,6 +1,7 @@
 namespace PersonalAI.Core.Settings;
 
 using PersonalAI.Core.Chat;
+using PersonalAI.Core.Voice;
 
 public static class ApplicationSettingsValidator
 {
@@ -21,7 +22,8 @@ public static class ApplicationSettingsValidator
             Window = value.Window ?? defaults.Window,
             Context = NormalizeContext(value.Context ?? defaults.Context),
             Privacy = NormalizePrivacy(value.Privacy ?? defaults.Privacy),
-            Vision = normalizedVision
+            Vision = normalizedVision,
+            Voice = NormalizeVoice(value.Voice ?? defaults.Voice)
         };
     }
 
@@ -76,6 +78,28 @@ public static class ApplicationSettingsValidator
         return settings with { UserModelPatterns = patterns };
     }
 
+    public static VoiceSettings NormalizeVoice(VoiceSettings settings)
+    {
+        return settings with
+        {
+            SampleRate = Clamp(settings.SampleRate, 8000, 48000),
+            ChannelCount = Clamp(settings.ChannelCount, 1, 2),
+            MaxRecordingDurationSeconds = Clamp(
+                settings.MaxRecordingDurationSeconds,
+                1,
+                300),
+            SpeakingRate = Math.Clamp(settings.SpeakingRate, 0.5, 2.0),
+            SpeechToTextProviderId = NormalizeOptional(settings.SpeechToTextProviderId),
+            TextToSpeechProviderId = NormalizeOptional(settings.TextToSpeechProviderId),
+            SpeechToTextWorkerId = NormalizeOptional(settings.SpeechToTextWorkerId),
+            TextToSpeechWorkerId = NormalizeOptional(settings.TextToSpeechWorkerId),
+            LanguageHint = NormalizeOptional(settings.LanguageHint),
+            SelectedVoiceId = NormalizeOptional(settings.SelectedVoiceId),
+            MicrophoneDeviceId = NormalizeOptional(settings.MicrophoneDeviceId),
+            OutputDeviceId = NormalizeOptional(settings.OutputDeviceId)
+        };
+    }
+
     private static ModelSettings NormalizeModels(
         ModelSettings settings,
         VisionSettings visionSettings)
@@ -111,5 +135,12 @@ public static class ApplicationSettingsValidator
     private static int Clamp(int value, int minimum, int maximum)
     {
         return Math.Min(maximum, Math.Max(minimum, value));
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
     }
 }

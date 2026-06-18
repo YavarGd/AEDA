@@ -10,6 +10,8 @@ public enum BackendCapability
     WorkflowManifests,
     VoiceInput,
     VoiceOutput,
+    PushToTalk,
+    SpeakResponse,
     LocalWorkerSupervision,
     Embeddings,
     Vision,
