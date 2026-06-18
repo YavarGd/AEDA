@@ -91,4 +91,47 @@ public sealed record TaskEvent
                 ? null
                 : TaskEventMetadata.SanitizeSummary(safeErrorMessage));
     }
+
+    public static TaskEvent Rehydrate(
+        Guid eventId,
+        TaskId taskId,
+        DateTimeOffset timestampUtc,
+        TaskEventKind kind,
+        string summary,
+        TaskExecutionState? state = null,
+        ToolId? toolId = null,
+        int? progressPercent = null,
+        string? progressLabel = null,
+        IReadOnlyDictionary<string, string>? safeMetadata = null,
+        string? safeErrorCode = null,
+        string? safeErrorMessage = null)
+    {
+        if (eventId == Guid.Empty)
+        {
+            throw new ArgumentException("Event id is required.", nameof(eventId));
+        }
+
+        if (progressPercent is < 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(progressPercent),
+                "Progress must be between 0 and 100.");
+        }
+
+        return new TaskEvent(
+            eventId,
+            taskId,
+            timestampUtc.ToUniversalTime(),
+            kind,
+            TaskEventMetadata.SanitizeSummary(summary),
+            state,
+            toolId,
+            progressPercent,
+            TaskEventMetadata.SanitizeProgressLabel(progressLabel),
+            TaskEventMetadata.Normalize(safeMetadata),
+            TaskEventMetadata.SanitizeErrorCode(safeErrorCode),
+            safeErrorMessage is null
+                ? null
+                : TaskEventMetadata.SanitizeSummary(safeErrorMessage));
+    }
 }

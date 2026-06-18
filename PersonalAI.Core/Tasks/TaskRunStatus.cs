@@ -1,14 +1,13 @@
 namespace PersonalAI.Core.Tasks;
 
-public enum TaskExecutionState
+public enum TaskRunStatus
 {
     Created,
     Running,
-    WaitingForPermission,
     WaitingForApproval,
     Paused,
     Cancelling,
-    Completed,
     Cancelled,
+    Completed,
     Failed
 }
