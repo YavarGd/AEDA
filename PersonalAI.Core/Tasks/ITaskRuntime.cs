@@ -4,6 +4,14 @@ public interface ITaskRuntime
 {
     ValueTask<TaskRun> StartTaskAsync(
         string title,
+        CancellationToken cancellationToken);
+
+    ValueTask<TaskRun> StartTaskAsync(
+        string title,
+        string source = "unknown",
+        Guid? conversationId = null,
+        string? model = null,
+        string? provider = null,
         CancellationToken cancellationToken = default);
 
     ValueTask AppendEventAsync(

@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Permissions;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
+using PersonalAI.Core.Tools.Workspace;
 using PersonalAI.Core.Workspaces;
 
 namespace PersonalAI.Infrastructure.Tools;
@@ -12,6 +14,7 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
     private readonly IToolRegistry _registry;
     private readonly ITaskEventBus _eventBus;
     private readonly IPermissionBroker _permissionBroker;
+    private readonly IApprovalCheckpointStore? _approvalCheckpointStore;
     private readonly ToolRuntimeOptions _options;
     private readonly IToolRuntimeLogger _logger;
     private readonly ConcurrentDictionary<PermissionGrantKey, PermissionResponse>
@@ -22,12 +25,14 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
         ITaskEventBus eventBus,
         IPermissionBroker permissionBroker,
         ToolRuntimeOptions? options = null,
-        IToolRuntimeLogger? logger = null)
+        IToolRuntimeLogger? logger = null,
+        IApprovalCheckpointStore? approvalCheckpointStore = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
         _permissionBroker = permissionBroker ??
             throw new ArgumentNullException(nameof(permissionBroker));
+        _approvalCheckpointStore = approvalCheckpointStore;
         _options = options ?? ToolRuntimeOptions.Default;
         _logger = logger ?? NullToolRuntimeLogger.Instance;
 
@@ -61,7 +66,9 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             TaskEventKind.ToolRequested,
             "Tool requested.",
             TaskExecutionState.Running,
-            invocation.ToolId));
+            invocation.ToolId,
+            safeMetadata: TaskEventMetadata.CreateSafe(
+                ("tool", invocation.ToolId.ToString()))));
 
         if (!_registry.TryGetTool(invocation.ToolId, out var tool))
         {
@@ -195,7 +202,8 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             TaskEventKind.ToolStarted,
             $"Tool started: {tool.Descriptor.DisplayName}.",
             TaskExecutionState.Running,
-            tool.Descriptor.Id));
+            tool.Descriptor.Id,
+            safeMetadata: CreateToolMetadata(tool.Descriptor, invocation.Input)));
 
         using var timeoutCts = new CancellationTokenSource();
         try
@@ -220,7 +228,8 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
                     TaskEventKind.ToolCompleted,
                     result.Summary,
                     TaskExecutionState.Running,
-                    tool.Descriptor.Id));
+                    tool.Descriptor.Id,
+                    safeMetadata: CreateToolResultMetadata(tool.Descriptor, result)));
             }
             else
             {
@@ -344,6 +353,7 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
                 requirement.ChangesState,
                 requirement.IsReadOnly,
                 DateTimeOffset.UtcNow);
+            ApprovalRequest? approvalRequest = null;
 
             PermissionResponse response;
             await PublishAsync(TaskEvent.Create(
@@ -351,7 +361,22 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
                 TaskEventKind.PermissionRequested,
                 $"Permission requested for {descriptor.DisplayName}.",
                 TaskExecutionState.WaitingForPermission,
-                descriptor.Id));
+                descriptor.Id,
+                safeMetadata: CreatePermissionMetadata(descriptor, requirement)));
+
+            if (_approvalCheckpointStore is not null)
+            {
+                approvalRequest = ApprovalRequest.Create(
+                    new ApprovalScope(
+                        taskId,
+                        ApprovalKind.WorkspacePermission,
+                        requirement.NormalizedResourceScope),
+                    $"Allow {descriptor.DisplayName}?",
+                    requirement.Explanation);
+                await _approvalCheckpointStore.RequestAsync(
+                    approvalRequest,
+                    cancellationToken);
+            }
 
             try
             {
@@ -389,7 +414,10 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             await PublishPermissionDecisionAsync(
                 taskId,
                 descriptor,
-                response);
+                response,
+                requirement,
+                approvalRequest,
+                cancellationToken);
 
             if (response.Decision == PermissionDecision.CancelTask)
             {
@@ -437,11 +465,30 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             cancellationToken);
     }
 
-    private ValueTask PublishPermissionDecisionAsync(
+    private async ValueTask PublishPermissionDecisionAsync(
         TaskId taskId,
         ToolDescriptor descriptor,
-        PermissionResponse response) =>
-        PublishAsync(TaskEvent.Create(
+        PermissionResponse response,
+        PermissionRequirement requirement,
+        ApprovalRequest? approvalRequest,
+        CancellationToken cancellationToken)
+    {
+        if (_approvalCheckpointStore is not null && approvalRequest is not null)
+        {
+            await _approvalCheckpointStore.DecideAsync(
+                approvalRequest,
+                response.Decision switch
+                {
+                    PermissionDecision.AllowForTask => ApprovalDecisionKind.AllowForTask,
+                    PermissionDecision.AllowOnce => ApprovalDecisionKind.AllowOnce,
+                    PermissionDecision.CancelTask => ApprovalDecisionKind.Cancel,
+                    _ => ApprovalDecisionKind.Deny
+                },
+                response.Summary,
+                cancellationToken);
+        }
+
+        await PublishAsync(TaskEvent.Create(
             taskId,
             response.IsAllowed
                 ? TaskEventKind.PermissionGranted
@@ -452,7 +499,9 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             response.IsAllowed
                 ? TaskExecutionState.Running
                 : TaskExecutionState.Failed,
-            descriptor.Id));
+            descriptor.Id,
+            safeMetadata: CreatePermissionMetadata(descriptor, requirement)));
+    }
 
     private async ValueTask<ToolResult> CancelAsync(
         TaskId taskId,
@@ -465,7 +514,9 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             TaskEventKind.ToolCancelled,
             "Tool invocation was cancelled.",
             TaskExecutionState.Cancelled,
-            toolId));
+            toolId,
+            safeMetadata: TaskEventMetadata.CreateSafe(
+                ("tool", toolId.ToString()))));
 
         if (publishTaskCancelled)
         {
@@ -474,7 +525,9 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
                 TaskEventKind.TaskCancelled,
                 "Task was cancelled by permission decision.",
                 TaskExecutionState.Cancelled,
-                toolId));
+                toolId,
+                safeMetadata: TaskEventMetadata.CreateSafe(
+                    ("tool", toolId.ToString()))));
         }
 
         ClearTaskPermissionCache(taskId);
@@ -499,6 +552,8 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             "Tool timed out.",
             TaskExecutionState.Failed,
             toolId,
+            safeMetadata: TaskEventMetadata.CreateSafe(
+                ("tool", toolId.ToString())),
             safeErrorCode: "tool_timeout",
             safeErrorMessage: "The tool did not complete before its timeout."));
 
@@ -553,8 +608,92 @@ public sealed class TypedToolRuntime : ITypedToolRuntime, IWorkspacePermissionIn
             "Tool failed.",
             TaskExecutionState.Failed,
             toolId,
+            safeMetadata: TaskEventMetadata.CreateSafe(
+                ("tool", toolId.ToString())),
             safeErrorCode: safeErrorCode,
             safeErrorMessage: safeErrorMessage));
+
+    private static IReadOnlyDictionary<string, string> CreateToolMetadata(
+        ToolDescriptor descriptor,
+        object? input)
+    {
+        var values = new List<(string Key, string Value)>
+        {
+            ("tool", descriptor.Id.ToString()),
+            ("toolName", descriptor.DisplayName),
+            ("readOnly", descriptor.IsReadOnly.ToString())
+        };
+
+        AddWorkspaceInputMetadata(values, input);
+        return TaskEventMetadata.CreateSafe([.. values]);
+    }
+
+    private static IReadOnlyDictionary<string, string> CreatePermissionMetadata(
+        ToolDescriptor descriptor,
+        PermissionRequirement requirement) =>
+        TaskEventMetadata.CreateSafe(
+            ("tool", descriptor.Id.ToString()),
+            ("toolName", descriptor.DisplayName),
+            ("accessMode", requirement.AccessMode.ToString()),
+            ("readOnly", requirement.IsReadOnly.ToString()));
+
+    private static IReadOnlyDictionary<string, string> CreateToolResultMetadata(
+        ToolDescriptor descriptor,
+        ToolResult result)
+    {
+        var values = new List<(string Key, string Value)>
+        {
+            ("tool", descriptor.Id.ToString()),
+            ("toolName", descriptor.DisplayName),
+            ("status", result.Status.ToString()),
+            ("elapsedMs", Math.Max(0, (int)result.Duration.TotalMilliseconds).ToString())
+        };
+
+        switch (result.Output)
+        {
+            case ListDirectoryOutput list:
+                values.Add(("resultCount", list.Entries.Count.ToString()));
+                values.Add(("truncated", list.IsTruncated.ToString()));
+                values.Add(("target", list.RelativePath));
+                break;
+            case SearchWorkspaceTextOutput search:
+                values.Add(("resultCount", search.Matches.Count.ToString()));
+                values.Add(("truncated", search.IsTruncated.ToString()));
+                values.Add(("target", search.RelativeDirectory));
+                values.Add(("query", search.Query));
+                break;
+            case ReadTextFileOutput read:
+                values.Add(("truncated", read.IsTruncated.ToString()));
+                values.Add(("target", read.RelativePath));
+                values.Add(("contentType", read.EncodingName));
+                break;
+            case GetWorkspaceInfoOutput info:
+                values.Add(("workspace", info.DisplayName));
+                values.Add(("resultCount", (info.ImmediateFileCount ?? 0).ToString()));
+                break;
+        }
+
+        return TaskEventMetadata.CreateSafe([.. values]);
+    }
+
+    private static void AddWorkspaceInputMetadata(
+        List<(string Key, string Value)> values,
+        object? input)
+    {
+        switch (input)
+        {
+            case ListDirectoryInput list:
+                values.Add(("target", list.RelativePath));
+                break;
+            case ReadTextFileInput read:
+                values.Add(("target", read.RelativePath));
+                break;
+            case SearchWorkspaceTextInput search:
+                values.Add(("target", search.RelativeDirectory));
+                values.Add(("query", search.Query));
+                break;
+        }
+    }
 
     private async ValueTask PublishAsync(
         TaskEvent taskEvent,

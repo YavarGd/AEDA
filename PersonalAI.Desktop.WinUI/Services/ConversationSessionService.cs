@@ -31,6 +31,7 @@ public sealed class ConversationSessionService
     private readonly IToolRegistry? _toolRegistry;
     private readonly ITypedToolRuntime? _toolRuntime;
     private readonly IWorkspaceRegistry? _workspaceRegistry;
+    private readonly ITaskRuntime? _taskRuntime;
 
     public ConversationSessionService(
         IConversationRepository conversationRepository,
@@ -44,13 +45,15 @@ public sealed class ConversationSessionService
         ChatSessionService chatSession,
         IToolRegistry? toolRegistry,
         ITypedToolRuntime? toolRuntime,
-        IWorkspaceRegistry? workspaceRegistry)
+        IWorkspaceRegistry? workspaceRegistry,
+        ITaskRuntime? taskRuntime = null)
     {
         _conversationRepository = conversationRepository;
         _chatSession = chatSession;
         _toolRegistry = toolRegistry;
         _toolRuntime = toolRuntime;
         _workspaceRegistry = workspaceRegistry;
+        _taskRuntime = taskRuntime;
     }
 
     public Task<IReadOnlyList<Conversation>> LoadConversationsAsync(
@@ -174,6 +177,131 @@ public sealed class ConversationSessionService
         return GetWorkspaceToolDefinitions().Count == 0
             ? "Workspace tools are unavailable."
             : "Workspace tools available.";
+    }
+
+    public async ValueTask<TaskId> StartChatTaskAsync(
+        Guid conversationId,
+        string prompt,
+        string model,
+        CancellationToken cancellationToken = default)
+    {
+        if (_taskRuntime is null)
+        {
+            return TaskId.NewId();
+        }
+
+        try
+        {
+            var run = await _taskRuntime.StartTaskAsync(
+                ConversationTitleGenerator.CreateTitle(prompt),
+                source: "chat",
+                conversationId: conversationId,
+                model: model,
+                provider: _chatSession.ProviderName,
+                cancellationToken);
+            await _taskRuntime.AppendEventAsync(
+                run.Id,
+                TaskEventKind.MessageEmitted,
+                "User request received.",
+                cancellationToken);
+            await _taskRuntime.AppendEventAsync(
+                run.Id,
+                TaskEventKind.MessageEmitted,
+                "Assistant started.",
+                cancellationToken);
+            return run.Id;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return TaskId.NewId();
+        }
+    }
+
+    public async ValueTask CompleteChatTaskAsync(
+        TaskId taskId,
+        string assistantResponse,
+        CancellationToken cancellationToken = default)
+    {
+        if (_taskRuntime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(assistantResponse))
+            {
+                await _taskRuntime.AppendEventAsync(
+                    taskId,
+                    TaskEventKind.MessageEmitted,
+                    "Assistant response completed.",
+                    cancellationToken);
+            }
+
+            await _taskRuntime.CompleteTaskAsync(taskId, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
+    }
+
+    public async ValueTask CancelChatTaskAsync(
+        TaskId taskId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_taskRuntime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _taskRuntime.CancelTaskAsync(
+                taskId,
+                TaskCancellationReason.UserRequested,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
+    }
+
+    public async ValueTask FailChatTaskAsync(
+        TaskId taskId,
+        string safeErrorCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (_taskRuntime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _taskRuntime.FailTaskAsync(
+                taskId,
+                safeErrorCode,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
     }
 
     public async IAsyncEnumerable<ChatChunk> StreamWithWorkspaceToolsAsync(

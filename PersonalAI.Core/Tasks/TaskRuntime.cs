@@ -23,10 +23,25 @@ public sealed class TaskRuntime : ITaskRuntime
 
     public async ValueTask<TaskRun> StartTaskAsync(
         string title,
+        CancellationToken cancellationToken) =>
+        await StartTaskAsync(
+            title,
+            source: "unknown",
+            conversationId: null,
+            model: null,
+            provider: null,
+            cancellationToken);
+
+    public async ValueTask<TaskRun> StartTaskAsync(
+        string title,
+        string source = "unknown",
+        Guid? conversationId = null,
+        string? model = null,
+        string? provider = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var taskRun = TaskRun.Create(title);
+        var taskRun = TaskRun.Create(title, source, conversationId, model, provider);
         await _store.CreateTaskRunAsync(taskRun, cancellationToken);
         _knownStatuses[taskRun.Id] = TaskRunStatus.Created;
         await AppendAndPublishAsync(

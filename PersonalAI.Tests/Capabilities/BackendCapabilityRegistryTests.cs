@@ -9,6 +9,7 @@ public sealed class BackendCapabilityRegistryTests
     {
         var registry = BackendCapabilityRegistry.CreateDefault(
             hasTaskRuntime: true,
+            hasDurableTaskHistory: true,
             hasWorkflowManifestLoader: true,
             hasSpeechToTextProvider: false,
             hasTextToSpeechProvider: true,
@@ -16,6 +17,7 @@ public sealed class BackendCapabilityRegistryTests
             hasStructuredToolRuntime: true);
 
         Assert.True(registry.GetStatus(BackendCapability.TaskRuntime).IsAvailable);
+        Assert.True(registry.GetStatus(BackendCapability.DurableTaskHistory).IsAvailable);
         Assert.False(registry.GetStatus(BackendCapability.VoiceInput).IsAvailable);
         Assert.True(registry.GetStatus(BackendCapability.VoiceOutput).IsAvailable);
         Assert.True(registry.GetStatus(BackendCapability.StructuredToolCalls).IsAvailable);

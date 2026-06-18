@@ -122,6 +122,22 @@ public sealed class TaskRuntimeTests
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<IReadOnlyList<TaskRun>>(_runs.Values.ToArray());
 
+        public ValueTask<IReadOnlyList<TaskRun>> ListTaskRunsByStatusAsync(
+            TaskRunStatus status,
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<IReadOnlyList<TaskRun>>(
+                _runs.Values.Where(run => run.Status == status).ToArray());
+
+        public ValueTask<TaskRun?> GetLatestTaskRunForConversationAsync(
+            Guid conversationId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(
+                _runs.Values
+                    .Where(run => run.ConversationId == conversationId)
+                    .OrderByDescending(run => run.UpdatedAtUtc)
+                    .FirstOrDefault());
+
         public ValueTask<TaskRunRecord?> GetTaskRunAsync(
             TaskId taskId,
             CancellationToken cancellationToken = default)

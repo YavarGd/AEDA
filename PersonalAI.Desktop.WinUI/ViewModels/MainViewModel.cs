@@ -706,6 +706,7 @@ public sealed partial class MainViewModel : ObservableObject
         var model = ModelRoutingSettings.DefaultModel;
         var toolActivityMessages = new Dictionary<string, ChatMessageViewModel>(
             StringComparer.Ordinal);
+        TaskId? activeTaskId = null;
 
         try
         {
@@ -745,6 +746,13 @@ public sealed partial class MainViewModel : ObservableObject
                 routedPrompt,
                 model,
                 CancellationToken.None);
+            var turnTaskId = await _conversationSession.StartChatTaskAsync(
+                conversation.Id,
+                routedPrompt,
+                model,
+                CancellationToken.None);
+            activeTaskId = turnTaskId;
+            TaskTimeline.ObserveTask(turnTaskId);
 
             if (persistUserMessage)
             {
@@ -774,13 +782,11 @@ public sealed partial class MainViewModel : ObservableObject
                 contextSnapshot,
                 _settingsService.Current.Context.MaxIndividualClipboardCharacters,
                 _settingsService.Current.Context.MaxTotalTextContextCharacters);
-            var toolTaskId = TaskId.NewId();
             var canUseWorkspaceTools =
                 _conversationSession.CanUseWorkspaceTools(model);
 
             if (canUseWorkspaceTools)
             {
-                TaskTimeline.ObserveTask(toolTaskId);
                 StatusMessage = _conversationSession.GetWorkspaceToolAvailabilityMessage(model);
             }
             else if (LooksLikeWorkspaceAccessRequest(routedPrompt))
@@ -790,7 +796,7 @@ public sealed partial class MainViewModel : ObservableObject
 
             await foreach (var chunk in _conversationSession.StreamWithWorkspaceToolsAsync(
                                conversation.Id,
-                               toolTaskId,
+                               turnTaskId,
                                model,
                                requestMessages,
                                cancellationToken))
@@ -861,6 +867,10 @@ public sealed partial class MainViewModel : ObservableObject
                 ConversationStatus.Completed,
                 model,
                 CancellationToken.None);
+            await _conversationSession.CompleteChatTaskAsync(
+                turnTaskId,
+                completedContent,
+                CancellationToken.None);
 
             await ReloadConversationListAsync(_activeConversation.Id);
             Status = ChatStatus.Completed;
@@ -883,6 +893,13 @@ public sealed partial class MainViewModel : ObservableObject
                 model,
                 assistantMessage,
                 ChatMessageDisplayStatus.Cancelled);
+            if (activeTaskId is { } taskId)
+            {
+                await _conversationSession.CancelChatTaskAsync(
+                    taskId,
+                    CancellationToken.None);
+            }
+
             Status = ChatStatus.Cancelled;
             StatusMessage = "Cancelled";
         }
@@ -904,6 +921,14 @@ public sealed partial class MainViewModel : ObservableObject
                 model,
                 assistantMessage,
                 ChatMessageDisplayStatus.Failed);
+            if (activeTaskId is { } taskId)
+            {
+                await _conversationSession.FailChatTaskAsync(
+                    taskId,
+                    "assistant_response_failed",
+                    CancellationToken.None);
+            }
+
             Status = ChatStatus.Failed;
             StatusMessage = "Failed: The assistant response could not be completed.";
         }

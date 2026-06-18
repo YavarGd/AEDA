@@ -48,9 +48,42 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
                     status TEXT NOT NULL,
                     created_at_utc TEXT NOT NULL,
                     updated_at_utc TEXT NOT NULL,
-                    safe_error_code TEXT NULL
+                    safe_error_code TEXT NULL,
+                    source TEXT NOT NULL DEFAULT 'unknown',
+                    conversation_id TEXT NULL,
+                    model TEXT NULL,
+                    provider TEXT NULL
                 );
                 """,
+                cancellationToken);
+
+            await AddColumnIfMissingAsync(
+                connection,
+                transaction,
+                "task_runs",
+                "source",
+                "TEXT NOT NULL DEFAULT 'unknown'",
+                cancellationToken);
+            await AddColumnIfMissingAsync(
+                connection,
+                transaction,
+                "task_runs",
+                "conversation_id",
+                "TEXT NULL",
+                cancellationToken);
+            await AddColumnIfMissingAsync(
+                connection,
+                transaction,
+                "task_runs",
+                "model",
+                "TEXT NULL",
+                cancellationToken);
+            await AddColumnIfMissingAsync(
+                connection,
+                transaction,
+                "task_runs",
+                "provider",
+                "TEXT NULL",
                 cancellationToken);
 
             await ExecuteNonQueryAsync(
@@ -116,6 +149,24 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
                 """,
                 cancellationToken);
 
+            await ExecuteNonQueryAsync(
+                connection,
+                transaction,
+                """
+                CREATE INDEX IF NOT EXISTS ix_task_runs_conversation_updated
+                ON task_runs (conversation_id, updated_at_utc DESC);
+                """,
+                cancellationToken);
+
+            await ExecuteNonQueryAsync(
+                connection,
+                transaction,
+                """
+                CREATE INDEX IF NOT EXISTS ix_task_runs_status_updated
+                ON task_runs (status, updated_at_utc DESC);
+                """,
+                cancellationToken);
+
             await transaction.CommitAsync(cancellationToken);
         }
         catch (Exception exception) when (IsExpectedPersistenceException(exception))
@@ -143,7 +194,11 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
                     status,
                     created_at_utc,
                     updated_at_utc,
-                    safe_error_code
+                    safe_error_code,
+                    source,
+                    conversation_id,
+                    model,
+                    provider
                 )
                 VALUES (
                     $id,
@@ -151,7 +206,11 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
                     $status,
                     $created_at_utc,
                     $updated_at_utc,
-                    $safe_error_code
+                    $safe_error_code,
+                    $source,
+                    $conversation_id,
+                    $model,
+                    $provider
                 );
                 """;
             AddTaskRunParameters(command, taskRun);
@@ -324,13 +383,77 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
             await using var command = connection.CreateCommand();
             command.CommandText =
                 """
-                SELECT id, title, status, created_at_utc, updated_at_utc, safe_error_code
+                SELECT id, title, status, created_at_utc, updated_at_utc, safe_error_code,
+                       source, conversation_id, model, provider
                 FROM task_runs
                 ORDER BY updated_at_utc DESC, rowid DESC
                 LIMIT $limit;
                 """;
             command.Parameters.AddWithValue("$limit", limit);
             return await ReadTaskRunsAsync(command, cancellationToken);
+        }
+        catch (Exception exception) when (IsExpectedPersistenceException(exception))
+        {
+            throw PersistenceFailure();
+        }
+    }
+
+    public async ValueTask<IReadOnlyList<TaskRun>> ListTaskRunsByStatusAsync(
+        TaskRunStatus status,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0)
+        {
+            limit = DefaultRecentLimit;
+        }
+
+        limit = Math.Min(limit, 200);
+
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT id, title, status, created_at_utc, updated_at_utc, safe_error_code,
+                       source, conversation_id, model, provider
+                FROM task_runs
+                WHERE status = $status
+                ORDER BY updated_at_utc DESC, rowid DESC
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$status", status.ToString());
+            command.Parameters.AddWithValue("$limit", limit);
+            return await ReadTaskRunsAsync(command, cancellationToken);
+        }
+        catch (Exception exception) when (IsExpectedPersistenceException(exception))
+        {
+            throw PersistenceFailure();
+        }
+    }
+
+    public async ValueTask<TaskRun?> GetLatestTaskRunForConversationAsync(
+        Guid conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT id, title, status, created_at_utc, updated_at_utc, safe_error_code,
+                       source, conversation_id, model, provider
+                FROM task_runs
+                WHERE conversation_id = $conversation_id
+                ORDER BY updated_at_utc DESC, rowid DESC
+                LIMIT 1;
+                """;
+            command.Parameters.AddWithValue("$conversation_id", conversationId.ToString());
+            return (await ReadTaskRunsAsync(command, cancellationToken)).FirstOrDefault();
         }
         catch (Exception exception) when (IsExpectedPersistenceException(exception))
         {
@@ -349,7 +472,8 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
             await using var runCommand = connection.CreateCommand();
             runCommand.CommandText =
                 """
-                SELECT id, title, status, created_at_utc, updated_at_utc, safe_error_code
+                SELECT id, title, status, created_at_utc, updated_at_utc, safe_error_code,
+                       source, conversation_id, model, provider
                 FROM task_runs
                 WHERE id = $id;
                 """;
@@ -441,6 +565,42 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
         command.Transaction = transaction;
         command.CommandText = commandText;
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task AddColumnIfMissingAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tableName,
+        string columnName,
+        string columnDefinition,
+        CancellationToken cancellationToken)
+    {
+        await using var pragma = connection.CreateCommand();
+        pragma.Transaction = transaction;
+        pragma.CommandText = $"PRAGMA table_info({tableName});";
+        var exists = false;
+        await using (var reader = await pragma.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+        {
+            return;
+        }
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};",
+            cancellationToken);
     }
 
     private static async Task<IReadOnlyList<TaskRun>> ReadTaskRunsAsync(
@@ -547,7 +707,19 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
             status,
             ParseUtc(reader.GetString(3)),
             ParseUtc(reader.GetString(4)),
-            reader.IsDBNull(5) ? null : reader.GetString(5));
+            reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.FieldCount > 6 && !reader.IsDBNull(6)
+                ? reader.GetString(6)
+                : "unknown",
+            reader.FieldCount > 7 && !reader.IsDBNull(7)
+                ? Guid.Parse(reader.GetString(7))
+                : null,
+            reader.FieldCount > 8 && !reader.IsDBNull(8)
+                ? reader.GetString(8)
+                : null,
+            reader.FieldCount > 9 && !reader.IsDBNull(9)
+                ? reader.GetString(9)
+                : null);
     }
 
     private static TaskEvent ReadTaskEvent(SqliteDataReader reader)
@@ -591,6 +763,18 @@ public sealed class SqliteTaskEventStore : ITaskEventStore
         command.Parameters.AddWithValue(
             "$safe_error_code",
             taskRun.SafeErrorCode is null ? DBNull.Value : taskRun.SafeErrorCode);
+        command.Parameters.AddWithValue("$source", taskRun.Source);
+        command.Parameters.AddWithValue(
+            "$conversation_id",
+            taskRun.ConversationId is null
+                ? DBNull.Value
+                : taskRun.ConversationId.Value.ToString());
+        command.Parameters.AddWithValue(
+            "$model",
+            taskRun.Model is null ? DBNull.Value : taskRun.Model);
+        command.Parameters.AddWithValue(
+            "$provider",
+            taskRun.Provider is null ? DBNull.Value : taskRun.Provider);
     }
 
     private static void AddTaskEventParameters(

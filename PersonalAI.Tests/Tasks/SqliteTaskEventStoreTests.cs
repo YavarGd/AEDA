@@ -77,6 +77,38 @@ public sealed class SqliteTaskEventStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ConversationAssociationAndStatusQueries_SurviveReload()
+    {
+        var conversationId = Guid.NewGuid();
+        var store = CreateStore();
+        await store.InitializeAsync();
+        var run = TaskRun.Create(
+            "Chat task",
+            source: "chat",
+            conversationId: conversationId,
+            model: "qwen3",
+            provider: "Fake");
+        await store.CreateTaskRunAsync(run);
+        await store.UpdateTaskRunStatusAsync(
+            run.Id,
+            TaskRunStatus.Running,
+            DateTimeOffset.UtcNow);
+
+        var reopened = CreateStore();
+        await reopened.InitializeAsync();
+
+        var latest = await reopened.GetLatestTaskRunForConversationAsync(conversationId);
+        var running = await reopened.ListTaskRunsByStatusAsync(TaskRunStatus.Running, 1);
+
+        Assert.NotNull(latest);
+        Assert.Equal(run.Id, latest.Id);
+        Assert.Equal("chat", latest.Source);
+        Assert.Equal("qwen3", latest.Model);
+        Assert.Equal("Fake", latest.Provider);
+        Assert.Equal(run.Id, Assert.Single(running).Id);
+    }
+
+    [Fact]
     public async Task MalformedTimestamp_FailsSafely()
     {
         var store = CreateStore();

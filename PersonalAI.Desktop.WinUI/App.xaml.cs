@@ -6,6 +6,7 @@ using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Reference;
 using PersonalAI.Core.Workspaces;
+using PersonalAI.Core.Approvals;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.WinUI.Views;
@@ -13,6 +14,7 @@ using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.Ipc;
 using PersonalAI.Infrastructure.Settings;
+using PersonalAI.Infrastructure.Tasks;
 using PersonalAI.Infrastructure.Tools;
 using PersonalAI.Infrastructure.Tools.Workspace;
 using PersonalAI.Infrastructure.Workspaces;
@@ -61,6 +63,9 @@ public partial class App : Application
         var modelCatalog = chatProvider as PersonalAI.Core.Chat.IChatModelCatalog;
         var conversationRepository = ConversationRepositoryFactory.CreateDefaultRepository();
         await conversationRepository.InitializeAsync();
+        var taskEventStore = new SqliteTaskEventStore(
+            PersonalAI.Infrastructure.Persistence.ConversationDatabasePaths.GetDefaultDatabasePath());
+        await taskEventStore.InitializeAsync();
         _settingsService = new JsonApplicationSettingsService();
         await _settingsService.InitializeAsync();
         _startupRegistrationService = new WindowsStartupRegistrationService();
@@ -82,7 +87,11 @@ public partial class App : Application
                 _foregroundWindowTracker,
                 GetWindowHandle,
                 () => _settingsService.Current.Context));
-        var taskEventBus = new TaskEventBus();
+        var taskEventBus = new DurableTaskEventBus(
+            new TaskEventBus(),
+            taskEventStore);
+        var taskRuntime = new TaskRuntime(taskEventStore, taskEventBus);
+        var approvalCheckpointStore = new InMemoryApprovalCheckpointStore();
         var toolRegistry = new TypedToolRegistry();
         toolRegistry.Register(new GetCurrentUtcTimeTool());
         IWorkspaceRegistry workspaceRegistry = new WorkspaceRegistry();
@@ -114,13 +123,15 @@ public partial class App : Application
         var toolRuntime = new TypedToolRuntime(
             toolRegistry,
             taskEventBus,
-            _permissionBroker);
+            _permissionBroker,
+            approvalCheckpointStore: approvalCheckpointStore);
         var conversationSession = new ConversationSessionService(
             conversationRepository,
             chatSession,
             toolRegistry,
             toolRuntime,
-            workspaceRegistry);
+            workspaceRegistry,
+            taskRuntime);
         var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
         var workspaceRegistrationService = new WorkspaceRegistrationService(
             workspaceRepository,

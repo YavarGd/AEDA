@@ -1,4 +1,6 @@
 using PersonalAI.Infrastructure.Workflows;
+using PersonalAI.Core.Capabilities;
+using PersonalAI.Core.Workflows;
 
 namespace PersonalAI.Tests.Workflows;
 
@@ -86,6 +88,47 @@ public sealed class WorkflowManifestLoaderTests : IDisposable
         await Assert.ThrowsAsync<OperationCanceledException>(
             async () => await new FileSystemWorkflowManifestLoader(_directory)
                 .DiscoverAsync(cancellation.Token));
+    }
+
+    [Fact]
+    public async Task QueryService_ValidatesUnsupportedCapabilitiesSafely()
+    {
+        Directory.CreateDirectory(_directory);
+        await File.WriteAllTextAsync(
+            Path.Combine(_directory, "a.manifest.json"),
+            """
+            {
+              "id": "needs-future",
+              "name": "Needs Future",
+              "description": "Description",
+              "version": "1.0.0",
+              "riskLevel": "Low",
+              "requiredCapabilities": ["TaskRuntime", "DoesNotExist"],
+              "requiredTools": []
+            }
+            """);
+        var registry = BackendCapabilityRegistry.CreateDefault(
+            hasTaskRuntime: true,
+            hasDurableTaskHistory: true,
+            hasWorkflowManifestLoader: true,
+            hasSpeechToTextProvider: false,
+            hasTextToSpeechProvider: false,
+            hasLocalWorkerSupervisor: false,
+            hasStructuredToolRuntime: true);
+        var service = new WorkflowManifestQueryService(
+            new FileSystemWorkflowManifestLoader(_directory),
+            registry);
+
+        var manifest = await service.GetAsync("needs-future");
+        var statuses = await service.ValidateRequiredCapabilitiesAsync(manifest!);
+
+        Assert.NotNull(manifest);
+        Assert.Contains(statuses, status =>
+            status.Capability == BackendCapability.TaskRuntime &&
+            status.IsAvailable);
+        Assert.Contains(statuses, status =>
+            !status.IsAvailable &&
+            status.SafeReasonCode == "unsupported_required_capability");
     }
 
     private static string ValidManifest(string id) =>

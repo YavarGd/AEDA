@@ -6,6 +6,7 @@ public enum BackendCapability
     StructuredToolCalls,
     WorkspaceRead,
     TaskRuntime,
+    DurableTaskHistory,
     WorkflowManifests,
     VoiceInput,
     VoiceOutput,

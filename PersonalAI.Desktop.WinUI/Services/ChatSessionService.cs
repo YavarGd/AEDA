@@ -4,6 +4,8 @@ namespace PersonalAI.Desktop.WinUI.Services;
 
 public sealed class ChatSessionService(IChatProvider chatProvider)
 {
+    public string ProviderName => chatProvider.ProviderName;
+
     public bool SupportsToolCalls => chatProvider is IToolCallingChatProvider;
 
     public IAsyncEnumerable<ChatChunk> StreamAsync(

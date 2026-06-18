@@ -30,6 +30,7 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
 
     public static BackendCapabilityRegistry CreateDefault(
         bool hasTaskRuntime,
+        bool hasDurableTaskHistory,
         bool hasWorkflowManifestLoader,
         bool hasSpeechToTextProvider,
         bool hasTextToSpeechProvider,
@@ -45,6 +46,8 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasStructuredToolRuntime ? null : "workspace_read_unavailable"),
             new(BackendCapability.TaskRuntime, hasTaskRuntime,
                 hasTaskRuntime ? null : "task_runtime_unavailable"),
+            new(BackendCapability.DurableTaskHistory, hasDurableTaskHistory,
+                hasDurableTaskHistory ? null : "durable_task_history_unavailable"),
             new(BackendCapability.WorkflowManifests, hasWorkflowManifestLoader,
                 hasWorkflowManifestLoader ? null : "workflow_manifests_unavailable"),
             new(BackendCapability.VoiceInput, hasSpeechToTextProvider,

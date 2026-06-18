@@ -22,6 +22,15 @@ public interface ITaskEventStore
         int limit,
         CancellationToken cancellationToken = default);
 
+    ValueTask<IReadOnlyList<TaskRun>> ListTaskRunsByStatusAsync(
+        TaskRunStatus status,
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<TaskRun?> GetLatestTaskRunForConversationAsync(
+        Guid conversationId,
+        CancellationToken cancellationToken = default);
+
     ValueTask<TaskRunRecord?> GetTaskRunAsync(
         TaskId taskId,
         CancellationToken cancellationToken = default);
