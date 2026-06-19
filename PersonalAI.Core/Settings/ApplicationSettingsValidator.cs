@@ -1,6 +1,7 @@
 namespace PersonalAI.Core.Settings;
 
 using PersonalAI.Core.Chat;
+using PersonalAI.Core.Providers;
 using PersonalAI.Core.Voice;
 
 public static class ApplicationSettingsValidator
@@ -22,6 +23,8 @@ public static class ApplicationSettingsValidator
             Window = value.Window ?? defaults.Window,
             Context = NormalizeContext(value.Context ?? defaults.Context),
             Privacy = NormalizePrivacy(value.Privacy ?? defaults.Privacy),
+            ProviderRouting = NormalizeProviderRouting(
+                value.ProviderRouting ?? defaults.ProviderRouting),
             Vision = normalizedVision,
             Voice = NormalizeVoice(value.Voice ?? defaults.Voice),
             MemoryRag = NormalizeMemoryRag(value.MemoryRag ?? defaults.MemoryRag)
@@ -132,6 +135,56 @@ public static class ApplicationSettingsValidator
         };
     }
 
+    public static ProviderRoutingSettings NormalizeProviderRouting(
+        ProviderRoutingSettings settings)
+    {
+        var defaults = ProviderRoutingSettings.Default;
+        var profiles = (settings.ProviderProfiles ?? defaults.ProviderProfiles)
+            .Select(NormalizeProviderProfile)
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.Id))
+            .GroupBy(profile => profile.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        if (profiles.All(profile =>
+                !profile.Id.Equals("ollama", StringComparison.OrdinalIgnoreCase)))
+        {
+            profiles.Insert(0, defaults.ProviderProfiles[0]);
+        }
+
+        var selectedChat = NormalizeProviderSelection(
+            settings.SelectedChatProvider,
+            profiles,
+            defaults.SelectedChatProvider);
+        var selectedEmbedding = NormalizeProviderSelection(
+            settings.SelectedEmbeddingProvider,
+            profiles,
+            defaults.SelectedEmbeddingProvider);
+        var defaultLocal = NormalizeProviderSelection(
+            settings.DefaultLocalProvider,
+            profiles,
+            defaults.DefaultLocalProvider);
+
+        return settings with
+        {
+            ProviderProfiles = profiles,
+            SelectedChatProvider = selectedChat,
+            SelectedEmbeddingProvider = selectedEmbedding,
+            DefaultLocalProvider = defaultLocal,
+            LocalOnlyMode = settings.LocalOnlyMode,
+            AllowRemoteChat = !settings.LocalOnlyMode && settings.AllowRemoteChat,
+            AllowRemoteEmbeddings = !settings.LocalOnlyMode && settings.AllowRemoteEmbeddings,
+            AllowRemoteWithWorkspaceContext = !settings.LocalOnlyMode &&
+                settings.AllowRemoteWithWorkspaceContext,
+            AllowRemoteWithMemoryContext = !settings.LocalOnlyMode &&
+                settings.AllowRemoteWithMemoryContext,
+            AllowRemoteWithScreenshots = !settings.LocalOnlyMode &&
+                settings.AllowRemoteWithScreenshots,
+            AllowRemoteWithClipboardOrAppContext = !settings.LocalOnlyMode &&
+                settings.AllowRemoteWithClipboardOrAppContext
+        };
+    }
+
     private static ModelSettings NormalizeModels(
         ModelSettings settings,
         VisionSettings visionSettings)
@@ -167,6 +220,64 @@ public static class ApplicationSettingsValidator
     private static int Clamp(int value, int minimum, int maximum)
     {
         return Math.Min(maximum, Math.Max(minimum, value));
+    }
+
+    private static ProviderProfileSetting NormalizeProviderProfile(
+        ProviderProfileSetting profile)
+    {
+        var id = SanitizeToken(profile.Id, "provider");
+        var secretReference = NormalizeOptional(profile.SecretReference);
+        if (secretReference is not null)
+        {
+            secretReference = SanitizeToken(secretReference, "secret");
+        }
+
+        var endpoint = ProviderEndpointClassifier.Classify(profile.EndpointUrl);
+        var endpointUrl = endpoint.BaseUri is null
+            ? string.Empty
+            : ProviderEndpointClassifier.SafeDisplay(endpoint);
+        var isEnabled = profile.IsEnabled && endpoint.IsUsable;
+
+        return profile with
+        {
+            Id = id,
+            DisplayName = string.IsNullOrWhiteSpace(profile.DisplayName)
+                ? id
+                : profile.DisplayName.Trim(),
+            EndpointUrl = endpointUrl,
+            IsEnabled = isEnabled,
+            ChatModel = NormalizeOptional(profile.ChatModel),
+            EmbeddingModel = NormalizeOptional(profile.EmbeddingModel),
+            SecretReference = secretReference
+        };
+    }
+
+    private static string NormalizeProviderSelection(
+        string? selected,
+        IReadOnlyList<ProviderProfileSetting> profiles,
+        string fallback)
+    {
+        var normalized = NormalizeOptional(selected);
+        if (normalized is not null &&
+            profiles.Any(profile => profile.Id.Equals(
+                normalized,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            return normalized;
+        }
+
+        return fallback;
+    }
+
+    private static string SanitizeToken(string value, string fallback)
+    {
+        var normalized = NormalizeOptional(value) ?? fallback;
+        var characters = normalized
+            .Where(character =>
+                char.IsAsciiLetterOrDigit(character) ||
+                character is '-' or '_' or '.')
+            .ToArray();
+        return characters.Length == 0 ? fallback : new string(characters);
     }
 
     private static string? NormalizeOptional(string? value)

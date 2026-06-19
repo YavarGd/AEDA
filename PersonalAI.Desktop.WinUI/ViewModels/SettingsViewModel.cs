@@ -221,6 +221,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 exclusions,
                 IncludeExecutablePathInProviderMetadata,
                 IncludeWindowTitleInProviderContext),
+            _settingsService.Current.ProviderRouting ?? ProviderRoutingSettings.Default,
             new VisionSettings(visionPatterns),
             _voiceSettings,
             _settingsService.Current.MemoryRag ?? MemoryRagSettings.Default));

@@ -1,6 +1,7 @@
 namespace PersonalAI.Core.Settings;
 
 using PersonalAI.Core.Chat;
+using PersonalAI.Core.Providers;
 using PersonalAI.Core.Voice;
 
 public sealed record ApplicationSettings(
@@ -12,11 +13,12 @@ public sealed record ApplicationSettings(
     WindowSettings Window,
     ContextSettings Context,
     PrivacySettings Privacy,
+    ProviderRoutingSettings ProviderRouting,
     VisionSettings Vision,
     VoiceSettings Voice,
     MemoryRagSettings MemoryRag)
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public static ApplicationSettings CreateDefault()
     {
@@ -29,6 +31,7 @@ public sealed record ApplicationSettings(
             WindowSettings.Default,
             ContextSettings.Default,
             PrivacySettings.Default,
+            ProviderRoutingSettings.Default,
             VisionSettings.Default,
             VoiceSettings.CreateDefault(),
             MemoryRagSettings.Default);
@@ -149,6 +152,53 @@ public sealed record VisionSettings(
 {
     public static VisionSettings Default { get; } = new([]);
 }
+
+public sealed record ProviderRoutingSettings(
+    IReadOnlyList<ProviderProfileSetting> ProviderProfiles,
+    string SelectedChatProvider,
+    string SelectedEmbeddingProvider,
+    string DefaultLocalProvider,
+    bool LocalOnlyMode,
+    bool AllowRemoteChat,
+    bool AllowRemoteEmbeddings,
+    bool AllowRemoteWithWorkspaceContext,
+    bool AllowRemoteWithMemoryContext,
+    bool AllowRemoteWithScreenshots,
+    bool AllowRemoteWithClipboardOrAppContext)
+{
+    public static ProviderRoutingSettings Default { get; } = new(
+        [
+            new ProviderProfileSetting(
+                "ollama",
+                ProviderKind.Ollama,
+                "Ollama",
+                "http://localhost:11434",
+                IsEnabled: true,
+                ChatModel: ModelRoutingSettings.DefaultModel,
+                EmbeddingModel: null,
+                SecretReference: null)
+        ],
+        SelectedChatProvider: "ollama",
+        SelectedEmbeddingProvider: "ollama",
+        DefaultLocalProvider: "ollama",
+        LocalOnlyMode: true,
+        AllowRemoteChat: false,
+        AllowRemoteEmbeddings: false,
+        AllowRemoteWithWorkspaceContext: false,
+        AllowRemoteWithMemoryContext: false,
+        AllowRemoteWithScreenshots: false,
+        AllowRemoteWithClipboardOrAppContext: false);
+}
+
+public sealed record ProviderProfileSetting(
+    string Id,
+    ProviderKind Kind,
+    string DisplayName,
+    string EndpointUrl,
+    bool IsEnabled,
+    string? ChatModel,
+    string? EmbeddingModel,
+    string? SecretReference);
 
 public sealed record MemoryRagSettings(
     bool MemoryEnabled,
