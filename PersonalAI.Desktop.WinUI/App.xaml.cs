@@ -59,8 +59,6 @@ public partial class App : Application
             return;
         }
 
-        var chatProvider = ChatProviderFactory.CreateDefaultLocalProvider();
-        var modelCatalog = chatProvider as PersonalAI.Core.Chat.IChatModelCatalog;
         var conversationRepository = ConversationRepositoryFactory.CreateDefaultRepository();
         await conversationRepository.InitializeAsync();
         var taskEventStore = new SqliteTaskEventStore(
@@ -68,8 +66,16 @@ public partial class App : Application
         await taskEventStore.InitializeAsync();
         _settingsService = new JsonApplicationSettingsService();
         await _settingsService.InitializeAsync();
+        var providerFactory = new ProviderFactory(secretStore: new DpapiSecretStore());
+        var providerCatalog = providerFactory.CreateCatalog(_settingsService.Current);
+        var selectedProviderId = new PersonalAI.Core.Providers.ProviderId(
+            _settingsService.Current.ProviderRouting.SelectedChatProvider);
+        providerCatalog.ChatProviders.TryGetValue(
+            selectedProviderId,
+            out var selectedChatProvider);
+        var modelCatalog = selectedChatProvider as PersonalAI.Core.Chat.IChatModelCatalog;
         _startupRegistrationService = new WindowsStartupRegistrationService();
-        var chatSession = new ChatSessionService(chatProvider);
+        var chatSession = new ChatSessionService(providerFactory, _settingsService);
         var activeContextProvider =
             ActiveContextProviderFactory.CreateDefaultProvider();
         _foregroundWindowTracker = new ForegroundWindowTracker(

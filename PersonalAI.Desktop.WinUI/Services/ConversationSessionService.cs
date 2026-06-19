@@ -147,8 +147,7 @@ public sealed class ConversationSessionService
         _toolRegistry is not null &&
         _toolRuntime is not null &&
         _workspaceRegistry is not null &&
-        _chatSession.SupportsToolCalls &&
-        ChatModelCapabilityService.SupportsTools(model) &&
+        _chatSession.SupportsToolCallsFor(model) &&
         _workspaceRegistry.List().Count > 0 &&
         GetWorkspaceToolDefinitions().Count > 0;
 
@@ -159,7 +158,7 @@ public sealed class ConversationSessionService
             return "Workspace tools are unavailable.";
         }
 
-        if (!_chatSession.SupportsToolCalls)
+        if (!_chatSession.SupportsToolCallsFor(model))
         {
             return "The current provider does not support workspace tools.";
         }
@@ -314,7 +313,10 @@ public sealed class ConversationSessionService
     {
         if (!CanUseWorkspaceTools(model))
         {
-            await foreach (var chunk in StreamAsync(model, messages, cancellationToken))
+            await foreach (var chunk in StreamProviderRequestWithEventsAsync(
+                               taskId,
+                               StreamAsync(model, messages, cancellationToken),
+                               cancellationToken))
             {
                 yield return chunk;
             }
@@ -332,10 +334,13 @@ public sealed class ConversationSessionService
             cancellationToken.ThrowIfCancellationRequested();
             var toolCalls = new List<ChatToolCall>();
 
-            await foreach (var chunk in _chatSession.StreamAsync(
-                               model,
-                               workingMessages,
-                               tools,
+            await foreach (var chunk in StreamProviderRequestWithEventsAsync(
+                               taskId,
+                               _chatSession.StreamAsync(
+                                   model,
+                                   workingMessages,
+                                   tools,
+                                   cancellationToken),
                                cancellationToken))
             {
                 if (chunk.ToolCalls.Count > 0)
@@ -452,6 +457,102 @@ public sealed class ConversationSessionService
                 !descriptor.LeavesMachine)
             .Select(CreateWorkspaceToolDefinition)
             .ToArray();
+    }
+
+    private async ValueTask AppendProviderEventAsync(
+        TaskId taskId,
+        TaskEventKind kind,
+        string summary,
+        CancellationToken cancellationToken)
+    {
+        if (_taskRuntime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _taskRuntime.AppendEventAsync(
+                taskId,
+                kind,
+                summary,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
+    }
+
+    private async IAsyncEnumerable<ChatChunk> StreamProviderRequestWithEventsAsync(
+        TaskId taskId,
+        IAsyncEnumerable<ChatChunk> chunks,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        CancellationToken cancellationToken)
+    {
+        await AppendProviderEventAsync(
+            taskId,
+            TaskEventKind.ProviderSelected,
+            "Provider selected.",
+            cancellationToken);
+        await AppendProviderEventAsync(
+            taskId,
+            TaskEventKind.ProviderRequestStarted,
+            "Provider request started.",
+            cancellationToken);
+
+        await using var enumerator = chunks.GetAsyncEnumerator(cancellationToken);
+        while (true)
+        {
+            ChatChunk? current;
+            try
+            {
+                if (!await enumerator.MoveNextAsync())
+                {
+                    break;
+                }
+
+                current = enumerator.Current;
+            }
+            catch (OperationCanceledException)
+            {
+                await AppendProviderEventAsync(
+                    taskId,
+                    TaskEventKind.ProviderRequestFailed,
+                    "Provider request cancelled.",
+                    CancellationToken.None);
+                throw;
+            }
+            catch (InvalidOperationException)
+            {
+                await AppendProviderEventAsync(
+                    taskId,
+                    TaskEventKind.RoutingPolicyDenied,
+                    "Provider routing denied.",
+                    CancellationToken.None);
+                throw;
+            }
+            catch
+            {
+                await AppendProviderEventAsync(
+                    taskId,
+                    TaskEventKind.ProviderRequestFailed,
+                    "Provider request failed.",
+                    CancellationToken.None);
+                throw;
+            }
+
+            yield return current;
+        }
+
+        await AppendProviderEventAsync(
+            taskId,
+            TaskEventKind.ProviderRequestCompleted,
+            "Provider request completed.",
+            cancellationToken);
     }
 
     private List<ChatMessage> AddWorkspaceToolInstruction(

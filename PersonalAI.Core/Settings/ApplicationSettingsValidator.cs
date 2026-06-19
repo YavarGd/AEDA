@@ -229,7 +229,9 @@ public static class ApplicationSettingsValidator
         var secretReference = NormalizeOptional(profile.SecretReference);
         if (secretReference is not null)
         {
-            secretReference = SanitizeToken(secretReference, "secret");
+            secretReference = LooksLikeRawSecret(secretReference)
+                ? null
+                : SanitizeToken(secretReference, "secret");
         }
 
         var endpoint = ProviderEndpointClassifier.Classify(profile.EndpointUrl);
@@ -278,6 +280,15 @@ public static class ApplicationSettingsValidator
                 character is '-' or '_' or '.')
             .ToArray();
         return characters.Length == 0 ? fallback : new string(characters);
+    }
+
+    private static bool LooksLikeRawSecret(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.StartsWith("sk-", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("sk_", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("api_key", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Length > 80;
     }
 
     private static string? NormalizeOptional(string? value)
