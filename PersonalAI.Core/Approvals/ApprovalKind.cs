@@ -8,5 +8,8 @@ public enum ApprovalKind
     BrowserSubmission,
     OfficeDocumentEdit,
     MemoryWrite,
+    ApprovePatchProposal,
+    RejectPatchProposal,
+    ApproveFutureApply,
     Generic
 }

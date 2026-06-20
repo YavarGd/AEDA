@@ -46,7 +46,11 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool workspaceIndexingEnabled = false,
         bool hasEmbeddingProvider = false,
         bool hasVectorIndex = false,
-        bool localOnlyRag = true)
+        bool localOnlyRag = true,
+        bool hasCodeContextRead = false,
+        bool hasCodeChangePlanning = false,
+        bool hasPatchProposal = false,
+        bool hasPatchReview = false)
     {
         var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
         var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
@@ -96,7 +100,18 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasMemoryRepository && retrievalEnabled && localOnlyRag ? null : "local_only_rag_unavailable"),
             new(BackendCapability.Vision, false, "vision_provider_unavailable"),
             new(BackendCapability.WebResearch, false, "web_research_unavailable"),
-            new(BackendCapability.CodePatchProposal, false, "code_patch_proposal_unavailable")
+            new(BackendCapability.CodeContextRead, hasCodeContextRead,
+                hasCodeContextRead ? null : "code_context_read_unavailable"),
+            new(BackendCapability.CodeChangePlanning, hasCodeChangePlanning,
+                hasCodeChangePlanning ? null : "code_change_planning_unavailable"),
+            new(BackendCapability.PatchProposal, hasPatchProposal,
+                hasPatchProposal ? null : "patch_proposal_unavailable"),
+            new(BackendCapability.PatchReview, hasPatchReview,
+                hasPatchReview ? null : "patch_review_unavailable"),
+            new(BackendCapability.PatchApply, false, "patch_apply_deferred"),
+            new(BackendCapability.TestExecution, false, "test_execution_deferred"),
+            new(BackendCapability.CodePatchProposal, hasPatchProposal,
+                hasPatchProposal ? null : "code_patch_proposal_unavailable")
         ]);
     }
 }

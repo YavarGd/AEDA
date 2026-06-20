@@ -25,5 +25,11 @@ public enum BackendCapability
     LocalOnlyRag,
     Vision,
     WebResearch,
+    CodeContextRead,
+    CodeChangePlanning,
+    PatchProposal,
+    PatchReview,
+    PatchApply,
+    TestExecution,
     CodePatchProposal
 }
