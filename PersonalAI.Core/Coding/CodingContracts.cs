@@ -16,10 +16,12 @@ public enum PatchProposalStatus
     ReadyForReview,
     ApprovalRequested,
     ApprovedForApply,
+    Applied,
     Rejected,
     Superseded,
     Failed,
-    Cancelled
+    Cancelled,
+    RolledBack
 }
 
 public enum PatchProposalRisk

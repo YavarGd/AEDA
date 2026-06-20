@@ -30,6 +30,8 @@ public enum BackendCapability
     PatchProposal,
     PatchReview,
     PatchApply,
+    PatchRollback,
     TestExecution,
+    GitMutation,
     CodePatchProposal
 }

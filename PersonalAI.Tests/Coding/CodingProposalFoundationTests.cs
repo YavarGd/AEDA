@@ -247,7 +247,7 @@ public sealed class CodingProposalFoundationTests : IDisposable
 
         Assert.True(registry.GetStatus(BackendCapability.PatchProposal).IsAvailable);
         Assert.False(registry.GetStatus(BackendCapability.PatchApply).IsAvailable);
-        Assert.Equal("patch_apply_deferred", registry.GetStatus(BackendCapability.PatchApply).SafeReasonCode);
+        Assert.Equal("patch_apply_unavailable", registry.GetStatus(BackendCapability.PatchApply).SafeReasonCode);
         Assert.False(registry.GetStatus(BackendCapability.TestExecution).IsAvailable);
     }
 

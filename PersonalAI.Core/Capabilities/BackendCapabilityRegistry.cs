@@ -50,7 +50,9 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool hasCodeContextRead = false,
         bool hasCodeChangePlanning = false,
         bool hasPatchProposal = false,
-        bool hasPatchReview = false)
+        bool hasPatchReview = false,
+        bool hasPatchApply = false,
+        bool hasPatchRollback = false)
     {
         var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
         var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
@@ -108,8 +110,12 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasPatchProposal ? null : "patch_proposal_unavailable"),
             new(BackendCapability.PatchReview, hasPatchReview,
                 hasPatchReview ? null : "patch_review_unavailable"),
-            new(BackendCapability.PatchApply, false, "patch_apply_deferred"),
+            new(BackendCapability.PatchApply, hasPatchApply,
+                hasPatchApply ? null : "patch_apply_unavailable"),
+            new(BackendCapability.PatchRollback, hasPatchRollback,
+                hasPatchRollback ? null : "patch_rollback_unavailable"),
             new(BackendCapability.TestExecution, false, "test_execution_deferred"),
+            new(BackendCapability.GitMutation, false, "git_mutation_deferred"),
             new(BackendCapability.CodePatchProposal, hasPatchProposal,
                 hasPatchProposal ? null : "code_patch_proposal_unavailable")
         ]);
