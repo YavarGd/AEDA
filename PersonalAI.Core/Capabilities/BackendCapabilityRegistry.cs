@@ -57,6 +57,7 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool hasAedaModules = false,
         bool hasAedaCodeModule = false,
         bool hasAedaMemoryModule = false,
+        bool hasAedaResearchModule = false,
         bool hasModuleDashboard = false,
         bool hasModuleRouting = false,
         bool hasCodeTaskTimeline = false)
@@ -135,6 +136,8 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasAedaCodeModule ? null : "aeda_code_module_unavailable"),
             new(BackendCapability.AedaMemoryModule, hasAedaMemoryModule,
                 hasAedaMemoryModule ? null : "aeda_memory_module_unavailable"),
+            new(BackendCapability.AedaResearchModule, hasAedaResearchModule,
+                hasAedaResearchModule ? null : "aeda_research_module_unavailable"),
             new(BackendCapability.MemoryDashboard, hasAedaMemoryModule && hasMemoryRepository,
                 hasAedaMemoryModule && hasMemoryRepository ? null : "memory_dashboard_unavailable"),
             new(BackendCapability.MemorySearch, hasMemoryRepository,
@@ -154,7 +157,23 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
             new(BackendCapability.ModuleRouting, hasModuleRouting,
                 hasModuleRouting ? null : "module_routing_unavailable"),
             new(BackendCapability.CodeTaskTimeline, hasCodeTaskTimeline,
-                hasCodeTaskTimeline ? null : "code_task_timeline_unavailable")
+                hasCodeTaskTimeline ? null : "code_task_timeline_unavailable"),
+            new(BackendCapability.ResearchDashboard, hasAedaResearchModule && hasModuleDashboard,
+                hasAedaResearchModule && hasModuleDashboard ? null : "research_dashboard_unavailable"),
+            new(BackendCapability.ClaimExtraction, hasAedaResearchModule,
+                hasAedaResearchModule ? null : "claim_extraction_unavailable"),
+            new(BackendCapability.EvidenceTracking, hasAedaResearchModule,
+                hasAedaResearchModule ? null : "evidence_tracking_unavailable"),
+            new(BackendCapability.VerificationReport, hasAedaResearchModule,
+                hasAedaResearchModule ? null : "verification_report_unavailable"),
+            new(BackendCapability.CitationReport, hasAedaResearchModule,
+                hasAedaResearchModule ? null : "citation_report_unavailable"),
+            new(BackendCapability.LocalEvidenceRetrieval, hasAedaResearchModule && hasMemoryRepository && retrievalEnabled,
+                hasAedaResearchModule && hasMemoryRepository && retrievalEnabled ? null : "local_evidence_retrieval_unavailable"),
+            new(BackendCapability.AreYouSureReview, hasAedaResearchModule,
+                hasAedaResearchModule ? null : "are_you_sure_review_unavailable"),
+            new(BackendCapability.ExternalSearchProvider, false, "external_search_unconfigured"),
+            new(BackendCapability.BrowserResearchAgent, false, "browser_research_agent_deferred")
         ]);
     }
 }

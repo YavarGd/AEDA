@@ -306,6 +306,9 @@ public sealed class ShellLayoutTests
             document.Descendants().Where(element => element.Name.LocalName == "Grid"),
             grid => AttributeValue(grid, "Visibility")?.Contains("IsCodeVisible", StringComparison.Ordinal) == true);
         Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Grid"),
+            grid => AttributeValue(grid, "Visibility")?.Contains("IsResearchVisible", StringComparison.Ordinal) == true);
+        Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "Button"),
             button => AttributeValue(button, "Command") == "{Binding OpenChatCommand}");
     }
@@ -323,7 +326,7 @@ public sealed class ShellLayoutTests
             border => AttributeValue(border, "Visibility")?.Contains("HasModuleSuggestion", StringComparison.Ordinal) == true);
         Assert.Contains(
             buttons,
-            button => AttributeValue(button, "Content") == "Open in AEDA Code" &&
+            button => AttributeValue(button, "Content") == "{Binding ModuleSuggestionOpenLabel}" &&
                 AttributeValue(button, "Command") == "{Binding OpenSuggestedModuleCommand}");
         Assert.Contains(
             buttons,

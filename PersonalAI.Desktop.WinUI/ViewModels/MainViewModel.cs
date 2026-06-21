@@ -65,6 +65,7 @@ public sealed partial class MainViewModel : ObservableObject
         AedaModuleDashboardViewModel moduleDashboard,
         AedaCodeModuleViewModel aedaCode,
         AedaMemoryModuleViewModel aedaMemory,
+        AedaResearchModuleViewModel aedaResearch,
         TaskTimelineViewModel taskTimeline,
         IWorkspaceRegistry workspaceRegistry,
         IClipboardWriter clipboardWriter,
@@ -83,6 +84,7 @@ public sealed partial class MainViewModel : ObservableObject
         ModuleDashboard = moduleDashboard;
         AedaCode = aedaCode;
         AedaMemory = aedaMemory;
+        AedaResearch = aedaResearch;
         TaskTimeline = taskTimeline;
         _workspaceRegistry = workspaceRegistry;
         _clipboardWriter = clipboardWriter;
@@ -106,6 +108,8 @@ public sealed partial class MainViewModel : ObservableObject
     public AedaCodeModuleViewModel AedaCode { get; }
 
     public AedaMemoryModuleViewModel AedaMemory { get; }
+
+    public AedaResearchModuleViewModel AedaResearch { get; }
 
     public TaskTimelineViewModel TaskTimeline { get; }
 
@@ -153,6 +157,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string ModuleSuggestionMessage => ModuleSuggestion?.Message ?? string.Empty;
 
+    public string ModuleSuggestionOpenLabel =>
+        ModuleSuggestion?.ModuleId == AedaModuleId.Research.Value
+            ? "Open in AEDA Research"
+            : "Open in AEDA Code";
+
     public string? ActiveConversationModelOverride =>
         _activeConversation is null
             ? _draftConversationModelOverride
@@ -195,6 +204,8 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsCodeVisible => ShellNavigation.IsCodeVisible;
 
     public bool IsMemoryVisible => ShellNavigation.IsMemoryVisible;
+
+    public bool IsResearchVisible => ShellNavigation.IsResearchVisible;
 
     [ObservableProperty]
     private GridLength _sidebarColumnWidth = new(280);
@@ -309,6 +320,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             AedaModuleKind.Code => AedaShellSection.Code,
             AedaModuleKind.Memory => AedaShellSection.Memory,
+            AedaModuleKind.Research => AedaShellSection.Research,
             AedaModuleKind.Settings => AedaShellSection.Settings,
             _ => AedaShellSection.Dashboard
         };
@@ -324,6 +336,10 @@ public sealed partial class MainViewModel : ObservableObject
         else if (descriptor.Kind == AedaModuleKind.Memory)
         {
             _ = AedaMemory.InitializeAsync();
+        }
+        else if (descriptor.Kind == AedaModuleKind.Research)
+        {
+            _ = AedaResearch.InitializeAsync();
         }
     }
 
@@ -361,12 +377,14 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsDashboardVisible));
         OnPropertyChanged(nameof(IsCodeVisible));
         OnPropertyChanged(nameof(IsMemoryVisible));
+        OnPropertyChanged(nameof(IsResearchVisible));
     }
 
     partial void OnModuleSuggestionChanged(ModuleSuggestion? value)
     {
         OnPropertyChanged(nameof(HasModuleSuggestion));
         OnPropertyChanged(nameof(ModuleSuggestionMessage));
+        OnPropertyChanged(nameof(ModuleSuggestionOpenLabel));
         OpenSuggestedModuleCommand.NotifyCanExecuteChanged();
     }
 

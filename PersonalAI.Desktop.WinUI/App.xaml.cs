@@ -11,6 +11,7 @@ using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Memory;
 using PersonalAI.Infrastructure.Coding;
 using PersonalAI.Infrastructure.Memory;
+using PersonalAI.Infrastructure.Research;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.WinUI.Views;
@@ -225,6 +226,7 @@ public partial class App : Application
             hasAedaModules: true,
             hasAedaCodeModule: true,
             hasAedaMemoryModule: true,
+            hasAedaResearchModule: true,
             hasModuleDashboard: true,
             hasModuleRouting: true,
             hasCodeTaskTimeline: true);
@@ -232,9 +234,19 @@ public partial class App : Application
             [
                 AedaCodeModuleDescriptorFactory.Create(backendCapabilities),
                 AedaMemoryModuleDescriptorFactory.Create(backendCapabilities),
+                AedaResearchModuleDescriptorFactory.Create(backendCapabilities),
                 .. AedaDeferredModuleDescriptorFactory.CreateAll()
             ]);
         var retrievalService = new RetrievalService(memoryRepository, knowledgeRepository);
+        var aedaResearchModule = new AedaResearchModuleService(
+            new DeterministicClaimExtractionService(),
+            [
+                new LocalRagEvidenceProvider(retrievalService),
+                new DisabledExternalSearchEvidenceProvider()
+            ],
+            new InMemoryVerificationReportRepository(),
+            backendCapabilities,
+            taskRuntime);
         var aedaMemoryModule = new AedaMemoryModuleService(
             memoryRepository,
             memoryService,
@@ -255,6 +267,9 @@ public partial class App : Application
             moduleRegistry);
         var aedaMemoryViewModel = new AedaMemoryModuleViewModel(
             aedaMemoryModule,
+            moduleRegistry);
+        var aedaResearchViewModel = new AedaResearchModuleViewModel(
+            aedaResearchModule,
             moduleRegistry);
         var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
         var workspaceRegistrationService = new WorkspaceRegistrationService(
@@ -297,6 +312,7 @@ public partial class App : Application
                 descriptor => _viewModel?.OpenModule(descriptor)),
             aedaCodeViewModel,
             aedaMemoryViewModel,
+            aedaResearchViewModel,
             _taskTimeline,
             workspaceRegistry,
             new WinUiClipboardWriter(),

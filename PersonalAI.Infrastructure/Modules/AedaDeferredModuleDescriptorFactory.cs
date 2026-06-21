@@ -7,14 +7,6 @@ public static class AedaDeferredModuleDescriptorFactory
     public static IReadOnlyList<AedaModuleDescriptor> CreateAll() =>
     [
         Deferred(
-            new AedaModuleId("research"),
-            AedaModuleKind.Research,
-            "AEDA Research",
-            "Collect and organize research with explicit safe sources.",
-            "\uE721",
-            "research_module_deferred",
-            40),
-        Deferred(
             new AedaModuleId("claw"),
             AedaModuleKind.Claw,
             "AEDA Claw",

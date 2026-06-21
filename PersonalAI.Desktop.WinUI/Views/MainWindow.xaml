@@ -422,7 +422,7 @@
                                    TextWrapping="Wrap"
                                    Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
                         <Button Grid.Column="1"
-                                Content="Open in AEDA Code"
+                                Content="{Binding ModuleSuggestionOpenLabel}"
                                 Command="{Binding OpenSuggestedModuleCommand}" />
                         <Button Grid.Column="2"
                                 Style="{StaticResource PersonalAiCompactIconButtonStyle}"
@@ -550,6 +550,243 @@
                 </Grid>
                 </Grid>
             </Border>
+        </Grid>
+
+        <Grid Grid.Column="1"
+              Padding="{StaticResource PagePadding}"
+              Background="{ThemeResource PersonalAiPageBackgroundBrush}"
+              Visibility="{Binding IsResearchVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ScrollViewer>
+                <StackPanel DataContext="{Binding AedaResearch}"
+                            Spacing="14"
+                            MinWidth="0">
+                    <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="{StaticResource CardPadding}">
+                        <StackPanel Spacing="10"
+                                    MinWidth="0">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                                    <TextBlock Text="{Binding ShortDescription}"
+                                               TextWrapping="Wrap"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                </StackPanel>
+                                <Border Grid.Column="1"
+                                        Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                        BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource PillCornerRadius}"
+                                        Padding="{StaticResource CompactControlPadding}">
+                                    <TextBlock Text="{Binding AvailabilityLabel}"
+                                               Style="{ThemeResource PersonalAiPillTextStyle}" />
+                                </Border>
+                            </Grid>
+                            <TextBlock Text="{Binding PrivacyStatusText}"
+                                       TextWrapping="Wrap"
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                            <ItemsControl ItemsSource="{Binding CapabilityBadges}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <ItemsWrapGrid Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="{StaticResource PillCornerRadius}"
+                                                Padding="{StaticResource CompactControlPadding}"
+                                                Margin="0,0,6,6">
+                                            <TextBlock Text="{Binding}"
+                                                       Style="{ThemeResource PersonalAiPillTextStyle}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding ProviderStatuses}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="8"
+                                                    Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding SafeStatusCode}"
+                                                       Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="{StaticResource CardPadding}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Verification"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBox Header="Text to verify"
+                                     PlaceholderText="Paste an answer or factual claim"
+                                     AcceptsReturn="True"
+                                     MinHeight="110"
+                                     MaxHeight="180"
+                                     TextWrapping="Wrap"
+                                     Text="{Binding VerificationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Research verification input" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <Button Content="Extract claims"
+                                        Command="{Binding ExtractClaimsCommand}"
+                                        ToolTipService.ToolTip="Extract candidate claims without remote calls" />
+                                <Button Content="Verify with local evidence"
+                                        Command="{Binding VerifyWithLocalEvidenceCommand}"
+                                        ToolTipService.ToolTip="Create a local-only verification report" />
+                                <TextBlock Text="{Binding SafeStatusMessage}"
+                                           VerticalAlignment="Center"
+                                           Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                            </StackPanel>
+                            <TextBlock Text="No claims extracted."
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoClaims, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding ExtractedClaims}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                                CornerRadius="{StaticResource CardCornerRadius}"
+                                                Padding="10"
+                                                Margin="0,0,0,6">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding Text}"
+                                                           TextWrapping="Wrap"
+                                                           MaxLines="3" />
+                                                <TextBlock Text="{Binding Kind}"
+                                                           Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="340" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Recent reports"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="No verification reports yet."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoRecentReports, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ItemsControl ItemsSource="{Binding RecentReports}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.AedaResearch.SelectReportCommand, ElementName=Root}"
+                                                    CommandParameter="{Binding}"
+                                                    HorizontalAlignment="Stretch"
+                                                    Margin="0,0,0,6">
+                                                <StackPanel HorizontalAlignment="Stretch"
+                                                            MinWidth="0">
+                                                    <TextBlock Text="{Binding OverallVerdict}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Question.Text}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10"
+                                        MinWidth="0">
+                                <TextBlock Text="Report details"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="{Binding SelectedReport.Question.Text}"
+                                           TextWrapping="Wrap"
+                                           MaxLines="4"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8">
+                                    <TextBlock Text="{Binding SelectedReport.OverallVerdict}"
+                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="{Binding SelectedReport.Confidence}"
+                                               Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                </StackPanel>
+                                <TextBlock Text="Evidence"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                <ItemsControl ItemsSource="{Binding EvidenceItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="2"
+                                                        Margin="0,0,0,8">
+                                                <TextBlock Text="{Binding Excerpt}"
+                                                           TextWrapping="Wrap"
+                                                           MaxLines="3" />
+                                                <TextBlock Text="{Binding Source.Label}"
+                                                           Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="Citations"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                <ItemsControl ItemsSource="{Binding Citations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding SourceLabel}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="Unresolved gaps"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                <ItemsControl ItemsSource="{Binding UnresolvedGaps}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}"
+                                                       TextWrapping="Wrap"
+                                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
 
         <Grid Grid.Column="1"

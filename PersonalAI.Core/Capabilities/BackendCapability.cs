@@ -39,6 +39,7 @@ public enum BackendCapability
     AedaModules,
     AedaCodeModule,
     AedaMemoryModule,
+    AedaResearchModule,
     MemoryDashboard,
     MemorySearch,
     MemoryEdit,
@@ -48,5 +49,14 @@ public enum BackendCapability
     RetrievalPreview,
     ModuleDashboard,
     ModuleRouting,
-    CodeTaskTimeline
+    CodeTaskTimeline,
+    ResearchDashboard,
+    ClaimExtraction,
+    EvidenceTracking,
+    VerificationReport,
+    CitationReport,
+    LocalEvidenceRetrieval,
+    AreYouSureReview,
+    ExternalSearchProvider,
+    BrowserResearchAgent
 }

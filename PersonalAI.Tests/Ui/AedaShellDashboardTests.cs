@@ -27,6 +27,11 @@ public sealed class AedaShellDashboardTests
             AedaModuleKind.Memory,
             AedaModuleStatus.Available,
             "aeda-memory");
+        var research = Module(
+            AedaModuleId.Research,
+            AedaModuleKind.Research,
+            AedaModuleStatus.Available,
+            "aeda-research");
         var claw = Module(
             new AedaModuleId("claw"),
             AedaModuleKind.Claw,
@@ -51,8 +56,13 @@ public sealed class AedaShellDashboardTests
         Assert.Equal(AedaModuleId.Memory, navigation.CurrentRoute.ModuleId);
         Assert.Equal("aeda-memory", navigation.CurrentRoute.RouteId);
 
+        Assert.True(navigation.TryOpenModule(research));
+        Assert.Equal(AedaShellSection.Research, navigation.CurrentSection);
+        Assert.Equal(AedaModuleId.Research, navigation.CurrentRoute.ModuleId);
+        Assert.Equal("aeda-research", navigation.CurrentRoute.RouteId);
+
         Assert.False(navigation.TryOpenModule(claw));
-        Assert.Equal(AedaShellSection.Memory, navigation.CurrentSection);
+        Assert.Equal(AedaShellSection.Research, navigation.CurrentSection);
     }
 
     [Fact]
@@ -68,9 +78,11 @@ public sealed class AedaShellDashboardTests
         var tiles = dashboard.ModuleTiles.ToArray();
         var code = tiles.Single(tile => tile.Kind == AedaModuleKind.Code);
         var memory = tiles.Single(tile => tile.Kind == AedaModuleKind.Memory);
+        var research = tiles.Single(tile => tile.Kind == AedaModuleKind.Research);
         var deferred = tiles.Where(tile =>
             tile.Kind != AedaModuleKind.Code &&
-            tile.Kind != AedaModuleKind.Memory).ToArray();
+            tile.Kind != AedaModuleKind.Memory &&
+            tile.Kind != AedaModuleKind.Research).ToArray();
 
         Assert.Equal(
             tiles.OrderBy(tile => tile.Descriptor.SortOrder)
@@ -78,8 +90,11 @@ public sealed class AedaShellDashboardTests
             tiles.Select(tile => tile.DisplayName));
         Assert.True(code.IsEnabled);
         Assert.True(memory.IsEnabled);
+        Assert.True(research.IsEnabled);
         Assert.Equal("AEDA Memory", memory.DisplayName);
+        Assert.Equal("AEDA Research", research.DisplayName);
         Assert.Equal("Available", memory.StatusLabel);
+        Assert.Equal("Available", research.StatusLabel);
         Assert.Equal("Available", code.StatusLabel);
         Assert.NotEmpty(code.CapabilityHints);
         Assert.All(deferred, tile =>
@@ -209,6 +224,7 @@ public sealed class AedaShellDashboardTests
             hasAedaModules: true,
             hasAedaCodeModule: true,
             hasAedaMemoryModule: true,
+            hasAedaResearchModule: true,
             hasMemoryRepository: true,
             retrievalEnabled: true,
             hasModuleDashboard: true,
@@ -219,6 +235,7 @@ public sealed class AedaShellDashboardTests
             [
                 AedaCodeModuleDescriptorFactory.Create(capabilities),
                 AedaMemoryModuleDescriptorFactory.Create(capabilities),
+                AedaResearchModuleDescriptorFactory.Create(capabilities),
                 .. AedaDeferredModuleDescriptorFactory.CreateAll()
             ]);
     }

@@ -40,6 +40,16 @@ public sealed class ModuleSuggestionService : IModuleSuggestionService
         "word document"
     ];
 
+    private static readonly string[] ResearchIndicators =
+    [
+        "are you sure",
+        "verify this",
+        "fact check",
+        "fact-check",
+        "check this claim",
+        "is this true"
+    ];
+
     public ModuleSuggestion Suggest(string userText)
     {
         if (string.IsNullOrWhiteSpace(userText))
@@ -48,6 +58,15 @@ public sealed class ModuleSuggestionService : IModuleSuggestionService
         }
 
         var normalized = userText.Trim().ToLowerInvariant();
+        if (ResearchIndicators.Any(normalized.Contains))
+        {
+            return new ModuleSuggestion(
+                true,
+                AedaModuleId.Research.Value,
+                "Open in AEDA Research to verify with local evidence?",
+                AutoLaunch: false);
+        }
+
         if (NonCodeIndicators.Any(normalized.Contains))
         {
             return None();

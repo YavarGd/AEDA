@@ -11,6 +11,8 @@ public readonly record struct AedaModuleId(string Value)
     public static AedaModuleId Code { get; } = new("code");
 
     public static AedaModuleId Memory { get; } = new("memory");
+
+    public static AedaModuleId Research { get; } = new("research");
 }
 
 public enum AedaModuleKind

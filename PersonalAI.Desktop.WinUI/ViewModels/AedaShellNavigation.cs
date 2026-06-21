@@ -9,6 +9,7 @@ public enum AedaShellSection
     Dashboard,
     Code,
     Memory,
+    Research,
     Settings
 }
 
@@ -31,6 +32,8 @@ public sealed partial class AedaShellNavigationState : ObservableObject
     public bool IsCodeVisible => CurrentSection == AedaShellSection.Code;
 
     public bool IsMemoryVisible => CurrentSection == AedaShellSection.Memory;
+
+    public bool IsResearchVisible => CurrentSection == AedaShellSection.Research;
 
     public bool IsSettingsVisible => CurrentSection == AedaShellSection.Settings;
 
@@ -59,6 +62,8 @@ public sealed partial class AedaShellNavigationState : ObservableObject
                 ? AedaShellSection.Code
                 : descriptor.Kind == AedaModuleKind.Memory
                     ? AedaShellSection.Memory
+                : descriptor.Kind == AedaModuleKind.Research
+                    ? AedaShellSection.Research
                 : AedaShellSection.Dashboard,
             descriptor.Id,
             descriptor.Route.RouteId));
@@ -72,6 +77,7 @@ public sealed partial class AedaShellNavigationState : ObservableObject
         OnPropertyChanged(nameof(IsDashboardVisible));
         OnPropertyChanged(nameof(IsCodeVisible));
         OnPropertyChanged(nameof(IsMemoryVisible));
+        OnPropertyChanged(nameof(IsResearchVisible));
         OnPropertyChanged(nameof(IsSettingsVisible));
     }
 }
