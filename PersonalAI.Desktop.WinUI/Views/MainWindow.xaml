@@ -934,27 +934,33 @@
                                         IsEnabled="{Binding IsEnabled}"
                                         ToolTipService.ToolTip="{Binding ToolTipText}"
                                         AutomationProperties.Name="{Binding AccessibleName}">
-                                    <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                    <Border BorderBrush="{Binding DisplayName, Converter={StaticResource ModuleAccentBorderConverter}}"
                                             BorderThickness="1"
                                             CornerRadius="{StaticResource CardCornerRadius}"
-                                            Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                            Background="{Binding DisplayName, Converter={StaticResource ModuleAccentFillConverter}}"
                                             Padding="{StaticResource CardPadding}"
                                             Width="240"
                                             MinHeight="180">
                                         <StackPanel Spacing="8">
                                             <Grid>
-                                                <FontIcon FontFamily="Segoe MDL2 Assets"
-                                                          Glyph="{Binding Glyph}"
-                                                          FontSize="22"
-                                                          Foreground="{ThemeResource PersonalAiActiveBrush}" />
+                                                <Border Width="34"
+                                                        Height="34"
+                                                        CornerRadius="{StaticResource IconContainerCornerRadius}"
+                                                        Background="#1AFFFFFF"
+                                                        HorizontalAlignment="Left">
+                                                    <FontIcon FontFamily="Segoe MDL2 Assets"
+                                                              Glyph="{Binding Glyph}"
+                                                              FontSize="17"
+                                                              Foreground="{Binding DisplayName, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                                                </Border>
                                                 <Border HorizontalAlignment="Right"
-                                                        Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
-                                                        BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                                        BorderThickness="1"
+                                                        Background="#1AFFFFFF"
+                                                        BorderThickness="0"
                                                         CornerRadius="{StaticResource PillCornerRadius}"
                                                         Padding="{StaticResource CompactControlPadding}">
                                                     <TextBlock Text="{Binding StatusLabel}"
-                                                               Style="{ThemeResource PersonalAiPillTextStyle}" />
+                                                               Style="{ThemeResource PersonalAiPillTextStyle}"
+                                                               Foreground="{Binding DisplayName, Converter={StaticResource ModuleAccentForegroundConverter}}" />
                                                 </Border>
                                             </Grid>
                                             <TextBlock Text="{Binding DisplayName}"

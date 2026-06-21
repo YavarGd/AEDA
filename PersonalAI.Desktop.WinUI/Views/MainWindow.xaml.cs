@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
             SystemBackdrop = new DesktopAcrylicBackdrop();
         }
 
+        ApplyTitleBarColors(ElementTheme.Default);
         Root.DataContext = _viewModel;
         _viewModel.ConfirmStopGenerationAsync = ShowStopGenerationDialogAsync;
         _viewModel.ConfirmClearAllContextsAsync = ShowClearAllContextsDialogAsync;
@@ -100,6 +101,36 @@ public sealed partial class MainWindow : Window
     public void ApplyTheme(ElementTheme theme)
     {
         Root.RequestedTheme = theme;
+        ApplyTitleBarColors(theme);
+    }
+
+    private void ApplyTitleBarColors(ElementTheme theme)
+    {
+        var titleBar = AppWindow.TitleBar;
+        var useLightTheme = theme == ElementTheme.Light;
+        var background = useLightTheme
+            ? Windows.UI.Color.FromArgb(255, 0xFF, 0xFF, 0xFF)
+            : Windows.UI.Color.FromArgb(255, 0x1B, 0x1B, 0x24);
+        var foreground = useLightTheme
+            ? Windows.UI.Color.FromArgb(255, 0x18, 0x18, 0x1B)
+            : Windows.UI.Color.FromArgb(255, 0xF2, 0xF1, 0xF8);
+        var hoverBackground = useLightTheme
+            ? Windows.UI.Color.FromArgb(255, 0xEC, 0xEB, 0xE7)
+            : Windows.UI.Color.FromArgb(255, 0x2C, 0x2C, 0x3A);
+        var pressedBackground = useLightTheme
+            ? Windows.UI.Color.FromArgb(255, 0xDE, 0xDD, 0xD7)
+            : Windows.UI.Color.FromArgb(255, 0x34, 0x34, 0x48);
+
+        titleBar.BackgroundColor = background;
+        titleBar.InactiveBackgroundColor = background;
+        titleBar.ButtonBackgroundColor = background;
+        titleBar.ButtonInactiveBackgroundColor = background;
+        titleBar.ButtonForegroundColor = foreground;
+        titleBar.ButtonInactiveForegroundColor = foreground;
+        titleBar.ButtonHoverBackgroundColor = hoverBackground;
+        titleBar.ButtonHoverForegroundColor = foreground;
+        titleBar.ButtonPressedBackgroundColor = pressedBackground;
+        titleBar.ButtonPressedForegroundColor = foreground;
     }
 
     private void Root_KeyDown(object sender, KeyRoutedEventArgs e)
