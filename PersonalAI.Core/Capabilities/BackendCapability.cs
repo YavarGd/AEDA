@@ -35,5 +35,10 @@ public enum BackendCapability
     TestExecution,
     ShellExecution,
     GitMutation,
-    CodePatchProposal
+    CodePatchProposal,
+    AedaModules,
+    AedaCodeModule,
+    ModuleDashboard,
+    ModuleRouting,
+    CodeTaskTimeline
 }

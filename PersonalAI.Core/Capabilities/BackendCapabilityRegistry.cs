@@ -53,7 +53,12 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool hasPatchReview = false,
         bool hasPatchApply = false,
         bool hasPatchRollback = false,
-        bool hasControlledValidation = false)
+        bool hasControlledValidation = false,
+        bool hasAedaModules = false,
+        bool hasAedaCodeModule = false,
+        bool hasModuleDashboard = false,
+        bool hasModuleRouting = false,
+        bool hasCodeTaskTimeline = false)
     {
         var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
         var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
@@ -122,7 +127,17 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
             new(BackendCapability.ShellExecution, false, "shell_execution_deferred"),
             new(BackendCapability.GitMutation, false, "git_mutation_deferred"),
             new(BackendCapability.CodePatchProposal, hasPatchProposal,
-                hasPatchProposal ? null : "code_patch_proposal_unavailable")
+                hasPatchProposal ? null : "code_patch_proposal_unavailable"),
+            new(BackendCapability.AedaModules, hasAedaModules,
+                hasAedaModules ? null : "aeda_modules_unavailable"),
+            new(BackendCapability.AedaCodeModule, hasAedaCodeModule,
+                hasAedaCodeModule ? null : "aeda_code_module_unavailable"),
+            new(BackendCapability.ModuleDashboard, hasModuleDashboard,
+                hasModuleDashboard ? null : "module_dashboard_unavailable"),
+            new(BackendCapability.ModuleRouting, hasModuleRouting,
+                hasModuleRouting ? null : "module_routing_unavailable"),
+            new(BackendCapability.CodeTaskTimeline, hasCodeTaskTimeline,
+                hasCodeTaskTimeline ? null : "code_task_timeline_unavailable")
         ]);
     }
 }
