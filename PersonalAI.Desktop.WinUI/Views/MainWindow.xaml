@@ -524,6 +524,298 @@
         <Grid Grid.Column="1"
               Padding="{StaticResource PagePadding}"
               Background="{ThemeResource PersonalAiPageBackgroundBrush}"
+              Visibility="{Binding IsMemoryVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+                <StackPanel MinWidth="0"
+                            DataContext="{Binding AedaMemory}">
+                    <TextBlock Text="{Binding DisplayName}"
+                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                    <TextBlock Text="{Binding PrivacyStatusText}"
+                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel HorizontalAlignment="Right"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                    <Button Command="{Binding OpenDashboardCommand}"
+                            Content="Dashboard" />
+                    <Button Command="{Binding OpenChatCommand}"
+                            Content="Chat" />
+                </StackPanel>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,20,0,0">
+                <StackPanel x:Name="MemorySurface"
+                            DataContext="{Binding AedaMemory}"
+                            Spacing="18">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8">
+                        <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource PillCornerRadius}"
+                                Padding="{StaticResource CompactControlPadding}">
+                            <TextBlock Text="{Binding AvailabilityLabel}"
+                                       Style="{ThemeResource PersonalAiPillTextStyle}" />
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding CapabilityBadges}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsStackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource PillCornerRadius}"
+                                            Padding="{StaticResource CompactControlPadding}"
+                                            Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding}"
+                                                   Style="{ThemeResource PersonalAiPillTextStyle}" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Overview"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="{Binding TotalMemoryCountText}"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="{Binding IndexedKnowledgeText}"
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                            <TextBlock Text="{Binding RetrievalStatusText}"
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                            <ItemsControl ItemsSource="{Binding CountSummaries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}"
+                                                   Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Spacing="8">
+                            <TextBlock Text="Add memory"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBox PlaceholderText="Explicit memory"
+                                     Text="{Binding NewMemoryText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True"
+                                     MinHeight="84"
+                                     AutomationProperties.Name="Explicit memory content" />
+                            <TextBox PlaceholderText="Source reason"
+                                     Text="{Binding NewMemorySourceReason, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Memory source reason" />
+                            <Button Content="Add memory"
+                                    Command="{Binding CreateExplicitMemoryCommand}"
+                                    ToolTipService.ToolTip="Save only this explicit memory" />
+                            <TextBlock Text="{Binding SafeStatusMessage}"
+                                       Style="{ThemeResource PersonalAiMetadataTextStyle}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Search"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <TextBox Width="360"
+                                         PlaceholderText="Search memories"
+                                         Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Search memories" />
+                                <Button Content="Search"
+                                        Command="{Binding SearchMemoriesCommand}" />
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding SearchResults}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="8"
+                                                    Margin="0,0,0,8">
+                                            <Button Content="Open"
+                                                    Command="{Binding DataContext.OpenMemoryDetailCommand, ElementName=MemorySurface}"
+                                                    CommandParameter="{Binding}" />
+                                            <TextBlock Text="{Binding PreviewText}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Spacing="8">
+                            <TextBlock Text="Retrieval Preview"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <TextBox Width="360"
+                                         PlaceholderText="Preview query"
+                                         Text="{Binding RetrievalQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Retrieval preview query" />
+                                <Button Content="Preview"
+                                        Command="{Binding PreviewRetrievalCommand}" />
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding RetrievalPreview}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Spacing="2"
+                                                    Margin="0,0,0,8">
+                                            <TextBlock Text="{Binding SourceLabel}"
+                                                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding PreviewText}"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="3"
+                                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Recent Memories"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No explicit memories yet."
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoRecentMemories, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding Dashboard.RecentMemories}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                                CornerRadius="{StaticResource CardCornerRadius}"
+                                                Padding="{StaticResource CardPadding}"
+                                                Margin="0,0,0,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding PreviewText}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="{Binding SourceLabel}"
+                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="8">
+                                                    <Button Content="Open"
+                                                            Command="{Binding DataContext.OpenMemoryDetailCommand, ElementName=MemorySurface}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Content="Archive"
+                                                            Command="{Binding DataContext.ArchiveMemoryCommand, ElementName=MemorySurface}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Content="Delete"
+                                                            Command="{Binding DataContext.DeleteMemoryCommand, ElementName=MemorySurface}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Spacing="8">
+                            <TextBlock Text="Task Outcomes"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No task outcome memories."
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoTaskOutcomes, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding Dashboard.RecentTaskOutcomes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding PreviewText}"
+                                                   TextWrapping="NoWrap"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                                   Margin="0,0,0,8" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2"
+                                    Spacing="8">
+                            <TextBlock Text="Indexed Knowledge"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No indexed documents."
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoDocuments, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding Dashboard.RecentDocuments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Spacing="2"
+                                                    Margin="0,0,0,8">
+                                            <TextBlock Text="{Binding Title}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding RelativePath}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                            <TextBlock Text="{Binding State}"
+                                                       Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Source Detail"
+                                   Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                        <TextBlock Text="{Binding SelectedMemory.Text}"
+                                   TextWrapping="Wrap"
+                                   MaxLines="5"
+                                   Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="{Binding SelectedMemory.Source.DisplayName}"
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                        <TextBlock Text="{Binding SelectedMemory.Source.RelativePath}"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis"
+                                   Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                        <TextBlock Text="{Binding SelectedMemory.Source.Excerpt}"
+                                   TextWrapping="Wrap"
+                                   MaxLines="4"
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid Grid.Column="1"
+              Padding="{StaticResource PagePadding}"
+              Background="{ThemeResource PersonalAiPageBackgroundBrush}"
               Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />

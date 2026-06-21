@@ -8,6 +8,7 @@ public enum AedaShellSection
     Chat,
     Dashboard,
     Code,
+    Memory,
     Settings
 }
 
@@ -28,6 +29,8 @@ public sealed partial class AedaShellNavigationState : ObservableObject
     public bool IsDashboardVisible => CurrentSection == AedaShellSection.Dashboard;
 
     public bool IsCodeVisible => CurrentSection == AedaShellSection.Code;
+
+    public bool IsMemoryVisible => CurrentSection == AedaShellSection.Memory;
 
     public bool IsSettingsVisible => CurrentSection == AedaShellSection.Settings;
 
@@ -54,6 +57,8 @@ public sealed partial class AedaShellNavigationState : ObservableObject
         Navigate(new AedaShellRoute(
             descriptor.Kind == AedaModuleKind.Code
                 ? AedaShellSection.Code
+                : descriptor.Kind == AedaModuleKind.Memory
+                    ? AedaShellSection.Memory
                 : AedaShellSection.Dashboard,
             descriptor.Id,
             descriptor.Route.RouteId));
@@ -66,6 +71,7 @@ public sealed partial class AedaShellNavigationState : ObservableObject
         OnPropertyChanged(nameof(IsChatVisible));
         OnPropertyChanged(nameof(IsDashboardVisible));
         OnPropertyChanged(nameof(IsCodeVisible));
+        OnPropertyChanged(nameof(IsMemoryVisible));
         OnPropertyChanged(nameof(IsSettingsVisible));
     }
 }

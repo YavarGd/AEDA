@@ -8,7 +8,9 @@ using PersonalAI.Core.Tools.Reference;
 using PersonalAI.Core.Workspaces;
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
+using PersonalAI.Core.Memory;
 using PersonalAI.Infrastructure.Coding;
+using PersonalAI.Infrastructure.Memory;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.WinUI.Views;
@@ -135,6 +137,25 @@ public partial class App : Application
         await patchApplyRepository.InitializeAsync();
         var validationRunRepository = new SqliteValidationRunRepository(databasePath);
         await validationRunRepository.InitializeAsync();
+        var memoryRepository = new SqliteMemoryRepository(databasePath);
+        await memoryRepository.InitializeAsync();
+        var knowledgeRepository = new SqliteKnowledgeRepository(databasePath);
+        await knowledgeRepository.InitializeAsync();
+        var memoryPolicy = new MemoryPolicy(
+            _settingsService.Current.MemoryRag.MemoryEnabled,
+            _settingsService.Current.MemoryRag.ExplicitMemoryEnabled,
+            _settingsService.Current.MemoryRag.AutomaticMemoryEnabled,
+            _settingsService.Current.MemoryRag.ProjectMemoryEnabled,
+            _settingsService.Current.MemoryRag.TaskOutcomeMemoryEnabled,
+            _settingsService.Current.MemoryRag.SensitiveMemoryRequiresApproval,
+            _settingsService.Current.MemoryRag.LocalOnlyMemoryMode,
+            _settingsService.Current.MemoryRag.RetentionDays,
+            AllowSourceText: true,
+            ExclusionRules: []);
+        var memoryService = new MemoryService(
+            memoryRepository,
+            new MemoryPolicyEvaluator(),
+            memoryPolicy);
         _permissionBroker = new WinUiPermissionBroker(
             DispatcherQueue.GetForCurrentThread(),
             () => _mainWindow?.ApprovalXamlRoot);
@@ -185,6 +206,15 @@ public partial class App : Application
             hasTextToSpeechProvider: false,
             hasLocalWorkerSupervisor: false,
             hasStructuredToolRuntime: true,
+            hasMemoryRepository: true,
+            explicitMemoryEnabled: _settingsService.Current.MemoryRag.ExplicitMemoryEnabled,
+            projectMemoryEnabled: _settingsService.Current.MemoryRag.ProjectMemoryEnabled,
+            taskOutcomeMemoryEnabled: _settingsService.Current.MemoryRag.TaskOutcomeMemoryEnabled,
+            retrievalEnabled: _settingsService.Current.MemoryRag.RagEnabled,
+            workspaceIndexingEnabled: _settingsService.Current.MemoryRag.WorkspaceIndexingEnabled,
+            hasEmbeddingProvider: false,
+            hasVectorIndex: false,
+            localOnlyRag: _settingsService.Current.MemoryRag.LocalOnlyMemoryMode,
             hasCodeContextRead: true,
             hasCodeChangePlanning: true,
             hasPatchProposal: true,
@@ -194,14 +224,24 @@ public partial class App : Application
             hasControlledValidation: true,
             hasAedaModules: true,
             hasAedaCodeModule: true,
+            hasAedaMemoryModule: true,
             hasModuleDashboard: true,
             hasModuleRouting: true,
             hasCodeTaskTimeline: true);
         var moduleRegistry = new AedaModuleRegistry(
             [
                 AedaCodeModuleDescriptorFactory.Create(backendCapabilities),
+                AedaMemoryModuleDescriptorFactory.Create(backendCapabilities),
                 .. AedaDeferredModuleDescriptorFactory.CreateAll()
             ]);
+        var retrievalService = new RetrievalService(memoryRepository, knowledgeRepository);
+        var aedaMemoryModule = new AedaMemoryModuleService(
+            memoryRepository,
+            memoryService,
+            backendCapabilities,
+            memoryPolicy,
+            knowledgeRepository,
+            retrievalService);
         var aedaCodeModule = new AedaCodeModuleService(
             workspaceReader,
             codeContextService,
@@ -212,6 +252,9 @@ public partial class App : Application
             taskQueryService);
         var aedaCodeViewModel = new AedaCodeModuleViewModel(
             aedaCodeModule,
+            moduleRegistry);
+        var aedaMemoryViewModel = new AedaMemoryModuleViewModel(
+            aedaMemoryModule,
             moduleRegistry);
         var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
         var workspaceRegistrationService = new WorkspaceRegistrationService(
@@ -253,6 +296,7 @@ public partial class App : Application
                 workspaceRegistry,
                 descriptor => _viewModel?.OpenModule(descriptor)),
             aedaCodeViewModel,
+            aedaMemoryViewModel,
             _taskTimeline,
             workspaceRegistry,
             new WinUiClipboardWriter(),

@@ -64,6 +64,7 @@ public sealed partial class MainViewModel : ObservableObject
         IModuleSuggestionService moduleSuggestionService,
         AedaModuleDashboardViewModel moduleDashboard,
         AedaCodeModuleViewModel aedaCode,
+        AedaMemoryModuleViewModel aedaMemory,
         TaskTimelineViewModel taskTimeline,
         IWorkspaceRegistry workspaceRegistry,
         IClipboardWriter clipboardWriter,
@@ -81,6 +82,7 @@ public sealed partial class MainViewModel : ObservableObject
         _moduleSuggestionService = moduleSuggestionService;
         ModuleDashboard = moduleDashboard;
         AedaCode = aedaCode;
+        AedaMemory = aedaMemory;
         TaskTimeline = taskTimeline;
         _workspaceRegistry = workspaceRegistry;
         _clipboardWriter = clipboardWriter;
@@ -102,6 +104,8 @@ public sealed partial class MainViewModel : ObservableObject
     public AedaModuleDashboardViewModel ModuleDashboard { get; }
 
     public AedaCodeModuleViewModel AedaCode { get; }
+
+    public AedaMemoryModuleViewModel AedaMemory { get; }
 
     public TaskTimelineViewModel TaskTimeline { get; }
 
@@ -189,6 +193,8 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsDashboardVisible => ShellNavigation.IsDashboardVisible;
 
     public bool IsCodeVisible => ShellNavigation.IsCodeVisible;
+
+    public bool IsMemoryVisible => ShellNavigation.IsMemoryVisible;
 
     [ObservableProperty]
     private GridLength _sidebarColumnWidth = new(280);
@@ -302,6 +308,7 @@ public sealed partial class MainViewModel : ObservableObject
         var section = descriptor.Kind switch
         {
             AedaModuleKind.Code => AedaShellSection.Code,
+            AedaModuleKind.Memory => AedaShellSection.Memory,
             AedaModuleKind.Settings => AedaShellSection.Settings,
             _ => AedaShellSection.Dashboard
         };
@@ -313,6 +320,10 @@ public sealed partial class MainViewModel : ObservableObject
         if (descriptor.Kind == AedaModuleKind.Code)
         {
             _ = AedaCode.InitializeAsync();
+        }
+        else if (descriptor.Kind == AedaModuleKind.Memory)
+        {
+            _ = AedaMemory.InitializeAsync();
         }
     }
 
@@ -349,6 +360,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsChatVisible));
         OnPropertyChanged(nameof(IsDashboardVisible));
         OnPropertyChanged(nameof(IsCodeVisible));
+        OnPropertyChanged(nameof(IsMemoryVisible));
     }
 
     partial void OnModuleSuggestionChanged(ModuleSuggestion? value)

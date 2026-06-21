@@ -7,14 +7,6 @@ public static class AedaDeferredModuleDescriptorFactory
     public static IReadOnlyList<AedaModuleDescriptor> CreateAll() =>
     [
         Deferred(
-            new AedaModuleId("memory"),
-            AedaModuleKind.Memory,
-            "AEDA Memory",
-            "Curate local memory and retrieval settings.",
-            "\uE8F1",
-            "memory_module_deferred",
-            30),
-        Deferred(
             new AedaModuleId("research"),
             AedaModuleKind.Research,
             "AEDA Research",

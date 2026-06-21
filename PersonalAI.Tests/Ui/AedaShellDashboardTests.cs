@@ -1,6 +1,7 @@
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Coding;
+using PersonalAI.Core.Memory;
 using PersonalAI.Core.Modules;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
@@ -21,6 +22,11 @@ public sealed class AedaShellDashboardTests
             AedaModuleKind.Code,
             AedaModuleStatus.Available,
             "aeda-code");
+        var memory = Module(
+            AedaModuleId.Memory,
+            AedaModuleKind.Memory,
+            AedaModuleStatus.Available,
+            "aeda-memory");
         var claw = Module(
             new AedaModuleId("claw"),
             AedaModuleKind.Claw,
@@ -40,8 +46,13 @@ public sealed class AedaShellDashboardTests
         Assert.Equal(AedaModuleId.Code, navigation.CurrentRoute.ModuleId);
         Assert.Equal("aeda-code", navigation.CurrentRoute.RouteId);
 
+        Assert.True(navigation.TryOpenModule(memory));
+        Assert.Equal(AedaShellSection.Memory, navigation.CurrentSection);
+        Assert.Equal(AedaModuleId.Memory, navigation.CurrentRoute.ModuleId);
+        Assert.Equal("aeda-memory", navigation.CurrentRoute.RouteId);
+
         Assert.False(navigation.TryOpenModule(claw));
-        Assert.Equal(AedaShellSection.Code, navigation.CurrentSection);
+        Assert.Equal(AedaShellSection.Memory, navigation.CurrentSection);
     }
 
     [Fact]
@@ -56,13 +67,19 @@ public sealed class AedaShellDashboardTests
 
         var tiles = dashboard.ModuleTiles.ToArray();
         var code = tiles.Single(tile => tile.Kind == AedaModuleKind.Code);
-        var deferred = tiles.Where(tile => tile.Kind != AedaModuleKind.Code).ToArray();
+        var memory = tiles.Single(tile => tile.Kind == AedaModuleKind.Memory);
+        var deferred = tiles.Where(tile =>
+            tile.Kind != AedaModuleKind.Code &&
+            tile.Kind != AedaModuleKind.Memory).ToArray();
 
         Assert.Equal(
             tiles.OrderBy(tile => tile.Descriptor.SortOrder)
                 .Select(tile => tile.DisplayName),
             tiles.Select(tile => tile.DisplayName));
         Assert.True(code.IsEnabled);
+        Assert.True(memory.IsEnabled);
+        Assert.Equal("AEDA Memory", memory.DisplayName);
+        Assert.Equal("Available", memory.StatusLabel);
         Assert.Equal("Available", code.StatusLabel);
         Assert.NotEmpty(code.CapabilityHints);
         Assert.All(deferred, tile =>
@@ -141,6 +158,41 @@ public sealed class AedaShellDashboardTests
             item.Summary.Contains("class Secret", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task AedaMemorySurface_LoadsDashboardAndGatesCommands()
+    {
+        var registry = CreateRegistry();
+        var service = new FakeAedaMemoryModuleService();
+        var viewModel = new AedaMemoryModuleViewModel(service, registry);
+
+        Assert.Equal("AEDA Memory", viewModel.DisplayName);
+        Assert.NotEmpty(viewModel.CapabilityBadges);
+        Assert.False(viewModel.CreateExplicitMemoryCommand.CanExecute(null));
+        Assert.False(viewModel.SearchMemoriesCommand.CanExecute(null));
+        Assert.False(viewModel.PreviewRetrievalCommand.CanExecute(null));
+
+        await viewModel.InitializeAsync();
+        viewModel.NewMemoryText = "Remember explicit saves only.";
+        viewModel.NewMemorySourceReason = "Explicit user save";
+        viewModel.SearchText = "explicit";
+        viewModel.RetrievalQuery = "explicit";
+
+        Assert.True(viewModel.HasDashboard);
+        Assert.True(viewModel.HasRecentMemories);
+        Assert.True(viewModel.CreateExplicitMemoryCommand.CanExecute(null));
+        Assert.True(viewModel.SearchMemoriesCommand.CanExecute(null));
+        Assert.True(viewModel.PreviewRetrievalCommand.CanExecute(null));
+        Assert.Contains("Automatic memory disabled", viewModel.PrivacyStatusText);
+
+        await viewModel.SearchMemoriesAsync();
+        await viewModel.PreviewRetrievalAsync();
+
+        Assert.True(viewModel.HasSearchResults);
+        Assert.True(viewModel.HasRetrievalPreview);
+        Assert.All(viewModel.RetrievalPreview, item =>
+            Assert.True(item.PreviewText.Length <= 280));
+    }
+
     private static IAedaModuleRegistry CreateRegistry()
     {
         var capabilities = BackendCapabilityRegistry.CreateDefault(
@@ -156,6 +208,9 @@ public sealed class AedaShellDashboardTests
             hasPatchProposal: true,
             hasAedaModules: true,
             hasAedaCodeModule: true,
+            hasAedaMemoryModule: true,
+            hasMemoryRepository: true,
+            retrievalEnabled: true,
             hasModuleDashboard: true,
             hasModuleRouting: true,
             hasCodeTaskTimeline: true);
@@ -163,6 +218,7 @@ public sealed class AedaShellDashboardTests
         return new AedaModuleRegistry(
             [
                 AedaCodeModuleDescriptorFactory.Create(capabilities),
+                AedaMemoryModuleDescriptorFactory.Create(capabilities),
                 .. AedaDeferredModuleDescriptorFactory.CreateAll()
             ]);
     }
@@ -369,5 +425,182 @@ public sealed class AedaShellDashboardTests
             AedaCodeSessionId sessionId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(CreateDashboard());
+    }
+
+    private sealed class FakeAedaMemoryModuleService : IAedaMemoryModuleService
+    {
+        private static readonly AedaMemoryRecordSummary Summary = new(
+            "memory-1",
+            new AedaMemoryKindBadge("ExplicitUserPreference", "Explicit User Preference"),
+            new AedaMemoryScopeBadge("Global", "Global"),
+            "Remember explicit saves only.",
+            "Active",
+            "Normal",
+            "Explicit user save",
+            DateTimeOffset.UtcNow);
+
+        public Task<AedaModuleDescriptor> GetDescriptorAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(CreateRegistry().ListModules().Single(module => module.Id == AedaModuleId.Memory));
+
+        public Task<AedaMemoryDashboardModel> GetDashboardAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryDashboardModel(
+                1,
+                new Dictionary<string, int> { ["ExplicitUserPreference"] = 1 },
+                new Dictionary<string, int> { ["Global"] = 1 },
+                [Summary],
+                [],
+                [new AedaKnowledgeDocumentSummary(
+                    "doc-1",
+                    "README.md",
+                    "WorkspaceFile",
+                    "workspace-1",
+                    "README.md",
+                    "Indexed",
+                    "abc123",
+                    1,
+                    DateTimeOffset.UtcNow,
+                    null)],
+                1,
+                1,
+                new AedaMemoryPolicySummary(
+                    true,
+                    true,
+                    false,
+                    true,
+                    true,
+                    true,
+                    true,
+                    365,
+                    0),
+                new AedaMemoryPrivacyStatus(
+                    "Local only",
+                    "Automatic memory disabled",
+                    "Sensitive memory requires approval",
+                    "Bounded source excerpts allowed",
+                    []),
+                true,
+                false,
+                false,
+                "Memory dashboard loaded."));
+
+        public Task<IReadOnlyList<AedaMemoryRecordSummary>> ListMemoriesAsync(
+            MemorySearchQuery query,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaMemoryRecordSummary>>([Summary]);
+
+        public Task<IReadOnlyList<AedaMemoryRecordSummary>> SearchMemoriesAsync(
+            string text,
+            int limit = 20,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaMemoryRecordSummary>>([Summary]);
+
+        public Task<AedaMemoryRecordDetail?> GetMemoryDetailAsync(
+            MemoryId memoryId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<AedaMemoryRecordDetail?>(new AedaMemoryRecordDetail(
+                memoryId.Value,
+                Summary.Kind,
+                Summary.Scope,
+                Summary.PreviewText,
+                "Active",
+                "Normal",
+                "High",
+                new AedaMemorySourceSummary(
+                    "explicit_user_save",
+                    "Explicit user save",
+                    null,
+                    "Explicit user save",
+                    DateTimeOffset.UtcNow),
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow));
+
+        public Task<AedaMemoryOperationResult> CreateExplicitMemoryAsync(
+            AedaMemoryCreateRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryOperationResult(true, Memory: null));
+
+        public Task<AedaMemoryOperationResult> CreateProjectFactAsync(
+            AedaMemoryCreateRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryOperationResult(true, Memory: null));
+
+        public Task<AedaMemoryOperationResult> UpdateMemoryAsync(
+            AedaMemoryUpdateRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryOperationResult(true, Memory: null));
+
+        public Task<AedaMemoryOperationResult> ArchiveMemoryAsync(
+            MemoryId memoryId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryOperationResult(true, Memory: null));
+
+        public Task<AedaMemoryOperationResult> DeleteMemoryAsync(
+            MemoryId memoryId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryOperationResult(true, Memory: null));
+
+        public Task<AedaMemoryOperationResult> RestoreArchivedMemoryAsync(
+            MemoryId memoryId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryOperationResult(true, Memory: null));
+
+        public Task<IReadOnlyList<AedaMemorySourceSummary>> ListMemorySourcesAsync(
+            int limit = 100,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaMemorySourceSummary>>([]);
+
+        public Task<IReadOnlyList<AedaMemoryRecordSummary>> ListMemoriesBySourceTypeAsync(
+            string sourceType,
+            int limit = 50,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaMemoryRecordSummary>>([]);
+
+        public Task<IReadOnlyList<AedaKnowledgeDocumentSummary>> ListIndexedDocumentsAsync(
+            string? workspaceId = null,
+            int limit = 100,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaKnowledgeDocumentSummary>>([]);
+
+        public Task<IReadOnlyList<AedaKnowledgeChunkSummary>> ListChunksForDocumentAsync(
+            string documentId,
+            int limit = 20,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaKnowledgeChunkSummary>>([]);
+
+        public Task<IReadOnlyList<AedaKnowledgeChunkSummary>> SearchIndexedKnowledgeAsync(
+            string text,
+            string? workspaceId = null,
+            int limit = 20,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaKnowledgeChunkSummary>>([]);
+
+        public Task<IReadOnlyList<AedaRetrievalPreviewItem>> PreviewRetrievalAsync(
+            string text,
+            int limit = 6,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>(
+                [new AedaRetrievalPreviewItem(
+                    "Memory",
+                    "Remember explicit saves only.",
+                    1,
+                    "Explicit user save",
+                    "memory_text",
+                    "memory-1",
+                    null)]);
+
+        public Task<AedaMemoryPolicySummary> GetPolicyStatusAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaMemoryPolicySummary(
+                true,
+                true,
+                false,
+                true,
+                true,
+                true,
+                true,
+                365,
+                0));
     }
 }
