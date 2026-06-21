@@ -52,7 +52,8 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool hasPatchProposal = false,
         bool hasPatchReview = false,
         bool hasPatchApply = false,
-        bool hasPatchRollback = false)
+        bool hasPatchRollback = false,
+        bool hasControlledValidation = false)
     {
         var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
         var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
@@ -114,7 +115,11 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasPatchApply ? null : "patch_apply_unavailable"),
             new(BackendCapability.PatchRollback, hasPatchRollback,
                 hasPatchRollback ? null : "patch_rollback_unavailable"),
-            new(BackendCapability.TestExecution, false, "test_execution_deferred"),
+            new(BackendCapability.ControlledValidation, hasControlledValidation,
+                hasControlledValidation ? null : "controlled_validation_unavailable"),
+            new(BackendCapability.TestExecution, hasControlledValidation,
+                hasControlledValidation ? null : "test_execution_deferred"),
+            new(BackendCapability.ShellExecution, false, "shell_execution_deferred"),
             new(BackendCapability.GitMutation, false, "git_mutation_deferred"),
             new(BackendCapability.CodePatchProposal, hasPatchProposal,
                 hasPatchProposal ? null : "code_patch_proposal_unavailable")

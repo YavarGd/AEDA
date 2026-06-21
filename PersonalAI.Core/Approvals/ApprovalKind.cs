@@ -11,5 +11,6 @@ public enum ApprovalKind
     ApprovePatchProposal,
     RejectPatchProposal,
     ApproveFutureApply,
+    ValidationRun,
     Generic
 }
