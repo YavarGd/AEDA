@@ -16,6 +16,7 @@ public sealed class ShellLayoutTests
 
     [Theory]
     [InlineData("New chat", "NewChatCommand", "\uE710")]
+    [InlineData("Module dashboard", "OpenDashboardCommand", "\uE80F")]
     [InlineData("Settings", "OpenSettingsCommand", "\uE713")]
     [InlineData("Send", "SendMessageCommand", "\uE74A")]
     [InlineData("Add context", null, "\uE898")]
@@ -288,6 +289,46 @@ public sealed class ShellLayoutTests
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
             text => AttributeValue(text, "Text") == "{Binding RoutingStatusMessage}");
+    }
+
+    [Fact]
+    public void ShellNavigationSurfaces_BindChatDashboardCodeAndSettings()
+    {
+        var document = LoadShellXaml();
+
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Grid"),
+            grid => AttributeValue(grid, "Visibility")?.Contains("IsChatVisible", StringComparison.Ordinal) == true);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Grid"),
+            grid => AttributeValue(grid, "Visibility")?.Contains("IsDashboardVisible", StringComparison.Ordinal) == true);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Grid"),
+            grid => AttributeValue(grid, "Visibility")?.Contains("IsCodeVisible", StringComparison.Ordinal) == true);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            button => AttributeValue(button, "Command") == "{Binding OpenChatCommand}");
+    }
+
+    [Fact]
+    public void ModuleSuggestionCard_IsExplicitAndDismissible()
+    {
+        var document = LoadShellXaml();
+        var buttons = document.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToArray();
+
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Border"),
+            border => AttributeValue(border, "Visibility")?.Contains("HasModuleSuggestion", StringComparison.Ordinal) == true);
+        Assert.Contains(
+            buttons,
+            button => AttributeValue(button, "Content") == "Open in AEDA Code" &&
+                AttributeValue(button, "Command") == "{Binding OpenSuggestedModuleCommand}");
+        Assert.Contains(
+            buttons,
+            button => AttributeValue(button, "AutomationProperties.Name") == "Dismiss module suggestion" &&
+                AttributeValue(button, "Command") == "{Binding DismissModuleSuggestionCommand}");
     }
 
     [Fact]

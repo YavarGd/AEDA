@@ -7,12 +7,15 @@ using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Reference;
 using PersonalAI.Core.Workspaces;
 using PersonalAI.Core.Approvals;
+using PersonalAI.Core.Capabilities;
+using PersonalAI.Infrastructure.Coding;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.WinUI.Views;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.Ipc;
+using PersonalAI.Infrastructure.Modules;
 using PersonalAI.Infrastructure.Settings;
 using PersonalAI.Infrastructure.Tasks;
 using PersonalAI.Infrastructure.Tools;
@@ -97,6 +100,7 @@ public partial class App : Application
             new TaskEventBus(),
             taskEventStore);
         var taskRuntime = new TaskRuntime(taskEventStore, taskEventBus);
+        var taskQueryService = new TaskQueryService(taskEventStore);
         var approvalCheckpointStore = new InMemoryApprovalCheckpointStore();
         var toolRegistry = new TypedToolRegistry();
         toolRegistry.Register(new GetCurrentUtcTimeTool());
@@ -123,6 +127,14 @@ public partial class App : Application
             workspaceReader,
             workspaceResolver,
             workspaceOptions));
+        var databasePath =
+            PersonalAI.Infrastructure.Persistence.ConversationDatabasePaths.GetDefaultDatabasePath();
+        var patchProposalRepository = new SqlitePatchProposalRepository(databasePath);
+        await patchProposalRepository.InitializeAsync();
+        var patchApplyRepository = new SqlitePatchApplyRepository(databasePath);
+        await patchApplyRepository.InitializeAsync();
+        var validationRunRepository = new SqliteValidationRunRepository(databasePath);
+        await validationRunRepository.InitializeAsync();
         _permissionBroker = new WinUiPermissionBroker(
             DispatcherQueue.GetForCurrentThread(),
             () => _mainWindow?.ApprovalXamlRoot);
@@ -138,6 +150,69 @@ public partial class App : Application
             toolRuntime,
             workspaceRegistry,
             taskRuntime);
+        var codeContextService = new CodeContextService(workspaceReader);
+        var validationPlanService = new ValidationPlanService();
+        var patchProposalService = new PatchProposalService(
+            patchProposalRepository,
+            new UnifiedDiffBuilder(),
+            new PatchRiskClassifier(),
+            validationPlanService,
+            workspaceReader,
+            approvalCheckpointStore,
+            taskRuntime);
+        var patchApplyService = new PatchApplyService(
+            patchProposalRepository,
+            patchApplyRepository,
+            new PatchApplyValidator(
+                patchProposalRepository,
+                workspaceReader,
+                workspaceResolver),
+            workspaceReader,
+            approvalCheckpointStore,
+            taskRuntime);
+        var validationRunnerService = new ValidationRunnerService(
+            validationRunRepository,
+            new ValidationCommandAllowlist(),
+            new ControlledProcessRunner(),
+            workspaceReader,
+            approvalCheckpointStore,
+            taskRuntime);
+        var backendCapabilities = BackendCapabilityRegistry.CreateDefault(
+            hasTaskRuntime: true,
+            hasDurableTaskHistory: true,
+            hasWorkflowManifestLoader: false,
+            hasSpeechToTextProvider: false,
+            hasTextToSpeechProvider: false,
+            hasLocalWorkerSupervisor: false,
+            hasStructuredToolRuntime: true,
+            hasCodeContextRead: true,
+            hasCodeChangePlanning: true,
+            hasPatchProposal: true,
+            hasPatchReview: true,
+            hasPatchApply: true,
+            hasPatchRollback: true,
+            hasControlledValidation: true,
+            hasAedaModules: true,
+            hasAedaCodeModule: true,
+            hasModuleDashboard: true,
+            hasModuleRouting: true,
+            hasCodeTaskTimeline: true);
+        var moduleRegistry = new AedaModuleRegistry(
+            [
+                AedaCodeModuleDescriptorFactory.Create(backendCapabilities),
+                .. AedaDeferredModuleDescriptorFactory.CreateAll()
+            ]);
+        var aedaCodeModule = new AedaCodeModuleService(
+            workspaceReader,
+            codeContextService,
+            new CodeChangePlanningService(validationPlanService),
+            patchProposalService,
+            patchApplyService,
+            validationRunnerService,
+            taskQueryService);
+        var aedaCodeViewModel = new AedaCodeModuleViewModel(
+            aedaCodeModule,
+            moduleRegistry);
         var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
         var workspaceRegistrationService = new WorkspaceRegistrationService(
             workspaceRepository,
@@ -170,6 +245,14 @@ public partial class App : Application
             settingsViewModel,
             new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
             toolRuntime,
+            moduleRegistry,
+            new ModuleSuggestionService(),
+            new AedaModuleDashboardViewModel(
+                moduleRegistry,
+                taskQueryService,
+                workspaceRegistry,
+                descriptor => _viewModel?.OpenModule(descriptor)),
+            aedaCodeViewModel,
             _taskTimeline,
             workspaceRegistry,
             new WinUiClipboardWriter(),

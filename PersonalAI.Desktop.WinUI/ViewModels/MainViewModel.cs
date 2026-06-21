@@ -7,7 +7,9 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Coding;
 using PersonalAI.Core.Editor;
+using PersonalAI.Core.Modules;
 using PersonalAI.Core.Settings;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
@@ -31,6 +33,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IApplicationSettingsService _settingsService;
     private readonly IChatModelRouter _modelRouter;
     private readonly ITypedToolRuntime _toolRuntime;
+    private readonly IAedaModuleRegistry _moduleRegistry;
+    private readonly IModuleSuggestionService _moduleSuggestionService;
     private readonly IWorkspaceRegistry _workspaceRegistry;
     private readonly IClipboardWriter _clipboardWriter;
     private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _listModelsAsync;
@@ -56,6 +60,10 @@ public sealed partial class MainViewModel : ObservableObject
         SettingsViewModel settings,
         IChatModelRouter modelRouter,
         ITypedToolRuntime toolRuntime,
+        IAedaModuleRegistry moduleRegistry,
+        IModuleSuggestionService moduleSuggestionService,
+        AedaModuleDashboardViewModel moduleDashboard,
+        AedaCodeModuleViewModel aedaCode,
         TaskTimelineViewModel taskTimeline,
         IWorkspaceRegistry workspaceRegistry,
         IClipboardWriter clipboardWriter,
@@ -69,6 +77,10 @@ public sealed partial class MainViewModel : ObservableObject
         Settings = settings;
         _modelRouter = modelRouter;
         _toolRuntime = toolRuntime;
+        _moduleRegistry = moduleRegistry;
+        _moduleSuggestionService = moduleSuggestionService;
+        ModuleDashboard = moduleDashboard;
+        AedaCode = aedaCode;
         TaskTimeline = taskTimeline;
         _workspaceRegistry = workspaceRegistry;
         _clipboardWriter = clipboardWriter;
@@ -84,6 +96,12 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<AttachedContextItem> AttachedContexts { get; } = [];
 
     public SettingsViewModel Settings { get; }
+
+    public AedaShellNavigationState ShellNavigation { get; } = new();
+
+    public AedaModuleDashboardViewModel ModuleDashboard { get; }
+
+    public AedaCodeModuleViewModel AedaCode { get; }
 
     public TaskTimelineViewModel TaskTimeline { get; }
 
@@ -123,6 +141,14 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _routingStatusMessage = "Model will be selected automatically.";
 
+    [ObservableProperty]
+    private ModuleSuggestion? _moduleSuggestion;
+
+    public bool HasModuleSuggestion =>
+        ModuleSuggestion is { ShouldSuggest: true, AutoLaunch: false };
+
+    public string ModuleSuggestionMessage => ModuleSuggestion?.Message ?? string.Empty;
+
     public string? ActiveConversationModelOverride =>
         _activeConversation is null
             ? _draftConversationModelOverride
@@ -140,8 +166,29 @@ public sealed partial class MainViewModel : ObservableObject
             ? $"Model override: {ActiveConversationModelOverride}"
             : "Automatic routing";
 
-    [ObservableProperty]
-    private bool _isSettingsOpen;
+    public bool IsSettingsOpen
+    {
+        get => ShellNavigation.IsSettingsVisible;
+        set
+        {
+            if (value)
+            {
+                ShellNavigation.Navigate(new AedaShellRoute(AedaShellSection.Settings));
+            }
+            else if (ShellNavigation.IsSettingsVisible)
+            {
+                ShellNavigation.Navigate(new AedaShellRoute(AedaShellSection.Chat));
+            }
+
+            NotifyShellVisibilityChanged();
+        }
+    }
+
+    public bool IsChatVisible => ShellNavigation.IsChatVisible;
+
+    public bool IsDashboardVisible => ShellNavigation.IsDashboardVisible;
+
+    public bool IsCodeVisible => ShellNavigation.IsCodeVisible;
 
     [ObservableProperty]
     private GridLength _sidebarColumnWidth = new(280);
@@ -226,6 +273,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnPromptChanged(string value)
     {
+        UpdateModuleSuggestion(value);
         SendMessageCommand.NotifyCanExecuteChanged();
     }
 
@@ -241,6 +289,81 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasUnsupportedImageContext));
         OnPropertyChanged(nameof(CanSend));
         SendMessageCommand.NotifyCanExecuteChanged();
+    }
+
+    public void OpenModule(AedaModuleDescriptor descriptor)
+    {
+        if (descriptor.Status == AedaModuleStatus.Unavailable)
+        {
+            StatusMessage = descriptor.SafeUnavailableReason ?? "Module unavailable.";
+            return;
+        }
+
+        var section = descriptor.Kind switch
+        {
+            AedaModuleKind.Code => AedaShellSection.Code,
+            AedaModuleKind.Settings => AedaShellSection.Settings,
+            _ => AedaShellSection.Dashboard
+        };
+        NavigateTo(
+            section,
+            descriptor.Id,
+            descriptor.Route.RouteId);
+
+        if (descriptor.Kind == AedaModuleKind.Code)
+        {
+            _ = AedaCode.InitializeAsync();
+        }
+    }
+
+    public bool OpenModuleById(AedaModuleId moduleId)
+    {
+        if (!_moduleRegistry.TryGetModule(moduleId, out var descriptor))
+        {
+            StatusMessage = "Module unavailable.";
+            return false;
+        }
+
+        if (descriptor.Status == AedaModuleStatus.Unavailable)
+        {
+            StatusMessage = descriptor.SafeUnavailableReason ?? "Module unavailable.";
+            return false;
+        }
+
+        OpenModule(descriptor);
+        return true;
+    }
+
+    private void NavigateTo(
+        AedaShellSection section,
+        AedaModuleId? moduleId = null,
+        string? routeId = null)
+    {
+        ShellNavigation.Navigate(new AedaShellRoute(section, moduleId, routeId));
+        NotifyShellVisibilityChanged();
+    }
+
+    private void NotifyShellVisibilityChanged()
+    {
+        OnPropertyChanged(nameof(IsSettingsOpen));
+        OnPropertyChanged(nameof(IsChatVisible));
+        OnPropertyChanged(nameof(IsDashboardVisible));
+        OnPropertyChanged(nameof(IsCodeVisible));
+    }
+
+    partial void OnModuleSuggestionChanged(ModuleSuggestion? value)
+    {
+        OnPropertyChanged(nameof(HasModuleSuggestion));
+        OnPropertyChanged(nameof(ModuleSuggestionMessage));
+        OpenSuggestedModuleCommand.NotifyCanExecuteChanged();
+    }
+
+    private void UpdateModuleSuggestion(string prompt)
+    {
+        var suggestion = _moduleSuggestionService.Suggest(prompt);
+        ModuleSuggestion = suggestion.ShouldSuggest && !suggestion.AutoLaunch
+            ? suggestion
+            : null;
     }
 
     partial void OnConversationSearchChanged(string value)
@@ -267,14 +390,52 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void OpenSettings()
     {
-        IsSettingsOpen = true;
+        NavigateTo(AedaShellSection.Settings);
     }
 
     [RelayCommand]
     public void CloseSettings()
     {
-        IsSettingsOpen = false;
+        NavigateTo(AedaShellSection.Chat);
     }
+
+    [RelayCommand]
+    public void OpenDashboard()
+    {
+        NavigateTo(AedaShellSection.Dashboard);
+        _ = ModuleDashboard.RefreshTaskSummariesAsync();
+    }
+
+    [RelayCommand]
+    public void OpenChat()
+    {
+        NavigateTo(AedaShellSection.Chat);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanOpenSuggestedModule))]
+    public void OpenSuggestedModule()
+    {
+        if (ModuleSuggestion is not { ShouldSuggest: true } suggestion)
+        {
+            return;
+        }
+
+        OpenModuleById(new AedaModuleId(suggestion.ModuleId));
+        DismissModuleSuggestion();
+    }
+
+    [RelayCommand]
+    public void DismissModuleSuggestion()
+    {
+        ModuleSuggestion = null;
+    }
+
+    private bool CanOpenSuggestedModule() =>
+        ModuleSuggestion is { ShouldSuggest: true } suggestion &&
+        _moduleRegistry.TryGetModule(
+            new AedaModuleId(suggestion.ModuleId),
+            out var descriptor) &&
+        descriptor.Status != AedaModuleStatus.Unavailable;
 
     [RelayCommand]
     public async Task RunReferenceToolAsync()

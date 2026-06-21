@@ -28,7 +28,39 @@ public sealed partial class ModuleTileViewModel : ObservableObject
 
     public bool IsEnabled => Descriptor.Status != AedaModuleStatus.Unavailable;
 
-    public string? SafeUnavailableReason => Descriptor.SafeUnavailableReason;
+    public string StatusLabel => Descriptor.Status switch
+    {
+        AedaModuleStatus.Available => "Available",
+        AedaModuleStatus.PartiallyAvailable => "Needs setup",
+        _ => "Coming later"
+    };
+
+    public string SafeUnavailableReason =>
+        Descriptor.SafeUnavailableReason ?? "module_available";
+
+    public bool HasUnavailableReason => !IsEnabled &&
+        !string.IsNullOrWhiteSpace(Descriptor.SafeUnavailableReason);
+
+    public AedaModuleKind Kind => Descriptor.Kind;
+
+    public IReadOnlyList<string> CapabilityHints =>
+        Descriptor.Capabilities
+            .OrderBy(capability => capability.State)
+            .ThenBy(capability => capability.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .Select(capability => capability.DisplayName)
+            .ToArray();
+
+    public string CapabilityHintText => CapabilityHints.Count == 0
+        ? "No shell capability advertised"
+        : string.Join(" · ", CapabilityHints);
+
+    public string AccessibleName =>
+        $"{DisplayName}. {StatusLabel}. {ShortDescription}";
+
+    public string ToolTipText => IsEnabled
+        ? $"{DisplayName}: {ShortDescription}"
+        : $"{DisplayName}: {SafeUnavailableReason}";
 
     [RelayCommand(CanExecute = nameof(IsEnabled))]
     private void Open() => _openModule?.Invoke(Descriptor);

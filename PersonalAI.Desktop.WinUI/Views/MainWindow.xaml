@@ -100,21 +100,32 @@
                        VerticalAlignment="Center"
                        Style="{ThemeResource PersonalAiSecondaryTextStyle}"
                        Visibility="{Binding HasNoConversations, Converter={StaticResource BooleanToVisibilityConverter}}" />
-            <Button Grid.Row="4"
-                    Style="{StaticResource PersonalAiIconButtonStyle}"
-                    HorizontalAlignment="Left"
-                    Command="{Binding OpenSettingsCommand}"
-                    ToolTipService.ToolTip="Settings"
-                    AutomationProperties.Name="Settings">
-                <FontIcon FontFamily="Segoe MDL2 Assets"
-                          Glyph="&#xE713;"
-                          FontSize="16" />
-            </Button>
+            <StackPanel Grid.Row="4"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                <Button Style="{StaticResource PersonalAiIconButtonStyle}"
+                        Command="{Binding OpenDashboardCommand}"
+                        ToolTipService.ToolTip="Module dashboard"
+                        AutomationProperties.Name="Module dashboard">
+                    <FontIcon FontFamily="Segoe MDL2 Assets"
+                              Glyph="&#xE80F;"
+                              FontSize="16" />
+                </Button>
+                <Button Style="{StaticResource PersonalAiIconButtonStyle}"
+                        Command="{Binding OpenSettingsCommand}"
+                        ToolTipService.ToolTip="Settings"
+                        AutomationProperties.Name="Settings">
+                    <FontIcon FontFamily="Segoe MDL2 Assets"
+                              Glyph="&#xE713;"
+                              FontSize="16" />
+                </Button>
+            </StackPanel>
         </Grid>
 
         <Grid Grid.Column="1"
               MinWidth="760"
-              Padding="{StaticResource PagePadding}">
+              Padding="{StaticResource PagePadding}"
+              Visibility="{Binding IsChatVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -295,6 +306,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                 <ScrollViewer Grid.Row="0"
@@ -364,7 +376,39 @@
                     </ItemsControl>
                 </ScrollViewer>
 
-                <Grid Grid.Row="1"
+                <Border Grid.Row="1"
+                        Margin="0,0,0,8"
+                        Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                        BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource CardCornerRadius}"
+                        Padding="10"
+                        Visibility="{Binding HasModuleSuggestion, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding ModuleSuggestionMessage}"
+                                   TextWrapping="Wrap"
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                        <Button Grid.Column="1"
+                                Content="Open in AEDA Code"
+                                Command="{Binding OpenSuggestedModuleCommand}" />
+                        <Button Grid.Column="2"
+                                Style="{StaticResource PersonalAiCompactIconButtonStyle}"
+                                Command="{Binding DismissModuleSuggestionCommand}"
+                                ToolTipService.ToolTip="Dismiss suggestion"
+                                AutomationProperties.Name="Dismiss module suggestion">
+                            <FontIcon FontFamily="Segoe MDL2 Assets"
+                                      Glyph="&#xE711;"
+                                      FontSize="12" />
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="2"
                       Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -405,7 +449,7 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid Grid.Row="2"
+                <Grid Grid.Row="3"
                       MinWidth="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -475,6 +519,386 @@
                 </Grid>
                 </Grid>
             </Border>
+        </Grid>
+
+        <Grid Grid.Column="1"
+              Padding="{StaticResource PagePadding}"
+              Background="{ThemeResource PersonalAiPageBackgroundBrush}"
+              Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+                <StackPanel MinWidth="0">
+                    <TextBlock Text="Module Dashboard"
+                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                    <TextBlock Text="{Binding ModuleDashboard.CurrentWorkspaceSummary}"
+                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Button HorizontalAlignment="Right"
+                        Command="{Binding OpenChatCommand}"
+                        Content="Back to chat" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,20,0,0">
+                <StackPanel DataContext="{Binding ModuleDashboard}"
+                            Spacing="20">
+                    <GridView ItemsSource="{Binding ModuleTiles}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="False"
+                              HorizontalAlignment="Stretch">
+                        <GridView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal"
+                                               MaximumRowsOrColumns="3" />
+                            </ItemsPanelTemplate>
+                        </GridView.ItemsPanel>
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <Button Width="240"
+                                        MinHeight="180"
+                                        Padding="0"
+                                        Command="{Binding OpenCommand}"
+                                        IsEnabled="{Binding IsEnabled}"
+                                        ToolTipService.ToolTip="{Binding ToolTipText}"
+                                        AutomationProperties.Name="{Binding AccessibleName}">
+                                    <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource CardCornerRadius}"
+                                            Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                            Padding="{StaticResource CardPadding}"
+                                            Width="240"
+                                            MinHeight="180">
+                                        <StackPanel Spacing="8">
+                                            <Grid>
+                                                <FontIcon FontFamily="Segoe MDL2 Assets"
+                                                          Glyph="{Binding Glyph}"
+                                                          FontSize="22"
+                                                          Foreground="{ThemeResource PersonalAiActiveBrush}" />
+                                                <Border HorizontalAlignment="Right"
+                                                        Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                                        BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="{StaticResource PillCornerRadius}"
+                                                        Padding="{StaticResource CompactControlPadding}">
+                                                    <TextBlock Text="{Binding StatusLabel}"
+                                                               Style="{ThemeResource PersonalAiPillTextStyle}" />
+                                                </Border>
+                                            </Grid>
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding ShortDescription}"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="3"
+                                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                            <TextBlock Text="{Binding CapabilityHintText}"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="2"
+                                                       Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                            <TextBlock Text="{Binding SafeUnavailableReason}"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="2"
+                                                       Style="{ThemeResource PersonalAiMetadataTextStyle}"
+                                                       Visibility="{Binding HasUnavailableReason, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </StackPanel>
+                                    </Border>
+                                </Button>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Active Tasks"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No active tasks"
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoActiveTasks, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding ActiveTasks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                                CornerRadius="{StaticResource CardCornerRadius}"
+                                                Padding="{StaticResource CardPadding}"
+                                                Margin="0,0,0,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding Title}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="{Binding SafeSummary}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                                <TextBlock Text="{Binding UpdatedAt}"
+                                                           Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1"
+                                    Spacing="8">
+                            <TextBlock Text="Recent Tasks"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No recent tasks"
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoRecentTasks, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding RecentTasks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                                CornerRadius="{StaticResource CardCornerRadius}"
+                                                Padding="{StaticResource CardPadding}"
+                                                Margin="0,0,0,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding Title}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="{Binding SafeSummary}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                                <TextBlock Text="{Binding UpdatedAt}"
+                                                           Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid Grid.Column="1"
+              Padding="{StaticResource PagePadding}"
+              Background="{ThemeResource PersonalAiPageBackgroundBrush}"
+              Visibility="{Binding IsCodeVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+                <StackPanel MinWidth="0"
+                            DataContext="{Binding AedaCode}">
+                    <TextBlock Text="{Binding DisplayName}"
+                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                    <TextBlock Text="{Binding WorkspaceSummary}"
+                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel HorizontalAlignment="Right"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                    <Button Command="{Binding OpenDashboardCommand}"
+                            Content="Dashboard" />
+                    <Button Command="{Binding OpenChatCommand}"
+                            Content="Chat" />
+                </StackPanel>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,20,0,0">
+                <StackPanel DataContext="{Binding AedaCode}"
+                            Spacing="18">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8">
+                        <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource PillCornerRadius}"
+                                Padding="{StaticResource CompactControlPadding}">
+                            <TextBlock Text="{Binding AvailabilityLabel}"
+                                       Style="{ThemeResource PersonalAiPillTextStyle}" />
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding CapabilityBadges}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsStackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource PillCornerRadius}"
+                                            Padding="{StaticResource CompactControlPadding}"
+                                            Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding}"
+                                                   Style="{ThemeResource PersonalAiPillTextStyle}" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Recent Sessions"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No recent AEDA Code sessions."
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoRecentSessions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding RecentSessions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                                CornerRadius="{StaticResource CardCornerRadius}"
+                                                Padding="{StaticResource CardPadding}"
+                                                Margin="0,0,0,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding SafeSummary}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="{Binding WorkspaceDisplayName}"
+                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Spacing="8">
+                            <TextBlock Text="Safe Actions"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <Button Content="Start code session"
+                                    IsEnabled="False"
+                                    ToolTipService.ToolTip="Session start is deferred to the guided Code workflow." />
+                            <Button Content="View proposals"
+                                    IsEnabled="False"
+                                    ToolTipService.ToolTip="Proposal browsing is read-model only in this milestone." />
+                            <Button Content="View validation runs"
+                                    IsEnabled="False"
+                                    ToolTipService.ToolTip="Validation is not started from this page." />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Recent Proposals"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No proposal summaries loaded."
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoProposalSummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding ProposalSummaries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                                CornerRadius="{StaticResource CardCornerRadius}"
+                                                Padding="{StaticResource CardPadding}"
+                                                Margin="0,0,0,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding Title}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="{Binding Status}"
+                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Spacing="8">
+                            <TextBlock Text="Validation Runs"
+                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No validation summaries loaded."
+                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoValidationSummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding ValidationSummaries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                                CornerRadius="{StaticResource CardCornerRadius}"
+                                                Padding="{StaticResource CardPadding}"
+                                                Margin="0,0,0,8">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding TemplateId}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="{Binding Status}"
+                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Apply Results and Timeline"
+                                   Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                        <TextBlock Text="No apply results loaded."
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                   Visibility="{Binding HasNoApplySummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <ItemsControl ItemsSource="{Binding ApplySummaries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Status}"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="No task timeline loaded."
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                   Visibility="{Binding HasNoTimelineSummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <ItemsControl ItemsSource="{Binding TimelineSummaries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Summary}"
+                                               TextWrapping="NoWrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
 
         <Grid Grid.Column="1"

@@ -58,7 +58,7 @@ public static class AedaCodeModuleDescriptorFactory
             AedaModuleKind.Code,
             "AEDA Code",
             "Inspect code context, prepare patch proposals, apply approved changes, and run allowlisted validation.",
-            "code",
+            "\uE943",
             status,
             moduleCapabilities,
             new AedaModuleRoute("aeda-code", "AedaCodeModuleViewModel"),
