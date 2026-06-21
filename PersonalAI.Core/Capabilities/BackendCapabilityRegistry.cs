@@ -60,7 +60,12 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
         bool hasAedaResearchModule = false,
         bool hasModuleDashboard = false,
         bool hasModuleRouting = false,
-        bool hasCodeTaskTimeline = false)
+        bool hasCodeTaskTimeline = false,
+        bool hasTaskCenter = false,
+        bool hasActivityTimeline = false,
+        bool hasApprovalInbox = false,
+        bool hasTaskArtifactLinks = false,
+        bool hasModuleTaskSummaries = false)
     {
         var hasVoiceInput = hasSpeechToTextProvider && hasAudioCaptureService;
         var hasVoiceOutput = hasTextToSpeechProvider && hasAudioPlaybackService;
@@ -158,6 +163,16 @@ public sealed class BackendCapabilityRegistry : IBackendCapabilityRegistry
                 hasModuleRouting ? null : "module_routing_unavailable"),
             new(BackendCapability.CodeTaskTimeline, hasCodeTaskTimeline,
                 hasCodeTaskTimeline ? null : "code_task_timeline_unavailable"),
+            new(BackendCapability.AedaTaskCenter, hasTaskCenter,
+                hasTaskCenter ? null : "aeda_task_center_unavailable"),
+            new(BackendCapability.ActivityTimeline, hasActivityTimeline,
+                hasActivityTimeline ? null : "activity_timeline_unavailable"),
+            new(BackendCapability.ApprovalInbox, hasApprovalInbox,
+                hasApprovalInbox ? null : "approval_inbox_unavailable"),
+            new(BackendCapability.TaskArtifactLinks, hasTaskArtifactLinks,
+                hasTaskArtifactLinks ? null : "task_artifact_links_unavailable"),
+            new(BackendCapability.ModuleTaskSummaries, hasModuleTaskSummaries,
+                hasModuleTaskSummaries ? null : "module_task_summaries_unavailable"),
             new(BackendCapability.ResearchDashboard, hasAedaResearchModule && hasModuleDashboard,
                 hasAedaResearchModule && hasModuleDashboard ? null : "research_dashboard_unavailable"),
             new(BackendCapability.ClaimExtraction, hasAedaResearchModule,

@@ -32,6 +32,11 @@ public sealed class AedaShellDashboardTests
             AedaModuleKind.Research,
             AedaModuleStatus.Available,
             "aeda-research");
+        var taskCenter = Module(
+            AedaModuleId.TaskCenter,
+            AedaModuleKind.TaskCenter,
+            AedaModuleStatus.Available,
+            "aeda-task-center");
         var claw = Module(
             new AedaModuleId("claw"),
             AedaModuleKind.Claw,
@@ -61,8 +66,13 @@ public sealed class AedaShellDashboardTests
         Assert.Equal(AedaModuleId.Research, navigation.CurrentRoute.ModuleId);
         Assert.Equal("aeda-research", navigation.CurrentRoute.RouteId);
 
+        Assert.True(navigation.TryOpenModule(taskCenter));
+        Assert.Equal(AedaShellSection.TaskCenter, navigation.CurrentSection);
+        Assert.Equal(AedaModuleId.TaskCenter, navigation.CurrentRoute.ModuleId);
+        Assert.Equal("aeda-task-center", navigation.CurrentRoute.RouteId);
+
         Assert.False(navigation.TryOpenModule(claw));
-        Assert.Equal(AedaShellSection.Research, navigation.CurrentSection);
+        Assert.Equal(AedaShellSection.TaskCenter, navigation.CurrentSection);
     }
 
     [Fact]
@@ -77,10 +87,12 @@ public sealed class AedaShellDashboardTests
 
         var tiles = dashboard.ModuleTiles.ToArray();
         var code = tiles.Single(tile => tile.Kind == AedaModuleKind.Code);
+        var taskCenter = tiles.Single(tile => tile.Kind == AedaModuleKind.TaskCenter);
         var memory = tiles.Single(tile => tile.Kind == AedaModuleKind.Memory);
         var research = tiles.Single(tile => tile.Kind == AedaModuleKind.Research);
         var deferred = tiles.Where(tile =>
             tile.Kind != AedaModuleKind.Code &&
+            tile.Kind != AedaModuleKind.TaskCenter &&
             tile.Kind != AedaModuleKind.Memory &&
             tile.Kind != AedaModuleKind.Research).ToArray();
 
@@ -89,8 +101,10 @@ public sealed class AedaShellDashboardTests
                 .Select(tile => tile.DisplayName),
             tiles.Select(tile => tile.DisplayName));
         Assert.True(code.IsEnabled);
+        Assert.True(taskCenter.IsEnabled);
         Assert.True(memory.IsEnabled);
         Assert.True(research.IsEnabled);
+        Assert.Equal("Task Center", taskCenter.DisplayName);
         Assert.Equal("AEDA Memory", memory.DisplayName);
         Assert.Equal("AEDA Research", research.DisplayName);
         Assert.Equal("Available", memory.StatusLabel);
@@ -227,12 +241,18 @@ public sealed class AedaShellDashboardTests
             hasAedaResearchModule: true,
             hasMemoryRepository: true,
             retrievalEnabled: true,
-            hasModuleDashboard: true,
-            hasModuleRouting: true,
-            hasCodeTaskTimeline: true);
+                hasModuleDashboard: true,
+                hasModuleRouting: true,
+                hasCodeTaskTimeline: true,
+                hasTaskCenter: true,
+                hasActivityTimeline: true,
+                hasApprovalInbox: true,
+                hasTaskArtifactLinks: true,
+                hasModuleTaskSummaries: true);
 
         return new AedaModuleRegistry(
             [
+                AedaTaskCenterModuleDescriptorFactory.Create(capabilities),
                 AedaCodeModuleDescriptorFactory.Create(capabilities),
                 AedaMemoryModuleDescriptorFactory.Create(capabilities),
                 AedaResearchModuleDescriptorFactory.Create(capabilities),

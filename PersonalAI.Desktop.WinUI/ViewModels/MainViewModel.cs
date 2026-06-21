@@ -63,6 +63,7 @@ public sealed partial class MainViewModel : ObservableObject
         IAedaModuleRegistry moduleRegistry,
         IModuleSuggestionService moduleSuggestionService,
         AedaModuleDashboardViewModel moduleDashboard,
+        AedaTaskCenterViewModel taskCenter,
         AedaCodeModuleViewModel aedaCode,
         AedaMemoryModuleViewModel aedaMemory,
         AedaResearchModuleViewModel aedaResearch,
@@ -82,6 +83,7 @@ public sealed partial class MainViewModel : ObservableObject
         _moduleRegistry = moduleRegistry;
         _moduleSuggestionService = moduleSuggestionService;
         ModuleDashboard = moduleDashboard;
+        TaskCenter = taskCenter;
         AedaCode = aedaCode;
         AedaMemory = aedaMemory;
         AedaResearch = aedaResearch;
@@ -104,6 +106,8 @@ public sealed partial class MainViewModel : ObservableObject
     public AedaShellNavigationState ShellNavigation { get; } = new();
 
     public AedaModuleDashboardViewModel ModuleDashboard { get; }
+
+    public AedaTaskCenterViewModel TaskCenter { get; }
 
     public AedaCodeModuleViewModel AedaCode { get; }
 
@@ -200,6 +204,8 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsChatVisible => ShellNavigation.IsChatVisible;
 
     public bool IsDashboardVisible => ShellNavigation.IsDashboardVisible;
+
+    public bool IsTaskCenterVisible => ShellNavigation.IsTaskCenterVisible;
 
     public bool IsCodeVisible => ShellNavigation.IsCodeVisible;
 
@@ -321,6 +327,7 @@ public sealed partial class MainViewModel : ObservableObject
             AedaModuleKind.Code => AedaShellSection.Code,
             AedaModuleKind.Memory => AedaShellSection.Memory,
             AedaModuleKind.Research => AedaShellSection.Research,
+            AedaModuleKind.TaskCenter => AedaShellSection.TaskCenter,
             AedaModuleKind.Settings => AedaShellSection.Settings,
             _ => AedaShellSection.Dashboard
         };
@@ -340,6 +347,10 @@ public sealed partial class MainViewModel : ObservableObject
         else if (descriptor.Kind == AedaModuleKind.Research)
         {
             _ = AedaResearch.InitializeAsync();
+        }
+        else if (descriptor.Kind == AedaModuleKind.TaskCenter)
+        {
+            _ = TaskCenter.RefreshAsync();
         }
     }
 
@@ -375,6 +386,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSettingsOpen));
         OnPropertyChanged(nameof(IsChatVisible));
         OnPropertyChanged(nameof(IsDashboardVisible));
+        OnPropertyChanged(nameof(IsTaskCenterVisible));
         OnPropertyChanged(nameof(IsCodeVisible));
         OnPropertyChanged(nameof(IsMemoryVisible));
         OnPropertyChanged(nameof(IsResearchVisible));
@@ -434,6 +446,14 @@ public sealed partial class MainViewModel : ObservableObject
     {
         NavigateTo(AedaShellSection.Dashboard);
         _ = ModuleDashboard.RefreshTaskSummariesAsync();
+        _ = TaskCenter.RefreshAsync();
+    }
+
+    [RelayCommand]
+    public void OpenTaskCenter()
+    {
+        NavigateTo(AedaShellSection.TaskCenter);
+        _ = TaskCenter.RefreshAsync();
     }
 
     [RelayCommand]

@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 
 namespace PersonalAI.Core.Approvals;
 
-public sealed class InMemoryApprovalCheckpointStore : IApprovalCheckpointStore
+public sealed class InMemoryApprovalCheckpointStore :
+    IApprovalCheckpointStore,
+    IApprovalCheckpointQueryStore
 {
     private readonly ConcurrentDictionary<Guid, ApprovalRequest> _requests = [];
     private readonly ConcurrentDictionary<Guid, ApprovalDecision> _decisions = [];
@@ -53,6 +55,21 @@ public sealed class InMemoryApprovalCheckpointStore : IApprovalCheckpointStore
         cancellationToken.ThrowIfCancellationRequested();
         _taskScopedAllows.TryGetValue(ScopeKey.From(scope), out var decision);
         return ValueTask.FromResult(decision);
+    }
+
+    public ValueTask<IReadOnlyList<ApprovalCheckpoint>> ListPendingAsync(
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var selected = _requests.Values
+            .Where(request => !_decisions.ContainsKey(request.RequestId))
+            .OrderByDescending(request => request.RequestedAtUtc)
+            .ThenBy(request => request.RequestId)
+            .Take(Math.Clamp(limit, 1, 100))
+            .Select(request => new ApprovalCheckpoint(request))
+            .ToArray();
+        return ValueTask.FromResult<IReadOnlyList<ApprovalCheckpoint>>(selected);
     }
 
     private sealed record ScopeKey(

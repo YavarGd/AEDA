@@ -7,6 +7,7 @@ public enum AedaShellSection
 {
     Chat,
     Dashboard,
+    TaskCenter,
     Code,
     Memory,
     Research,
@@ -29,6 +30,8 @@ public sealed partial class AedaShellNavigationState : ObservableObject
 
     public bool IsDashboardVisible => CurrentSection == AedaShellSection.Dashboard;
 
+    public bool IsTaskCenterVisible => CurrentSection == AedaShellSection.TaskCenter;
+
     public bool IsCodeVisible => CurrentSection == AedaShellSection.Code;
 
     public bool IsMemoryVisible => CurrentSection == AedaShellSection.Memory;
@@ -47,6 +50,9 @@ public sealed partial class AedaShellNavigationState : ObservableObject
     public void OpenDashboard() =>
         Navigate(new AedaShellRoute(AedaShellSection.Dashboard));
 
+    public void OpenTaskCenter() =>
+        Navigate(new AedaShellRoute(AedaShellSection.TaskCenter));
+
     public void OpenSettings() =>
         Navigate(new AedaShellRoute(AedaShellSection.Settings));
 
@@ -64,6 +70,8 @@ public sealed partial class AedaShellNavigationState : ObservableObject
                     ? AedaShellSection.Memory
                 : descriptor.Kind == AedaModuleKind.Research
                     ? AedaShellSection.Research
+                : descriptor.Kind == AedaModuleKind.TaskCenter
+                    ? AedaShellSection.TaskCenter
                 : AedaShellSection.Dashboard,
             descriptor.Id,
             descriptor.Route.RouteId));
@@ -75,6 +83,7 @@ public sealed partial class AedaShellNavigationState : ObservableObject
         OnPropertyChanged(nameof(CurrentSection));
         OnPropertyChanged(nameof(IsChatVisible));
         OnPropertyChanged(nameof(IsDashboardVisible));
+        OnPropertyChanged(nameof(IsTaskCenterVisible));
         OnPropertyChanged(nameof(IsCodeVisible));
         OnPropertyChanged(nameof(IsMemoryVisible));
         OnPropertyChanged(nameof(IsResearchVisible));

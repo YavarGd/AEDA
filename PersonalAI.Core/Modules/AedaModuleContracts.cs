@@ -13,6 +13,8 @@ public readonly record struct AedaModuleId(string Value)
     public static AedaModuleId Memory { get; } = new("memory");
 
     public static AedaModuleId Research { get; } = new("research");
+
+    public static AedaModuleId TaskCenter { get; } = new("task-center");
 }
 
 public enum AedaModuleKind
@@ -21,6 +23,7 @@ public enum AedaModuleKind
     Code,
     Memory,
     Research,
+    TaskCenter,
     Claw,
     PicStudio,
     Office,

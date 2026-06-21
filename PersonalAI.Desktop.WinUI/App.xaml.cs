@@ -105,6 +105,10 @@ public partial class App : Application
         var taskRuntime = new TaskRuntime(taskEventStore, taskEventBus);
         var taskQueryService = new TaskQueryService(taskEventStore);
         var approvalCheckpointStore = new InMemoryApprovalCheckpointStore();
+        var taskCenterService = new AedaTaskCenterService(
+            taskQueryService,
+            taskRuntime,
+            approvalCheckpointStore);
         var toolRegistry = new TypedToolRegistry();
         toolRegistry.Register(new GetCurrentUtcTimeTool());
         IWorkspaceRegistry workspaceRegistry = new WorkspaceRegistry();
@@ -229,10 +233,16 @@ public partial class App : Application
             hasAedaResearchModule: true,
             hasModuleDashboard: true,
             hasModuleRouting: true,
-            hasCodeTaskTimeline: true);
+            hasCodeTaskTimeline: true,
+            hasTaskCenter: true,
+            hasActivityTimeline: true,
+            hasApprovalInbox: true,
+            hasTaskArtifactLinks: true,
+            hasModuleTaskSummaries: true);
         var moduleRegistry = new AedaModuleRegistry(
             [
                 AedaCodeModuleDescriptorFactory.Create(backendCapabilities),
+                AedaTaskCenterModuleDescriptorFactory.Create(backendCapabilities),
                 AedaMemoryModuleDescriptorFactory.Create(backendCapabilities),
                 AedaResearchModuleDescriptorFactory.Create(backendCapabilities),
                 .. AedaDeferredModuleDescriptorFactory.CreateAll()
@@ -310,6 +320,7 @@ public partial class App : Application
                 taskQueryService,
                 workspaceRegistry,
                 descriptor => _viewModel?.OpenModule(descriptor)),
+            new AedaTaskCenterViewModel(taskCenterService),
             aedaCodeViewModel,
             aedaMemoryViewModel,
             aedaResearchViewModel,
