@@ -1,166 +1,427 @@
+<!--
+    PersonalAI / Aeda — Theme Resources
+    ====================================
+    Hyper-modern Fluent Design System overhaul.
+
+    Design language: "Quiet OS" — Mica-first translucent surfaces, restrained
+    violet accent (matches the Aeda "Watcher" brand mark), generous spacing,
+    soft 12–16px corner radii, and a calm two-tier text hierarchy. Built to sit
+    directly on top of a Mica/MicaAlt backdrop (see MainWindow.xaml.cs) rather
+    than painting an opaque page background — surfaces use low-opacity layered
+    brushes so the backdrop blur reads through every panel.
+
+    CONTRACT: every key below is consumed by MainWindow.xaml via {ThemeResource}
+    or {StaticResource} lookup. Renaming or removing any key will break bindings
+    in the view. This file ONLY introduces new visual values — no key referenced
+    by the view has been removed.
+-->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- ============================================================
+         THEME DICTIONARIES — brushes that must flip between Light/Dark.
+         Mica supplies the base material; these are thin tinted overlays,
+         not flat opaque fills, so the backdrop always reads through.
+         ============================================================ -->
     <ResourceDictionary.ThemeDictionaries>
+
+        <!-- ==== DARK (primary/default experience) ==== -->
+        <ResourceDictionary x:Key="Default">
+
+            <!-- Accent ramp — desaturated violet, matches the Aeda "moonlight" mark -->
+            <Color x:Key="PersonalAiAccentColor">#9B8CFF</Color>
+            <Color x:Key="PersonalAiAccentColorLight">#B5AAFF</Color>
+            <Color x:Key="PersonalAiAccentColorDark">#7C6BEF</Color>
+            <SolidColorBrush x:Key="PersonalAiAccentBrush" Color="{StaticResource PersonalAiAccentColor}" />
+
+            <!-- Page sits on Mica; keep this NEARLY transparent so the backdrop
+                 blur is the actual background, not a flat color. -->
+            <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush" Color="#00000000" />
+
+            <!-- Sidebar: a faint dark veil over Mica, just enough to separate it
+                 from the chat surface without looking like a solid panel. -->
+            <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush" Color="#14000000" />
+
+            <!-- Elevated surface = cards, message bubbles, composer. Soft acrylic-like
+                 layer that still lets Mica noise/blur show at the edges. -->
+            <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush" Color="#26FFFFFF" />
+
+            <!-- Subtle surface = pills, badges, lightly recessed chrome -->
+            <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush" Color="#14FFFFFF" />
+
+            <!-- Hover / pressed states for interactive chrome (buttons, list items) -->
+            <SolidColorBrush x:Key="PersonalAiHoverSurfaceBrush" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiPressedSurfaceBrush" Color="#33FFFFFF" />
+
+            <!-- Selected / active state — tinted with accent, very low opacity -->
+            <SolidColorBrush x:Key="PersonalAiActiveBrush" Color="#332E1FFF" />
+            <SolidColorBrush x:Key="PersonalAiActiveBorderBrush" Color="#809B8CFF" />
+
+            <!-- Hairline borders — barely-there, Fluent "stroke" feel -->
+            <SolidColorBrush x:Key="PersonalAiBorderBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiStrongBorderBrush" Color="#2EFFFFFF" />
+
+            <!-- Typography colors -->
+            <SolidColorBrush x:Key="PersonalAiPrimaryTextBrush" Color="#F5F4FF" />
+            <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush" Color="#ABA8C4" />
+            <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="#79768F" />
+            <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="#C9C0FF" />
+
+            <!-- Chat role surfaces (used by ChatRoleSurfaceBrushConverter fallback /
+                 reference — keep both endpoints theme-aware) -->
+            <SolidColorBrush x:Key="PersonalAiUserBubbleBrush" Color="#3A2E8C" />
+            <SolidColorBrush x:Key="PersonalAiAssistantBubbleBrush" Color="#221F33" />
+
+            <SolidColorBrush x:Key="PersonalAiDangerBrush" Color="#FF8A8A" />
+            <SolidColorBrush x:Key="PersonalAiSuccessBrush" Color="#7FE3B4" />
+
+            <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush" Color="#221F33" />
+            <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush" Color="#1DFFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush" Color="#18000000" />
+            <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiWarningBrush" Color="#FFE3B341" />
+            <SolidColorBrush x:Key="PersonalAiErrorBrush" Color="#FFFF8A8A" />
+        </ResourceDictionary>
+
+        <!-- ==== LIGHT ==== -->
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush"
-                             Color="#F7F7F8" />
-            <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush"
-                             Color="#F2F3F5" />
-            <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush"
-                             Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush"
-                             Color="#F7F8FA" />
-            <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush"
-                             Color="#EAF2FF" />
-            <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush"
-                             Color="#F3F6FA" />
-            <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush"
-                             Color="#F8FAFC" />
-            <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush"
-                             Color="#EEF2F7" />
-            <SolidColorBrush x:Key="PersonalAiBorderBrush"
-                             Color="#1F000000" />
-            <SolidColorBrush x:Key="PersonalAiMutedTextBrush"
-                             Color="#8A000000" />
-            <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush"
-                             Color="#B3000000" />
-            <SolidColorBrush x:Key="PersonalAiSuccessBrush"
-                             Color="#0F7B0F" />
-            <SolidColorBrush x:Key="PersonalAiWarningBrush"
-                             Color="#9D5D00" />
-            <SolidColorBrush x:Key="PersonalAiErrorBrush"
-                             Color="#C42B1C" />
-            <SolidColorBrush x:Key="PersonalAiActiveBrush"
-                             Color="#005FB8" />
+
+            <Color x:Key="PersonalAiAccentColor">#6C5BD9</Color>
+            <Color x:Key="PersonalAiAccentColorLight">#8676E8</Color>
+            <Color x:Key="PersonalAiAccentColorDark">#5746C2</Color>
+            <SolidColorBrush x:Key="PersonalAiAccentBrush" Color="{StaticResource PersonalAiAccentColor}" />
+
+            <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush" Color="#00000000" />
+            <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush" Color="#08000000" />
+            <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush" Color="#B8FFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush" Color="#7AFFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiHoverSurfaceBrush" Color="#90FFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiPressedSurfaceBrush" Color="#C2000000" />
+
+            <SolidColorBrush x:Key="PersonalAiActiveBrush" Color="#1F6C5BD9" />
+            <SolidColorBrush x:Key="PersonalAiActiveBorderBrush" Color="#666C5BD9" />
+
+            <SolidColorBrush x:Key="PersonalAiBorderBrush" Color="#14000000" />
+            <SolidColorBrush x:Key="PersonalAiStrongBorderBrush" Color="#22000000" />
+
+            <SolidColorBrush x:Key="PersonalAiPrimaryTextBrush" Color="#1C1B29" />
+            <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush" Color="#5B5872" />
+            <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="#8B889E" />
+            <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="#5746C2" />
+
+            <SolidColorBrush x:Key="PersonalAiUserBubbleBrush" Color="#E7E2FF" />
+            <SolidColorBrush x:Key="PersonalAiAssistantBubbleBrush" Color="#F4F3F8" />
+
+            <SolidColorBrush x:Key="PersonalAiDangerBrush" Color="#C4314B" />
+            <SolidColorBrush x:Key="PersonalAiSuccessBrush" Color="#1A8F5C" />
+
+            <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush" Color="#F4F3F8" />
+            <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush" Color="#8AFFFFFF" />
+            <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush" Color="#EEF0F6" />
+            <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush" Color="#E3E5EE" />
+            <SolidColorBrush x:Key="PersonalAiWarningBrush" Color="#FFB85C00" />
+            <SolidColorBrush x:Key="PersonalAiErrorBrush" Color="#FFC4314B" />
         </ResourceDictionary>
-        <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush"
-                             Color="#202020" />
-            <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush"
-                             Color="#191919" />
-            <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush"
-                             Color="#2B2B2B" />
-            <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush"
-                             Color="#252525" />
-            <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush"
-                             Color="#23324A" />
-            <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush"
-                             Color="#292F36" />
-            <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush"
-                             Color="#171A1F" />
-            <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush"
-                             Color="#222831" />
-            <SolidColorBrush x:Key="PersonalAiBorderBrush"
-                             Color="#33FFFFFF" />
-            <SolidColorBrush x:Key="PersonalAiMutedTextBrush"
-                             Color="#99FFFFFF" />
-            <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush"
-                             Color="#CCFFFFFF" />
-            <SolidColorBrush x:Key="PersonalAiSuccessBrush"
-                             Color="#6CCB5F" />
-            <SolidColorBrush x:Key="PersonalAiWarningBrush"
-                             Color="#F3C45B" />
-            <SolidColorBrush x:Key="PersonalAiErrorBrush"
-                             Color="#FF8A80" />
-            <SolidColorBrush x:Key="PersonalAiActiveBrush"
-                             Color="#60CDFF" />
+
+        <!-- WinUI maps "HighContrast" automatically when system HC themes are on;
+             fall back to system brushes for safety/accessibility. -->
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="PersonalAiAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiHoverSurfaceBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="PersonalAiPressedSurfaceBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="PersonalAiActiveBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="PersonalAiActiveBorderBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="PersonalAiBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="PersonalAiStrongBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="PersonalAiPrimaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="PersonalAiUserBubbleBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="PersonalAiAssistantBubbleBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiDangerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="PersonalAiSuccessBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+
+            <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="PersonalAiWarningBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="PersonalAiErrorBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
         </ResourceDictionary>
+
     </ResourceDictionary.ThemeDictionaries>
 
-    <x:Double x:Key="Space4">4</x:Double>
-    <x:Double x:Key="Space8">8</x:Double>
-    <x:Double x:Key="Space12">12</x:Double>
-    <x:Double x:Key="Space16">16</x:Double>
-    <x:Double x:Key="Space24">24</x:Double>
-    <x:Double x:Key="Space32">32</x:Double>
+    <!-- ============================================================
+         SHARED LAYOUT TOKENS — corner radii, padding. Not theme-dependent,
+         so these live outside ThemeDictionaries as plain StaticResource values.
+         Tuned for a softer, more "premium OS" feel than stock Fluent defaults.
+         ============================================================ -->
+    <CornerRadius x:Key="CardCornerRadius">14</CornerRadius>
+    <CornerRadius x:Key="ComposerCornerRadius">18</CornerRadius>
+    <CornerRadius x:Key="PillCornerRadius">100</CornerRadius>
+    <CornerRadius x:Key="SidebarCornerRadius">16</CornerRadius>
+    <CornerRadius x:Key="MessageBubbleCornerRadius">16</CornerRadius>
+    <x:Double x:Key="IconButtonSize">36</x:Double>
+    <Thickness x:Key="PagePadding">28,24,28,24</Thickness>
+    <Thickness x:Key="CardPadding">16,14,16,14</Thickness>
+    <Thickness x:Key="CompactControlPadding">10,4,10,4</Thickness>
 
-    <Thickness x:Key="PagePadding">24</Thickness>
-    <Thickness x:Key="SectionPadding">16</Thickness>
-    <Thickness x:Key="CardPadding">12</Thickness>
-    <Thickness x:Key="CompactControlPadding">8,4</Thickness>
-    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
-    <CornerRadius x:Key="PillCornerRadius">999</CornerRadius>
-    <CornerRadius x:Key="ComposerCornerRadius">12</CornerRadius>
-    <x:Double x:Key="ControlHeight">36</x:Double>
-    <x:Double x:Key="IconButtonSize">40</x:Double>
-    <x:Double x:Key="CompactIconButtonSize">32</x:Double>
+    <!-- ============================================================
+         TYPOGRAPHY — calm two-tier hierarchy, Segoe Variable, generous
+         line-height via LineHeight where it matters for long-form chat text.
+         ============================================================ -->
 
-    <Style x:Key="PersonalAiIconButtonStyle"
-           TargetType="Button">
-        <Setter Property="Width"
-                Value="{StaticResource IconButtonSize}" />
-        <Setter Property="Height"
-                Value="{StaticResource IconButtonSize}" />
-        <Setter Property="MinWidth"
-                Value="{StaticResource IconButtonSize}" />
-        <Setter Property="Padding"
-                Value="0" />
-        <Setter Property="HorizontalAlignment"
-                Value="Center" />
-        <Setter Property="VerticalAlignment"
-                Value="Center" />
+    <Style x:Key="PersonalAiPageTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource TitleTextBlockStyle}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="Foreground" Value="{ThemeResource PersonalAiPrimaryTextBrush}" />
     </Style>
 
-    <Style x:Key="PersonalAiCompactIconButtonStyle"
-           TargetType="Button"
-           BasedOn="{StaticResource PersonalAiIconButtonStyle}">
-        <Setter Property="Width"
-                Value="{StaticResource CompactIconButtonSize}" />
-        <Setter Property="Height"
-                Value="{StaticResource CompactIconButtonSize}" />
-        <Setter Property="MinWidth"
-                Value="{StaticResource CompactIconButtonSize}" />
+    <Style x:Key="PersonalAiSectionTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="Foreground" Value="{ThemeResource PersonalAiPrimaryTextBrush}" />
     </Style>
 
-    <Style x:Key="PersonalAiPageTitleTextStyle"
-           TargetType="TextBlock"
-           BasedOn="{StaticResource TitleTextBlockStyle}">
-        <Setter Property="FontFamily"
-                Value="Segoe UI Variable Text" />
-        <Setter Property="FontWeight"
-                Value="SemiBold" />
+    <Style x:Key="PersonalAiSecondaryTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{ThemeResource PersonalAiSecondaryTextBrush}" />
     </Style>
 
-    <Style x:Key="PersonalAiSectionTitleTextStyle"
-           TargetType="TextBlock"
-           BasedOn="{StaticResource BodyStrongTextBlockStyle}">
-        <Setter Property="FontWeight"
-                Value="SemiBold" />
+    <Style x:Key="PersonalAiMetadataTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{ThemeResource PersonalAiMutedTextBrush}" />
     </Style>
 
-    <Style x:Key="PersonalAiSecondaryTextStyle"
-           TargetType="TextBlock">
-        <Setter Property="Foreground"
-                Value="{ThemeResource PersonalAiSecondaryTextBrush}" />
-        <Setter Property="TextTrimming"
-                Value="CharacterEllipsis" />
+    <Style x:Key="PersonalAiPillTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{ThemeResource PersonalAiSecondaryTextBrush}" />
     </Style>
 
-    <Style x:Key="PersonalAiMetadataTextStyle"
-           TargetType="TextBlock"
-           BasedOn="{StaticResource CaptionTextBlockStyle}">
-        <Setter Property="Foreground"
-                Value="{ThemeResource PersonalAiMutedTextBrush}" />
-        <Setter Property="TextTrimming"
-                Value="CharacterEllipsis" />
+    <!-- BodyStrongTextBlockStyle is a stock WinUI/XamlControlsResources style.
+         App.xaml merges XamlControlsResources BEFORE this dictionary, so this
+         override safely replaces the stock entry and re-themes its foreground
+         to match the new palette instead of falling back to default text color. -->
+    <Style x:Key="BodyStrongTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{ThemeResource PersonalAiPrimaryTextBrush}" />
     </Style>
 
-    <Style x:Key="PersonalAiPillTextStyle"
-           TargetType="TextBlock"
-           BasedOn="{StaticResource CaptionTextBlockStyle}">
-        <Setter Property="Foreground"
-                Value="{ThemeResource PersonalAiSecondaryTextBrush}" />
-        <Setter Property="TextWrapping"
-                Value="NoWrap" />
-        <Setter Property="TextTrimming"
-                Value="CharacterEllipsis" />
+    <!-- ============================================================
+         BUTTONS — quiet icon buttons that pick up a soft hover veil and
+         a gentle scale-down on press (Fluent "reveal" feel without the
+         stock reveal border glow, which looks dated next to Mica).
+         ============================================================ -->
+
+    <Style x:Key="PersonalAiIconButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="{StaticResource IconButtonSize}" />
+        <Setter Property="Height" Value="{StaticResource IconButtonSize}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{ThemeResource PersonalAiSecondaryTextBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="RootGrid"
+                          Background="Transparent"
+                          CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="PressScale" ScaleX="1" ScaleY="1" CenterX="18" CenterY="18" />
+                        </Grid.RenderTransform>
+                        <Border x:Name="HoverVeil"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Background="{ThemeResource PersonalAiHoverSurfaceBrush}"
+                                Opacity="0" />
+                        <ContentPresenter x:Name="Content"
+                                           Content="{TemplateBinding Content}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{TemplateBinding Foreground}" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverVeil"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverVeil"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.05" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="0.92" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="0.92" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Content"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.35" Duration="0" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
-    <Style x:Key="PersonalAiSettingsExpanderStyle"
-           TargetType="Expander">
-        <Setter Property="Margin"
-                Value="0,0,0,12" />
+    <Style x:Key="PersonalAiCompactIconButtonStyle" TargetType="Button" BasedOn="{StaticResource PersonalAiIconButtonStyle}">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="CornerRadius" Value="8" />
     </Style>
+
+    <!-- Accent-filled variant for the single highest-priority action per surface
+         (e.g. Send). Additive style — not required by any existing binding,
+         used to give the composer a clear primary action instead of every
+         icon button looking equally weighted. -->
+    <Style x:Key="PersonalAiPrimaryIconButtonStyle" TargetType="Button" BasedOn="{StaticResource PersonalAiIconButtonStyle}">
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="RootGrid"
+                          Background="{ThemeResource PersonalAiAccentBrush}"
+                          CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="PressScale" ScaleX="1" ScaleY="1" CenterX="18" CenterY="18" />
+                        </Grid.RenderTransform>
+                        <Border x:Name="HoverVeil"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Background="#22000000"
+                                Opacity="0" />
+                        <ContentPresenter x:Name="Content"
+                                           Content="{TemplateBinding Content}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{TemplateBinding Foreground}" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverVeil"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverVeil"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.05" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="0.92" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="PressScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="0.92" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="RootGrid"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.35" Duration="0" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Card-shaped tile button (dashboard module tiles): subtle hover veil and
+         a 1px lift via TranslateTransform instead of a hard drop-shadow, which
+         reads as "premium OS" rather than Windows-7-era elevation. Additive
+         style — does not replace any existing resource. -->
+    <Style x:Key="PersonalAiTileButtonStyle" TargetType="Button">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="RootGrid" Background="Transparent">
+                        <Grid.RenderTransform>
+                            <TranslateTransform x:Name="LiftTransform" Y="0" />
+                        </Grid.RenderTransform>
+                        <ContentPresenter x:Name="Content"
+                                           Content="{TemplateBinding Content}"
+                                           HorizontalContentAlignment="Stretch"
+                                           VerticalContentAlignment="Stretch" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform"
+                                                         Storyboard.TargetProperty="Y"
+                                                         To="-2" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="LiftTransform"
+                                                         Storyboard.TargetProperty="Y"
+                                                         To="0" Duration="0:0:0.06" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Content"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.45" Duration="0" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================
+         SETTINGS EXPANDER — re-skinned to match elevated-surface cards
+         instead of the stock flat SettingsExpander chrome.
+         ============================================================ -->
+    <Style x:Key="PersonalAiSettingsExpanderStyle" TargetType="Expander">
+        <Setter Property="Background" Value="{ThemeResource PersonalAiElevatedSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource PersonalAiBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="Padding" Value="16,12" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+
 </ResourceDictionary>

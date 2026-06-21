@@ -22,10 +22,12 @@
         <Grid Grid.Column="0"
               MinWidth="240"
               MaxWidth="280"
+              Margin="12,12,6,12"
               Padding="{Binding SidebarPadding}"
+              CornerRadius="{StaticResource SidebarCornerRadius}"
               Background="{ThemeResource PersonalAiSidebarBackgroundBrush}"
               BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-              BorderThickness="0,0,1,0">
+              BorderThickness="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -35,12 +37,13 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0"
-                  Margin="0,0,0,16">
+                  Margin="0,0,0,20">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel MinWidth="0">
+                <StackPanel MinWidth="0"
+                            Spacing="2">
                     <TextBlock Text="PersonalAI"
                                Style="{ThemeResource PersonalAiSectionTitleTextStyle}"
                                TextWrapping="NoWrap"
@@ -61,24 +64,35 @@
             </Grid>
 
             <TextBox Grid.Row="1"
-                     Margin="0,0,0,12"
+                     Margin="0,0,0,16"
                      MinWidth="0"
+                     CornerRadius="10"
                      PlaceholderText="Search conversations"
                      Text="{Binding ConversationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <TextBlock Grid.Row="2"
-                       Text="Conversations"
+                       Text="CONVERSATIONS"
                        Style="{ThemeResource PersonalAiMetadataTextStyle}"
-                       Margin="4,0,0,8" />
+                       CharacterSpacing="20"
+                       Margin="4,0,0,10" />
             <ListView Grid.Row="3"
                       ItemsSource="{Binding Conversations}"
                       SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
                       SelectionChanged="ConversationList_SelectionChanged"
+                      Padding="0,0,0,8"
                       HorizontalContentAlignment="Stretch">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Margin" Value="0,0,0,3" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="CornerRadius" Value="10" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Spacing="2"
                                     MinWidth="0"
-                                    Padding="4,6">
+                                    Padding="10,8">
                             <TextBlock Text="{Binding Title}"
                                        Style="{ThemeResource BodyStrongTextBlockStyle}"
                                        TextWrapping="NoWrap"
@@ -102,7 +116,8 @@
                        Visibility="{Binding HasNoConversations, Converter={StaticResource BooleanToVisibilityConverter}}" />
             <StackPanel Grid.Row="4"
                         Orientation="Horizontal"
-                        Spacing="8">
+                        Spacing="8"
+                        Margin="0,12,0,0">
                 <Button Style="{StaticResource PersonalAiIconButtonStyle}"
                         Command="{Binding OpenDashboardCommand}"
                         ToolTipService.ToolTip="Module dashboard"
@@ -272,19 +287,32 @@
                         Content="Jump to latest"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Bottom"
-                        Margin="0,0,0,12"
+                        Margin="0,0,0,16"
+                        Padding="16,8"
+                        CornerRadius="{StaticResource PillCornerRadius}"
+                        Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                        BorderBrush="{ThemeResource PersonalAiStrongBorderBrush}"
+                        BorderThickness="1"
                         Visibility="Collapsed"
                         Click="JumpToLatestButton_Click"
                         ToolTipService.ToolTip="Jump to latest"
                         AutomationProperties.Name="Jump to latest" />
                 <StackPanel HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Spacing="8"
+                            Spacing="10"
                             Visibility="{Binding IsTimelineEmpty, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <FontIcon FontFamily="Segoe MDL2 Assets"
-                              Glyph="&#xE8A5;"
-                              FontSize="28"
-                              Foreground="{ThemeResource PersonalAiMutedTextBrush}" />
+                    <Border Width="56"
+                            Height="56"
+                            CornerRadius="28"
+                            Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                            HorizontalAlignment="Center">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  Glyph="&#xE8A5;"
+                                  FontSize="22"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Foreground="{ThemeResource PersonalAiMutedTextBrush}" />
+                    </Border>
                     <TextBlock Text="Start a conversation"
                                Style="{ThemeResource PersonalAiSectionTitleTextStyle}"
                                HorizontalAlignment="Center" />
@@ -299,7 +327,7 @@
                     BorderBrush="{ThemeResource PersonalAiBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="{StaticResource ComposerCornerRadius}"
-                    Padding="12"
+                    Padding="16,14"
                     MinWidth="0">
                 <Grid MinWidth="0">
                     <Grid.RowDefinitions>
@@ -502,11 +530,14 @@
                              MinWidth="360"
                              MinHeight="84"
                              MaxHeight="160"
+                             CornerRadius="14"
+                             BorderThickness="0"
+                             Background="Transparent"
                              PlaceholderText="Ask anything"
                              Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              TextWrapping="Wrap" />
                     <Button Grid.Column="2"
-                            Style="{StaticResource PersonalAiIconButtonStyle}"
+                            Style="{StaticResource PersonalAiPrimaryIconButtonStyle}"
                             Margin="12,0,0,0"
                             VerticalAlignment="Bottom"
                             Command="{Binding SendMessageCommand}"
@@ -514,7 +545,7 @@
                             AutomationProperties.Name="Send">
                         <FontIcon FontFamily="Segoe MDL2 Assets"
                                   Glyph="&#xE74A;"
-                                  FontSize="16" />
+                                  FontSize="15" />
                     </Button>
                 </Grid>
                 </Grid>
@@ -530,31 +561,37 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid>
-                <StackPanel MinWidth="0"
-                            DataContext="{Binding AedaMemory}">
-                    <TextBlock Text="{Binding DisplayName}"
-                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
-                    <TextBlock Text="{Binding PrivacyStatusText}"
-                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                               TextWrapping="NoWrap"
-                               TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <StackPanel HorizontalAlignment="Right"
-                            Orientation="Horizontal"
-                            Spacing="8">
-                    <Button Command="{Binding OpenDashboardCommand}"
-                            Content="Dashboard" />
-                    <Button Command="{Binding OpenChatCommand}"
-                            Content="Chat" />
-                </StackPanel>
-            </Grid>
+            <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                    BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CardCornerRadius}"
+                    Padding="{StaticResource CardPadding}">
+                <Grid>
+                    <StackPanel MinWidth="0"
+                                DataContext="{Binding AedaMemory}">
+                        <TextBlock Text="{Binding DisplayName}"
+                                   Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                        <TextBlock Text="{Binding PrivacyStatusText}"
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel HorizontalAlignment="Right"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Command="{Binding OpenDashboardCommand}"
+                                Content="Dashboard" />
+                        <Button Command="{Binding OpenChatCommand}"
+                                Content="Chat" />
+                    </StackPanel>
+                </Grid>
+            </Border>
 
             <ScrollViewer Grid.Row="1"
                           Margin="0,20,0,0">
                 <StackPanel x:Name="MemorySurface"
                             DataContext="{Binding AedaMemory}"
-                            Spacing="18">
+                            Spacing="20">
                     <StackPanel Orientation="Horizontal"
                                 Spacing="8">
                         <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
@@ -587,7 +624,12 @@
                         </ItemsControl>
                     </StackPanel>
 
-                    <Grid ColumnSpacing="16">
+                    <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="{StaticResource CardPadding}">
+                    <Grid ColumnSpacing="20">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
@@ -618,9 +660,11 @@
                                      Text="{Binding NewMemoryText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      AcceptsReturn="True"
                                      MinHeight="84"
+                                     CornerRadius="10"
                                      AutomationProperties.Name="Explicit memory content" />
                             <TextBox PlaceholderText="Source reason"
                                      Text="{Binding NewMemorySourceReason, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     CornerRadius="10"
                                      AutomationProperties.Name="Memory source reason" />
                             <Button Content="Add memory"
                                     Command="{Binding CreateExplicitMemoryCommand}"
@@ -630,8 +674,14 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
+                    </Border>
 
-                    <Grid ColumnSpacing="16">
+                    <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="{StaticResource CardPadding}">
+                    <Grid ColumnSpacing="20">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
@@ -696,8 +746,14 @@
                             </ItemsControl>
                         </StackPanel>
                     </Grid>
+                    </Border>
 
-                    <Grid ColumnSpacing="16">
+                    <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="{StaticResource CardPadding}">
+                    <Grid ColumnSpacing="20">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
@@ -790,7 +846,13 @@
                             </ItemsControl>
                         </StackPanel>
                     </Grid>
+                    </Border>
 
+                    <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="{StaticResource CardPadding}">
                     <StackPanel Spacing="6">
                         <TextBlock Text="Source Detail"
                                    Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
@@ -809,6 +871,7 @@
                                    MaxLines="4"
                                    Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
                     </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </Grid>
@@ -822,19 +885,25 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid>
-                <StackPanel MinWidth="0">
-                    <TextBlock Text="Module Dashboard"
-                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
-                    <TextBlock Text="{Binding ModuleDashboard.CurrentWorkspaceSummary}"
-                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                               TextWrapping="NoWrap"
-                               TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <Button HorizontalAlignment="Right"
-                        Command="{Binding OpenChatCommand}"
-                        Content="Back to chat" />
-            </Grid>
+            <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                    BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CardCornerRadius}"
+                    Padding="{StaticResource CardPadding}">
+                <Grid>
+                    <StackPanel MinWidth="0">
+                        <TextBlock Text="Module Dashboard"
+                                   Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                        <TextBlock Text="{Binding ModuleDashboard.CurrentWorkspaceSummary}"
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right"
+                            Command="{Binding OpenChatCommand}"
+                            Content="Back to chat" />
+                </Grid>
+            </Border>
 
             <ScrollViewer Grid.Row="1"
                           Margin="0,20,0,0">
@@ -844,6 +913,12 @@
                               SelectionMode="None"
                               IsItemClickEnabled="False"
                               HorizontalAlignment="Stretch">
+                        <GridView.ItemContainerStyle>
+                            <Style TargetType="GridViewItem">
+                                <Setter Property="Margin" Value="0,0,16,16" />
+                                <Setter Property="Padding" Value="0" />
+                            </Style>
+                        </GridView.ItemContainerStyle>
                         <GridView.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <ItemsWrapGrid Orientation="Horizontal"
@@ -854,7 +929,7 @@
                             <DataTemplate>
                                 <Button Width="240"
                                         MinHeight="180"
-                                        Padding="0"
+                                        Style="{StaticResource PersonalAiTileButtonStyle}"
                                         Command="{Binding OpenCommand}"
                                         IsEnabled="{Binding IsEnabled}"
                                         ToolTipService.ToolTip="{Binding ToolTipText}"
@@ -992,30 +1067,36 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid>
-                <StackPanel MinWidth="0"
-                            DataContext="{Binding AedaCode}">
-                    <TextBlock Text="{Binding DisplayName}"
-                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
-                    <TextBlock Text="{Binding WorkspaceSummary}"
-                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                               TextWrapping="NoWrap"
-                               TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <StackPanel HorizontalAlignment="Right"
-                            Orientation="Horizontal"
-                            Spacing="8">
-                    <Button Command="{Binding OpenDashboardCommand}"
-                            Content="Dashboard" />
-                    <Button Command="{Binding OpenChatCommand}"
-                            Content="Chat" />
-                </StackPanel>
-            </Grid>
+            <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                    BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CardCornerRadius}"
+                    Padding="{StaticResource CardPadding}">
+                <Grid>
+                    <StackPanel MinWidth="0"
+                                DataContext="{Binding AedaCode}">
+                        <TextBlock Text="{Binding DisplayName}"
+                                   Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                        <TextBlock Text="{Binding WorkspaceSummary}"
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel HorizontalAlignment="Right"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Command="{Binding OpenDashboardCommand}"
+                                Content="Dashboard" />
+                        <Button Command="{Binding OpenChatCommand}"
+                                Content="Chat" />
+                    </StackPanel>
+                </Grid>
+            </Border>
 
             <ScrollViewer Grid.Row="1"
                           Margin="0,20,0,0">
                 <StackPanel DataContext="{Binding AedaCode}"
-                            Spacing="18">
+                            Spacing="20">
                     <StackPanel Orientation="Horizontal"
                                 Spacing="8">
                         <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
@@ -1202,19 +1283,25 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid>
-                <TextBlock Text="Settings"
-                           Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
-                <Button HorizontalAlignment="Right"
-                        Command="{Binding CloseSettingsCommand}"
-                        Content="Done" />
-            </Grid>
+            <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                    BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CardCornerRadius}"
+                    Padding="{StaticResource CardPadding}">
+                <Grid>
+                    <TextBlock Text="Settings"
+                               Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
+                    <Button HorizontalAlignment="Right"
+                            Command="{Binding CloseSettingsCommand}"
+                            Content="Done" />
+                </Grid>
+            </Border>
 
             <ScrollViewer Grid.Row="1"
                           Margin="0,20,0,0">
                 <StackPanel DataContext="{Binding Settings}"
                             MaxWidth="800"
-                            Spacing="8"
+                            Spacing="12"
                             HorizontalAlignment="Left">
                     <Expander Header="General"
                               Style="{ThemeResource PersonalAiSettingsExpanderStyle}"

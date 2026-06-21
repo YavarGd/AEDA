@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -21,6 +22,18 @@ public sealed partial class MainWindow : Window
     {
         _viewModel = viewModel;
         InitializeComponent();
+        if (MicaController.IsSupported())
+        {
+            SystemBackdrop = new MicaBackdrop
+            {
+                Kind = MicaKind.Base
+            };
+        }
+        else if (DesktopAcrylicController.IsSupported())
+        {
+            SystemBackdrop = new DesktopAcrylicBackdrop();
+        }
+
         Root.DataContext = _viewModel;
         _viewModel.ConfirmStopGenerationAsync = ShowStopGenerationDialogAsync;
         _viewModel.ConfirmClearAllContextsAsync = ShowClearAllContextsDialogAsync;
