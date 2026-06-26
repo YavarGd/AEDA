@@ -43,10 +43,7 @@ async function sendSelectionCommand(
   command: CommandType,
   predefinedPrompt?: string
 ): Promise<void> {
-   vscode.window.showInformationMessage("✅ TEST: sendSelectionCommand started");
-   const configuration = vscode.workspace.getConfiguration("personalai");
-   
-
+  const configuration = vscode.workspace.getConfiguration("personalai");
   const maxSelectedTextCharacters = configuration.get<number>(
     "maxSelectedTextCharacters",
     100000
@@ -96,34 +93,22 @@ async function sendOpenCommand(): Promise<void> {
 }
 
 async function sendToPersonalAi(
-    pipeName: string,
-    envelope: EditorContextEnvelope
+  pipeName: string,
+  envelope: EditorContextEnvelope
 ): Promise<void> {
-    try {
-        const response = await sendEnvelope(pipeName, envelope);
+  try {
+    const response = await sendEnvelope(pipeName, envelope);
 
-        // ──────────────────────────────────────────────────────────────
-        // DEBUG: show the *raw* response we got from the pipe
-        // ──────────────────────────────────────────────────────────────
-        vscode.window.showInformationMessage(
-            `Debug raw response: ${JSON.stringify(response)}`
-        );
-
-        if (response.Ok) {
-            vscode.window.showInformationMessage(
-                response.Message ?? "No message recieved"
-            );
-            return;
-        }
-
-        vscode.window.showWarningMessage(
-            `PersonalAI rejected the request: ${response.Message ?? JSON.stringify(response)}`
-        );
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        vscode.window.showErrorMessage(
-            `Could not send context to PersonalAI: ${message}`
-        );
+    if (response.Ok) {
+         vscode.window.showInformationMessage(response.Message);
+      return;
     }
-}
 
+      vscode.window.showWarningMessage(`PersonalAI rejected the request: ${response.Message ?? JSON.stringify(response)}`);
+   
+
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Could not send context to PersonalAI: ${message}`);
+  }
+}
