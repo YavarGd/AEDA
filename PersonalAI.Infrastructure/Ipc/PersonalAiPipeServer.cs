@@ -115,8 +115,14 @@ public sealed class PersonalAiPipeServer : IDisposable
         {
             var envelope = EditorContextProtocol.Deserialize(
                 Encoding.UTF8.GetBytes(line));
-            _handler.Handle(envelope);
-            await WriteResponseAsync(stream, true, "ok", cancellationToken);
+            var result = await _handler.HandleAsync(
+                envelope,
+                cancellationToken).ConfigureAwait(false);
+            await WriteResponseAsync(
+                stream,
+                result.Ok,
+                result.Message,
+                cancellationToken);
         }
         catch (EditorContextProtocolException exception)
         {
@@ -124,6 +130,22 @@ public sealed class PersonalAiPipeServer : IDisposable
                 stream,
                 false,
                 exception.Message,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            await WriteResponseAsync(
+                stream,
+                false,
+                "Request cancelled.",
+                CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            await WriteResponseAsync(
+                stream,
+                false,
+                "Request failed.",
                 cancellationToken);
         }
     }

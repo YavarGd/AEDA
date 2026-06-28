@@ -7,7 +7,15 @@ import {
   protocolVersion
 } from "./contracts";
 import { collectEditorContext } from "./contextCollector";
-import { sendEnvelope } from "./pipeClient";
+import {
+  PipeTimeoutOptions,
+  sendEnvelope
+} from "./pipeClient";
+import {
+  getEditorChatTimeoutOptions as getEditorChatTimeoutOptionsCore,
+  getQuickTimeoutOptions as getQuickTimeoutOptionsCore,
+  isEditorAiCommand
+} from "./timeoutOptions";
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -43,16 +51,12 @@ async function sendSelectionCommand(
   command: CommandType,
   predefinedPrompt?: string
 ): Promise<void> {
-   vscode.window.showInformationMessage("✅ TEST: sendSelectionCommand started");
-   const configuration = vscode.workspace.getConfiguration("personalai");
-   
-
+  const configuration = vscode.workspace.getConfiguration("personalai");
   const maxSelectedTextCharacters = configuration.get<number>(
     "maxSelectedTextCharacters",
     100000
   );
   const pipeName = configuration.get<string>("pipeName", defaultPipeName);
-
   const collected = await collectEditorContext(maxSelectedTextCharacters);
 
   if (!collected) {
@@ -79,7 +83,10 @@ async function sendSelectionCommand(
     context: collected.context
   };
 
-  await sendToPersonalAi(pipeName, envelope);
+  await sendToPersonalAi(
+    pipeName,
+    envelope,
+    getEditorChatTimeoutOptions(configuration));
 }
 
 async function sendOpenCommand(): Promise<void> {
@@ -92,38 +99,56 @@ async function sendOpenCommand(): Promise<void> {
     command: "openPersonalAi"
   };
 
-  await sendToPersonalAi(pipeName, envelope);
+  await sendToPersonalAi(
+    pipeName,
+    envelope,
+    getQuickTimeoutOptions(configuration));
 }
 
 async function sendToPersonalAi(
-    pipeName: string,
-    envelope: EditorContextEnvelope
+  pipeName: string,
+  envelope: EditorContextEnvelope,
+  timeoutOptions: PipeTimeoutOptions
 ): Promise<void> {
-    try {
-        const response = await sendEnvelope(pipeName, envelope);
+  try {
+    const response = isEditorAiCommand(envelope.command)
+      ? await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "AEDA is analyzing the selected code...",
+          cancellable: false
+        },
+        () => sendEnvelope(pipeName, envelope, timeoutOptions))
+      : await sendEnvelope(pipeName, envelope, timeoutOptions);
 
-        // ──────────────────────────────────────────────────────────────
-        // DEBUG: show the *raw* response we got from the pipe
-        // ──────────────────────────────────────────────────────────────
-        vscode.window.showInformationMessage(
-            `Debug raw response: ${JSON.stringify(response)}`
-        );
-
-        if (response.Ok) {
-            vscode.window.showInformationMessage(
-                response.Message ?? "No message recieved"
-            );
-            return;
-        }
-
-        vscode.window.showWarningMessage(
-            `PersonalAI rejected the request: ${response.Message ?? JSON.stringify(response)}`
-        );
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        vscode.window.showErrorMessage(
-            `Could not send context to PersonalAI: ${message}`
-        );
+    if (response.Ok) {
+      vscode.window.showInformationMessage(
+        response.Message ?? "No message received"
+      );
+      return;
     }
+
+    vscode.window.showWarningMessage(
+      `PersonalAI rejected the request: ${response.Message ?? JSON.stringify(response)}`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(
+      `Could not send context to PersonalAI: ${message}`
+    );
+  }
 }
 
+function getQuickTimeoutOptions(
+  configuration: vscode.WorkspaceConfiguration
+): PipeTimeoutOptions {
+  return getQuickTimeoutOptionsCore(
+    (key, defaultValue) => configuration.get(key, defaultValue));
+}
+
+function getEditorChatTimeoutOptions(
+  configuration: vscode.WorkspaceConfiguration
+): PipeTimeoutOptions {
+  return getEditorChatTimeoutOptionsCore(
+    (key, defaultValue) => configuration.get(key, defaultValue));
+}

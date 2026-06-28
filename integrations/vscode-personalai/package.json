@@ -59,6 +59,30 @@
           "type": "string",
           "default": "\\\\.\\pipe\\PersonalAI.EditorContext.v1",
           "description": "Local Windows named pipe used to communicate with the PersonalAI desktop app."
+        },
+        "personalai.pipe.connectTimeoutMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 500,
+          "description": "Milliseconds to wait while connecting to the PersonalAI named pipe."
+        },
+        "personalai.pipe.sendTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 500,
+          "description": "Milliseconds to wait while sending an editor request to PersonalAI."
+        },
+        "personalai.pipe.responseTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1000,
+          "description": "Milliseconds to wait for quick PersonalAI named-pipe responses."
+        },
+        "personalai.editorChat.responseTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 5000,
+          "description": "Milliseconds to wait for AEDA to generate a read-only response for selected code."
         }
       }
     }

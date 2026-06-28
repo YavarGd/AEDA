@@ -11,6 +11,8 @@ public sealed class ProviderFactory(
     Func<HttpClient>? httpClientFactory = null,
     ISecretStore? secretStore = null) : IProviderFactory
 {
+    private const string DefaultCodingModel = "qwen2.5-coder:7b";
+
     private readonly Func<HttpClient> _httpClientFactory =
         httpClientFactory ?? (() => new HttpClient());
     private readonly ISecretStore _secretStore =
@@ -37,6 +39,7 @@ public sealed class ProviderFactory(
                 endpoint,
                 profile.Kind == ProviderKind.Ollama
                     ? settings.Models.Assignments.Select(assignment => assignment.Model)
+                        .Concat([DefaultCodingModel])
                     : null);
             var runtimeProfile = new ProviderProfile(
                 providerId,

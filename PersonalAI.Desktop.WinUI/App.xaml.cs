@@ -304,6 +304,11 @@ public partial class App : Application
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
                 Task.FromResult<IReadOnlyList<string>>([]),
             workspaceManagement);
+        var editorCodeResponder = new EditorCodeChatResponder(
+            chatSession,
+            _settingsService,
+            cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
+                Task.FromResult<IReadOnlyList<string>>([]));
         var viewModel = new MainViewModel(
             conversationSession,
             clipboardContextService,
@@ -341,7 +346,10 @@ public partial class App : Application
         ApplyRuntimeSettings(_settingsService.Current);
         _window.AppWindow.Closing += MainWindow_Closing;
 
-        StartEditorIpc(viewModel, DispatcherQueue.GetForCurrentThread());
+        StartEditorIpc(
+            viewModel,
+            DispatcherQueue.GetForCurrentThread(),
+            editorCodeResponder);
         StartForegroundTracking();
         StartTrayIcon();
         RegisterHotKey();
@@ -456,7 +464,8 @@ public partial class App : Application
 
     private void StartEditorIpc(
         MainViewModel viewModel,
-        DispatcherQueue dispatcherQueue)
+        DispatcherQueue dispatcherQueue,
+        EditorCodeChatResponder editorCodeResponder)
     {
         var handler = new EditorContextMessageHandler(
             envelope => dispatcherQueue.TryEnqueue(() =>
@@ -465,7 +474,8 @@ public partial class App : Application
                 viewModel.ReceiveEditorContext(envelope);
             }),
             () => dispatcherQueue.TryEnqueue(
-                () => ShowPersonalAi(repositionIfHidden: true)));
+                () => ShowPersonalAi(repositionIfHidden: true)),
+            editorCodeResponder.RespondAsync);
 
         _pipeServer = new PersonalAiPipeServer(handler);
         _pipeServer.StateChanged += (_, _) => dispatcherQueue.TryEnqueue(() =>
