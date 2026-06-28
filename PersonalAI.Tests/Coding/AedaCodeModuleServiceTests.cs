@@ -36,6 +36,7 @@ public sealed class AedaCodeModuleServiceTests
             proposals,
             apply,
             validation,
+            new FakeValidationCommandAllowlist(),
             tasks);
 
         var session = await service.StartSessionAsync(_workspaceId, "Fix tests");
@@ -82,7 +83,8 @@ public sealed class AedaCodeModuleServiceTests
             new FakePlanningService(),
             new FakeProposalService(CreateProposal(_workspaceId)),
             new FakeApplyService(CreateApplyResult(_workspaceId, PatchProposalId.NewId())),
-            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, PatchProposalId.NewId(), null)));
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, PatchProposalId.NewId(), null)),
+            new FakeValidationCommandAllowlist());
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.GetDashboardAsync(AedaCodeSessionId.NewId()));
@@ -341,6 +343,36 @@ public sealed class AedaCodeModuleServiceTests
             int limit = 50,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ValidationRun>>([run]);
+    }
+
+    private sealed class FakeValidationCommandAllowlist : IValidationCommandAllowlist
+    {
+        public IReadOnlyList<ValidationCommandTemplate> ListTemplates() =>
+        [
+            new(
+                "dotnet-build-debug",
+                "Build solution",
+                "dotnet",
+                ["build", "PersonalAI.slnx"],
+                TimeSpan.FromMinutes(3),
+                "PersonalAI.slnx")
+        ];
+
+        public bool TryCreateCommand(
+            ValidationRunRequest request,
+            WorkspaceDescriptor workspace,
+            out ValidationCommand command,
+            out ValidationFailureReason failureReason)
+        {
+            command = new ValidationCommand(
+                request.TemplateId,
+                "dotnet",
+                ["build", "PersonalAI.slnx"],
+                ".",
+                TimeSpan.FromMinutes(3));
+            failureReason = ValidationFailureReason.UnknownSafeFailure;
+            return true;
+        }
     }
 
     private sealed class FakeTaskQueryService : ITaskQueryService

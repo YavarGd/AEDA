@@ -196,9 +196,10 @@ public partial class App : Application
             workspaceReader,
             approvalCheckpointStore,
             taskRuntime);
+        var validationCommandAllowlist = new ValidationCommandAllowlist();
         var validationRunnerService = new ValidationRunnerService(
             validationRunRepository,
-            new ValidationCommandAllowlist(),
+            validationCommandAllowlist,
             new ControlledProcessRunner(),
             workspaceReader,
             approvalCheckpointStore,
@@ -271,10 +272,14 @@ public partial class App : Application
             patchProposalService,
             patchApplyService,
             validationRunnerService,
+            validationCommandAllowlist,
             taskQueryService);
         var aedaCodeViewModel = new AedaCodeModuleViewModel(
             aedaCodeModule,
-            moduleRegistry);
+            moduleRegistry,
+            workspaceRegistry,
+            taskCenterService,
+            approvalCheckpointStore);
         var aedaMemoryViewModel = new AedaMemoryModuleViewModel(
             aedaMemoryModule,
             moduleRegistry);

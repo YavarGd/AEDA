@@ -12,6 +12,7 @@ public sealed class AedaCodeModuleService(
     IPatchProposalService proposalService,
     IPatchApplyService applyService,
     IValidationRunnerService validationRunnerService,
+    IValidationCommandAllowlist validationCommandAllowlist,
     ITaskQueryService? taskQueryService = null) : IAedaCodeModuleService
 {
     private readonly object _gate = new();
@@ -147,6 +148,24 @@ public sealed class AedaCodeModuleService(
         CancellationToken cancellationToken = default) =>
         applyService.DryRunAsync(request, cancellationToken);
 
+    public Task<IReadOnlyList<ValidationCommandTemplate>> ListValidationTemplatesAsync(
+        WorkspaceId workspaceId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var workspace = workspaceReader.GetWorkspace(workspaceId);
+        var templates = validationCommandAllowlist.ListTemplates()
+            .Where(template => validationCommandAllowlist.TryCreateCommand(
+                new ValidationRunRequest(workspace.Id, template.Id),
+                workspace,
+                out _,
+                out _))
+            .OrderBy(template => template.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(template => template.Id, StringComparer.Ordinal)
+            .ToArray();
+        return Task.FromResult<IReadOnlyList<ValidationCommandTemplate>>(templates);
+    }
+
     public Task<ApprovalRequest> RequestApplyApprovalAsync(
         PatchProposalId proposalId,
         WorkspaceId workspaceId,
@@ -157,6 +176,11 @@ public sealed class AedaCodeModuleService(
         PatchApplyRequest request,
         CancellationToken cancellationToken = default) =>
         applyService.ApplyAsync(request, cancellationToken);
+
+    public Task<PatchApplyResult?> GetApplyResultAsync(
+        PatchApplyResultId applyResultId,
+        CancellationToken cancellationToken = default) =>
+        applyService.GetApplyResultAsync(applyResultId, cancellationToken);
 
     public Task<PatchRollbackResult> RollbackAsync(
         PatchRollbackRequest request,

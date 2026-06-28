@@ -166,7 +166,12 @@ public sealed class AedaShellDashboardTests
     {
         var registry = CreateRegistry();
         var service = new FakeAedaCodeModuleService();
-        var viewModel = new AedaCodeModuleViewModel(service, registry)
+        var viewModel = new AedaCodeModuleViewModel(
+            service,
+            registry,
+            new WorkspaceRegistry(),
+            new FakeTaskCenterService(),
+            new InMemoryApprovalCheckpointStore())
         {
             Dashboard = CreateDashboard()
         };
@@ -420,6 +425,11 @@ public sealed class AedaShellDashboardTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<ValidationCommandTemplate>> ListValidationTemplatesAsync(
+            WorkspaceId workspaceId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ValidationCommandTemplate>>([]);
+
         public Task<PatchApplyPlan> DryRunApplyAsync(
             PatchApplyRequest request,
             CancellationToken cancellationToken = default) =>
@@ -435,6 +445,11 @@ public sealed class AedaShellDashboardTests
             PatchApplyRequest request,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<PatchApplyResult?> GetApplyResultAsync(
+            PatchApplyResultId applyResultId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<PatchApplyResult?>(null);
 
         public Task<PatchRollbackResult> RollbackAsync(
             PatchRollbackRequest request,
@@ -462,6 +477,66 @@ public sealed class AedaShellDashboardTests
             AedaCodeSessionId sessionId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(CreateDashboard());
+    }
+
+    private sealed class FakeTaskCenterService : IAedaTaskCenterService
+    {
+        public ValueTask<AedaTaskCenterDashboard> GetDashboardAsync(
+            AedaTaskFilter? filter = null,
+            CancellationToken cancellationToken = default) =>
+            new(new AedaTaskCenterDashboard(
+                [],
+                [],
+                [],
+                [],
+                new Dictionary<AedaTaskCenterStatus, int>(),
+                new Dictionary<AedaTaskCenterModule, int>(),
+                DateTimeOffset.UtcNow,
+                "Task Center ready."));
+
+        public ValueTask<IReadOnlyList<AedaTaskSummary>> ListActiveTasksAsync(
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            new ValueTask<IReadOnlyList<AedaTaskSummary>>([]);
+
+        public ValueTask<IReadOnlyList<AedaTaskApprovalSummary>> ListWaitingApprovalsAsync(
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            new ValueTask<IReadOnlyList<AedaTaskApprovalSummary>>([]);
+
+        public ValueTask<IReadOnlyList<AedaTaskSummary>> ListRecentTasksAsync(
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            new ValueTask<IReadOnlyList<AedaTaskSummary>>([]);
+
+        public ValueTask<IReadOnlyList<AedaTaskSummary>> ListFailedOrCancelledTasksAsync(
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            new ValueTask<IReadOnlyList<AedaTaskSummary>>([]);
+
+        public ValueTask<IReadOnlyList<AedaTaskSummary>> ListTasksByModuleAsync(
+            AedaTaskCenterModule module,
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            new ValueTask<IReadOnlyList<AedaTaskSummary>>([]);
+
+        public ValueTask<IReadOnlyList<AedaTaskActivityGroup>> GetTimelineAsync(
+            TaskId taskId,
+            int limit = 100,
+            CancellationToken cancellationToken = default) =>
+            new ValueTask<IReadOnlyList<AedaTaskActivityGroup>>([]);
+
+        public ValueTask<AedaTaskTimelineItem?> GetSafeEventDetailsAsync(
+            TaskId taskId,
+            Guid eventId,
+            CancellationToken cancellationToken = default) =>
+            new ValueTask<AedaTaskTimelineItem?>((AedaTaskTimelineItem?)null);
+
+        public ValueTask CancelTaskAsync(
+            TaskId taskId,
+            TaskCancellationReason reason,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
     }
 
     private sealed class FakeAedaMemoryModuleService : IAedaMemoryModuleService

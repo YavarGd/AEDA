@@ -150,6 +150,10 @@ public interface IAedaCodeModuleService
         int limit = 50,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<ValidationCommandTemplate>> ListValidationTemplatesAsync(
+        WorkspaceId workspaceId,
+        CancellationToken cancellationToken = default);
+
     Task<PatchApplyPlan> DryRunApplyAsync(
         PatchApplyRequest request,
         CancellationToken cancellationToken = default);
@@ -161,6 +165,10 @@ public interface IAedaCodeModuleService
 
     Task<PatchApplyResult> ApplyApprovedProposalAsync(
         PatchApplyRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<PatchApplyResult?> GetApplyResultAsync(
+        PatchApplyResultId applyResultId,
         CancellationToken cancellationToken = default);
 
     Task<PatchRollbackResult> RollbackAsync(

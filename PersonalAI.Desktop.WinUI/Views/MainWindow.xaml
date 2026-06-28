@@ -1680,7 +1680,11 @@
                     BorderThickness="1"
                     CornerRadius="{StaticResource CardCornerRadius}"
                     Padding="{StaticResource CardPadding}">
-                <Grid>
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <StackPanel MinWidth="0"
                                 DataContext="{Binding AedaCode}">
                         <TextBlock Text="{Binding DisplayName}"
@@ -1689,196 +1693,618 @@
                                    Style="{ThemeResource PersonalAiSecondaryTextStyle}"
                                    TextWrapping="NoWrap"
                                    TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding SafeStatusMessage}"
+                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                   TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                    <StackPanel HorizontalAlignment="Right"
+                    <StackPanel Grid.Column="1"
+                                HorizontalAlignment="Right"
                                 Orientation="Horizontal"
                                 Spacing="8">
+                        <Button Command="{Binding AedaCode.RefreshCommand}"
+                                Content="Refresh"
+                                AutomationProperties.Name="Refresh AEDA Code workflow" />
+                        <Button Command="{Binding OpenTaskCenterCommand}"
+                                Content="Task Center" />
                         <Button Command="{Binding OpenDashboardCommand}"
                                 Content="Dashboard" />
-                        <Button Command="{Binding OpenChatCommand}"
-                                Content="Chat" />
                     </StackPanel>
                 </Grid>
             </Border>
 
             <ScrollViewer Grid.Row="1"
-                          Margin="0,20,0,0">
-                <StackPanel DataContext="{Binding AedaCode}"
-                            Spacing="20">
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="8">
-                        <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                          Margin="0,20,0,0"
+                          HorizontalScrollBarVisibility="Auto"
+                          HorizontalScrollMode="Auto">
+                <Grid DataContext="{Binding AedaCode}"
+                      ColumnSpacing="16"
+                      RowSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="AedaCodeWorkspaceColumn"
+                                          Width="280" />
+                        <ColumnDefinition x:Name="AedaCodeMainColumn"
+                                          Width="*"
+                                          MinWidth="380" />
+                        <ColumnDefinition x:Name="AedaCodeWorkflowColumn"
+                                          Width="0" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup>
+                            <VisualState x:Name="AedaCodeNarrowLayout" />
+                            <VisualState x:Name="AedaCodeWideLayout">
+                                <VisualState.StateTriggers>
+                                    <AdaptiveTrigger MinWindowWidth="1450" />
+                                </VisualState.StateTriggers>
+                                <VisualState.Setters>
+                                    <Setter Target="AedaCodeMainColumn.MinWidth"
+                                            Value="560" />
+                                    <Setter Target="AedaCodeWorkflowColumn.Width"
+                                            Value="340" />
+                                    <Setter Target="AedaCodeNarrowWorkflowPanel.Visibility"
+                                            Value="Collapsed" />
+                                    <Setter Target="AedaCodeWideWorkflowPanel.Visibility"
+                                            Value="Visible" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+
+                    <StackPanel Grid.RowSpan="2"
+                                Spacing="16">
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
                                 BorderBrush="{ThemeResource PersonalAiBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="{StaticResource PillCornerRadius}"
-                                Padding="{StaticResource CompactControlPadding}">
-                            <TextBlock Text="{Binding AvailabilityLabel}"
-                                       Style="{ThemeResource PersonalAiPillTextStyle}" />
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Workspace"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="{Binding SessionStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding RecentCodeTaskCountText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                <TextBlock Text="No registered workspaces."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoWorkspaces, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ItemsControl ItemsSource="{Binding Workspaces}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.SelectWorkspaceCommand, ElementName=Root}"
+                                                    CommandParameter="{Binding}"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Margin="0,0,0,8"
+                                                    AutomationProperties.Name="{Binding DisplayName}">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Text="{Binding DisplayName}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                    <TextBlock Text="{Binding RootSummary}"
+                                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding PolicyLabel}"
+                                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="Start session"
+                                        Command="{Binding StartSessionCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        ToolTipService.ToolTip="Start a supervised AEDA Code session for the selected registered workspace." />
+                            </StackPanel>
                         </Border>
-                        <ItemsControl ItemsSource="{Binding CapabilityBadges}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <ItemsStackPanel Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
-                                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="{StaticResource PillCornerRadius}"
-                                            Padding="{StaticResource CompactControlPadding}"
-                                            Margin="0,0,8,0">
-                                        <TextBlock Text="{Binding}"
-                                                   Style="{ThemeResource PersonalAiPillTextStyle}" />
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Proposals"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="{Binding ProposalCountText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                <TextBlock Text="No proposals for this workspace."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoProposals, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ItemsControl ItemsSource="{Binding Proposals}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.SelectProposalCommand, ElementName=Root}"
+                                                    CommandParameter="{Binding}"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Margin="0,0,0,8"
+                                                    AutomationProperties.Name="{Binding Title}">
+                                                <StackPanel Spacing="3">
+                                                    <TextBlock Text="{Binding Title}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                    <TextBlock Text="{Binding SafeSummary}"
+                                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Style="{ThemeResource PersonalAiSecondaryTextStyle}">
+                                                        <Run Text="{Binding Status}" />
+                                                        <Run Text=" · " />
+                                                        <Run Text="{Binding RiskLabel}" />
+                                                        <Run Text=" · " />
+                                                        <Run Text="{Binding AffectedFileCount}" />
+                                                        <Run Text=" files" />
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding UpdatedText}"
+                                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Recent Sessions"
-                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
-                            <TextBlock Text="No recent AEDA Code sessions."
-                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                       Visibility="{Binding HasNoRecentSessions, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <ItemsControl ItemsSource="{Binding RecentSessions}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                                BorderThickness="1"
-                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                                                CornerRadius="{StaticResource CardCornerRadius}"
-                                                Padding="{StaticResource CardPadding}"
-                                                Margin="0,0,0,8">
-                                            <StackPanel Spacing="4">
-                                                <TextBlock Text="{Binding SafeSummary}"
-                                                           TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                                                <TextBlock Text="{Binding WorkspaceDisplayName}"
-                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1"
-                                    Spacing="8">
-                            <TextBlock Text="Safe Actions"
-                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
-                            <Button Content="Start code session"
-                                    IsEnabled="False"
-                                    ToolTipService.ToolTip="Session start is deferred to the guided Code workflow." />
-                            <Button Content="View proposals"
-                                    IsEnabled="False"
-                                    ToolTipService.ToolTip="Proposal browsing is read-model only in this milestone." />
-                            <Button Content="View validation runs"
-                                    IsEnabled="False"
-                                    ToolTipService.ToolTip="Validation is not started from this page." />
-                        </StackPanel>
-                    </Grid>
+                    <StackPanel Grid.Column="1"
+                                Grid.Row="0"
+                                Spacing="16">
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Proposal Detail"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="Select a proposal to inspect safe detail and diff."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoSelectedProposal, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <TextBlock Text="{Binding SelectedProposal.Title}"
+                                           TextWrapping="Wrap"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="{Binding SelectedProposal.SafeSummary}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="{Binding RiskSummary}"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding HashStatusText}"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding AffectedFileCountText}"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding SourceSummaryText}"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding ProposalFiles}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                                                    BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource PillCornerRadius}"
+                                                    Padding="{StaticResource CompactControlPadding}"
+                                                    Margin="0,0,0,6">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding RelativePath}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Style="{ThemeResource PersonalAiSecondaryTextStyle}">
+                                                        <Run Text="{Binding ChangeKind}" />
+                                                        <Run Text=" · " />
+                                                        <Run Text="{Binding OriginalHashStatus}" />
+                                                        <Run Text=" · " />
+                                                        <Run Text="{Binding ProposedHashStatus}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
 
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Recent Proposals"
-                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
-                            <TextBlock Text="No proposal summaries loaded."
-                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                       Visibility="{Binding HasNoProposalSummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <ItemsControl ItemsSource="{Binding ProposalSummaries}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                                BorderThickness="1"
-                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                                                CornerRadius="{StaticResource CardCornerRadius}"
-                                                Padding="{StaticResource CardPadding}"
-                                                Margin="0,0,0,8">
-                                            <StackPanel Spacing="4">
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Unified Diff"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBox Text="{Binding UnifiedDiffPreview, Mode=OneWay}"
+                                         AcceptsReturn="True"
+                                         IsReadOnly="True"
+                                         TextWrapping="NoWrap"
+                                         FontFamily="Consolas"
+                                         MinHeight="360"
+                                         MaxHeight="620"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.Name="Unified diff preview" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="AedaCodeNarrowWorkflowPanel"
+                                Grid.Column="1"
+                                Grid.Row="1"
+                                Spacing="16">
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Review Gates"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="{Binding ValidationPlanText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding DryRunStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Dry run"
+                                        Command="{Binding DryRunSelectedProposalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ApplyApprovalStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Request apply approval"
+                                        Command="{Binding RequestApplyApprovalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Allow once"
+                                            Command="{Binding AllowApplyOnceCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                    <Button Grid.Column="1"
+                                            Content="Deny"
+                                            Command="{Binding DenyApplyApprovalCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                </Grid>
+                                <Button Content="Apply approved proposal"
+                                        Command="{Binding ApplyApprovedProposalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ApplyResultText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Rollback apply result"
+                                        Command="{Binding RollbackSelectedApplyResultCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        ToolTipService.ToolTip="Rollback is available only after an apply result with backups." />
+                                <TextBlock Text="{Binding RollbackStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Validation"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="No allowlisted validation templates available."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoValidationTemplates, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ComboBox ItemsSource="{Binding ValidationTemplates}"
+                                          SelectedItem="{Binding SelectedValidationTemplate, Mode=TwoWay}"
+                                          DisplayMemberPath="DisplayName"
+                                          HorizontalAlignment="Stretch"
+                                          AutomationProperties.Name="Validation template" />
+                                <TextBlock Text="{Binding SelectedValidationTemplate.SafeCommandSummary}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Create validation run"
+                                        Command="{Binding CreateValidationRunCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ValidationApprovalStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Request validation approval"
+                                        Command="{Binding RequestValidationApprovalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Allow once"
+                                            Command="{Binding AllowValidationOnceCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                    <Button Grid.Column="1"
+                                            Content="Deny"
+                                            Command="{Binding DenyValidationApprovalCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                </Grid>
+                                <Button Content="Run approved validation"
+                                        Command="{Binding RunApprovedValidationCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ValidationResultText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <TextBox Text="{Binding ValidationOutputPreview, Mode=OneWay}"
+                                         AcceptsReturn="True"
+                                         IsReadOnly="True"
+                                         TextWrapping="Wrap"
+                                         FontFamily="Consolas"
+                                         MinHeight="120"
+                                         MaxHeight="240"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.Name="Validation result preview" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Code Timeline"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="No recent Code tasks."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoRecentCodeTasks, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ItemsControl ItemsSource="{Binding RecentCodeTasks}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.SelectTaskCommand, ElementName=Root}"
+                                                    CommandParameter="{Binding}"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Margin="0,0,0,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                    <TextBlock Text="{Binding SafeSummary}"
+                                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No safe timeline events loaded."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoSelectedTaskTimeline, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ItemsControl ItemsSource="{Binding SelectedTaskTimeline}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="4"
+                                                        Margin="0,0,0,8">
                                                 <TextBlock Text="{Binding Title}"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
                                                            TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                                                <TextBlock Text="{Binding Status}"
-                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <ItemsControl ItemsSource="{Binding Items}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                                                       TextWrapping="Wrap">
+                                                                <Run Text="{Binding Title}" />
+                                                                <Run Text=" · " />
+                                                                <Run Text="{Binding Summary}" />
+                                                            </TextBlock>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
                                             </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1"
-                                    Spacing="8">
-                            <TextBlock Text="Validation Runs"
-                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
-                            <TextBlock Text="No validation summaries loaded."
-                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                       Visibility="{Binding HasNoValidationSummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <ItemsControl ItemsSource="{Binding ValidationSummaries}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                                BorderThickness="1"
-                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                                                CornerRadius="{StaticResource CardCornerRadius}"
-                                                Padding="{StaticResource CardPadding}"
-                                                Margin="0,0,0,8">
-                                            <StackPanel Spacing="4">
-                                                <TextBlock Text="{Binding TemplateId}"
-                                                           TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                                                <TextBlock Text="{Binding Status}"
-                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </Grid>
-
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Apply Results and Timeline"
-                                   Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
-                        <TextBlock Text="No apply results loaded."
-                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                   Visibility="{Binding HasNoApplySummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <ItemsControl ItemsSource="{Binding ApplySummaries}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Status}"
-                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Text="No task timeline loaded."
-                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                   Visibility="{Binding HasNoTimelineSummaries, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <ItemsControl ItemsSource="{Binding TimelineSummaries}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Summary}"
-                                               TextWrapping="NoWrap"
-                                               TextTrimming="CharacterEllipsis"
-                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="Open full Task Center"
+                                        Command="{Binding DataContext.OpenTaskCenterCommand, ElementName=Root}"
+                                        HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </StackPanel>
+
+                    <StackPanel x:Name="AedaCodeWideWorkflowPanel"
+                                Grid.Column="2"
+                                Grid.RowSpan="2"
+                                Visibility="Collapsed"
+                                Spacing="16">
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Review Gates"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="{Binding ValidationPlanText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding DryRunStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Dry run"
+                                        Command="{Binding DryRunSelectedProposalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ApplyApprovalStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Request apply approval"
+                                        Command="{Binding RequestApplyApprovalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Allow once"
+                                            Command="{Binding AllowApplyOnceCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                    <Button Grid.Column="1"
+                                            Content="Deny"
+                                            Command="{Binding DenyApplyApprovalCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                </Grid>
+                                <Button Content="Apply approved proposal"
+                                        Command="{Binding ApplyApprovedProposalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ApplyResultText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Rollback apply result"
+                                        Command="{Binding RollbackSelectedApplyResultCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        ToolTipService.ToolTip="Rollback is available only after an apply result with backups." />
+                                <TextBlock Text="{Binding RollbackStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Validation"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="No allowlisted validation templates available."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoValidationTemplates, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ComboBox ItemsSource="{Binding ValidationTemplates}"
+                                          SelectedItem="{Binding SelectedValidationTemplate, Mode=TwoWay}"
+                                          DisplayMemberPath="DisplayName"
+                                          HorizontalAlignment="Stretch"
+                                          AutomationProperties.Name="Validation template" />
+                                <TextBlock Text="{Binding SelectedValidationTemplate.SafeCommandSummary}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Create validation run"
+                                        Command="{Binding CreateValidationRunCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ValidationApprovalStatusText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <Button Content="Request validation approval"
+                                        Command="{Binding RequestValidationApprovalCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Allow once"
+                                            Command="{Binding AllowValidationOnceCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                    <Button Grid.Column="1"
+                                            Content="Deny"
+                                            Command="{Binding DenyValidationApprovalCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                </Grid>
+                                <Button Content="Run approved validation"
+                                        Command="{Binding RunApprovedValidationCommand}"
+                                        HorizontalAlignment="Stretch" />
+                                <TextBlock Text="{Binding ValidationResultText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <TextBox Text="{Binding ValidationOutputPreview, Mode=OneWay}"
+                                         AcceptsReturn="True"
+                                         IsReadOnly="True"
+                                         TextWrapping="Wrap"
+                                         FontFamily="Consolas"
+                                         MinHeight="120"
+                                         MaxHeight="220"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.Name="Validation result preview" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Code Timeline"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="No recent Code tasks."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoRecentCodeTasks, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ItemsControl ItemsSource="{Binding RecentCodeTasks}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.SelectTaskCommand, ElementName=Root}"
+                                                    CommandParameter="{Binding}"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Margin="0,0,0,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                                    <TextBlock Text="{Binding SafeSummary}"
+                                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                                               TextWrapping="NoWrap"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No safe timeline events loaded."
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoSelectedTaskTimeline, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <ItemsControl ItemsSource="{Binding SelectedTaskTimeline}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="4"
+                                                        Margin="0,0,0,8">
+                                                <TextBlock Text="{Binding Title}"
+                                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <ItemsControl ItemsSource="{Binding Items}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                                                       TextWrapping="Wrap">
+                                                                <Run Text="{Binding Title}" />
+                                                                <Run Text=" Â· " />
+                                                                <Run Text="{Binding Summary}" />
+                                                            </TextBlock>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="Open full Task Center"
+                                        Command="{Binding DataContext.OpenTaskCenterCommand, ElementName=Root}"
+                                        HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
             </ScrollViewer>
         </Grid>
 
