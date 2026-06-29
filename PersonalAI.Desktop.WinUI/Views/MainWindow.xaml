@@ -2036,6 +2036,10 @@
                                 <TextBlock Text="{Binding DryRunDetailText}"
                                            Style="{ThemeResource PersonalAiSecondaryTextStyle}"
                                            TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding StaleProposalRecoveryText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding IsDryRunStale, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <Button Content="Dry run"
                                         Command="{Binding DryRunSelectedProposalCommand}"
                                         HorizontalAlignment="Stretch" />
@@ -2245,6 +2249,10 @@
                                 <TextBlock Text="{Binding DryRunDetailText}"
                                            Style="{ThemeResource PersonalAiSecondaryTextStyle}"
                                            TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding StaleProposalRecoveryText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding IsDryRunStale, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <Button Content="Dry run"
                                         Command="{Binding DryRunSelectedProposalCommand}"
                                         HorizontalAlignment="Stretch" />

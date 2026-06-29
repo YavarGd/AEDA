@@ -227,9 +227,18 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public string DryRunDetailText => DryRunPlan is null
         ? "Dry run checks patch safety and stale hashes before any write."
+        : IsDryRunStale
+            ? "This proposal is stale. The file changed since the proposal was created, so AEDA blocked apply. Create a fresh proposal from the current file state. Safe code: StaleOriginalContent."
         : DryRunPlan.Status == PatchApplyStatus.DryRunPassed
             ? $"Dry run passed for {DryRunPlan.Operations.Count} file operation(s)."
             : $"Dry run blocked: {FormatReasons(DryRunPlan.FailureReasons)}";
+
+    public bool IsDryRunStale =>
+        DryRunPlan?.FailureReasons.Contains(PatchApplyFailureReason.StaleOriginalContent) == true;
+
+    public string StaleProposalRecoveryText => IsDryRunStale
+        ? "Apply is disabled for stale proposals. Re-enter the request to create a fresh proposal; AEDA will not apply or validate the stale one."
+        : string.Empty;
 
     public string ApplyApprovalStatusText => ApplyApprovalRequest is null
         ? "Apply approval not requested."
@@ -246,7 +255,9 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public string ApplyResultDetailText => ApplyResult is null
         ? "Apply is available only after a passed dry run and granted approval."
         : ApplyResult.Status is PatchApplyStatus.Applied or PatchApplyStatus.PartiallyApplied
-            ? $"Changed files: {ApplyResult.Files.Count}. Backup checkpoint available. Rollback available."
+            ? HasRollbackAvailable
+                ? $"Changed files: {ApplyResult.Files.Count}. Backup checkpoint available. Rollback available."
+                : $"Changed files: {ApplyResult.Files.Count}. Rollback unavailable for this apply result."
             : $"Apply did not complete: {FormatReasons(ApplyResult.FailureReasons)}";
 
     public string ValidationApprovalStatusText => ValidationApprovalRequest is null
@@ -273,7 +284,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ? "Create a validation run, request approval, then run the approved validation explicitly."
         : BuildValidationRunDetail(ValidationRun);
 
-    public string RollbackAvailabilityText => CanShowRollback
+    public string RollbackAvailabilityText => HasRollbackAvailable
         ? $"Rollback available for {ApplyResult?.Files.Count ?? 0} applied file(s). User-triggered only."
         : "Rollback is hidden until an apply result has rollback capability.";
 
@@ -315,7 +326,13 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public bool HasNoSelectedTaskTimeline => !HasSelectedTaskTimeline;
 
-    public bool CanShowRollback => ApplyResult is { Status: PatchApplyStatus.Applied or PatchApplyStatus.PartiallyApplied };
+    public bool HasRollbackAvailable =>
+        ApplyResult is { Status: PatchApplyStatus.Applied or PatchApplyStatus.PartiallyApplied } result &&
+        result.Files.Any(file =>
+            file.Status == PatchApplyStatus.Applied &&
+            file.ChangeKind == PatchProposalFileChangeKind.Modify);
+
+    public bool CanShowRollback => HasRollbackAvailable;
 
     public IReadOnlyList<AedaCodeSession> RecentSessions { get; private set; } = [];
 
@@ -740,9 +757,16 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                     SelectedProposal.ProposalId,
                     SelectedWorkspace.WorkspaceId),
                 cancellationToken).ConfigureAwait(false);
-            SafeStatusMessage = DryRunPlan.Status == PatchApplyStatus.DryRunPassed
-                ? "Dry run passed."
-                : "Dry run completed with safe blockers.";
+            if (DryRunPlan.Status != PatchApplyStatus.DryRunPassed)
+            {
+                ClearApplyApprovalState();
+            }
+
+            SafeStatusMessage = IsDryRunStale
+                ? "Proposal is stale. Create a fresh proposal from the current file state."
+                : DryRunPlan.Status == PatchApplyStatus.DryRunPassed
+                    ? "Dry run passed."
+                    : "Dry run completed with safe blockers.";
             await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -1124,8 +1148,12 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         !IsBusy &&
         SelectedProposal is not null &&
         SelectedWorkspace is not null &&
+        DryRunPlan?.Status == PatchApplyStatus.DryRunPassed &&
+        DryRunPlan.ProposalId == SelectedProposal.ProposalId &&
+        DryRunPlan.WorkspaceId == SelectedWorkspace.WorkspaceId &&
         ApplyApprovalRequest is not null &&
-        ApplyApprovalDecision?.IsAllowed == true;
+        ApplyApprovalDecision?.IsAllowed == true &&
+        IsApplyApprovalForSelection();
 
     private bool CanCreateValidationRun() =>
         !IsBusy &&
@@ -1149,6 +1177,22 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ValidationApprovalDecision?.IsAllowed == true;
 
     private bool CanRollback() => !IsBusy && CanShowRollback && SelectedWorkspace is not null;
+
+    private bool IsApplyApprovalForSelection()
+    {
+        if (SelectedProposal is null ||
+            SelectedWorkspace is null ||
+            ApplyApprovalRequest is null)
+        {
+            return false;
+        }
+
+        var expected = $"patch-apply:{SelectedWorkspace.WorkspaceId}:{SelectedProposal.ProposalId}";
+        return ApplyApprovalRequest.Scope.Kind == ApprovalKind.ApproveFutureApply &&
+            ApplyApprovalRequest.Scope.NormalizedResourceScope.Equals(
+                expected,
+                StringComparison.OrdinalIgnoreCase);
+    }
 
     partial void OnIsBusyChanged(bool value) => NotifyCommandStates();
 
@@ -1343,14 +1387,19 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     private void ClearActionState()
     {
         DryRunPlan = null;
-        ApplyApprovalRequest = null;
-        ApplyApprovalDecision = null;
+        ClearApplyApprovalState();
         ApplyResult = null;
         ValidationRun = null;
         ValidationApprovalRequest = null;
         ValidationApprovalDecision = null;
         RollbackResult = null;
         ValidationOutputPreview = "Run an approved validation to view sanitized output.";
+    }
+
+    private void ClearApplyApprovalState()
+    {
+        ApplyApprovalRequest = null;
+        ApplyApprovalDecision = null;
     }
 
     private static string FormatReasons<TReason>(IReadOnlyList<TReason> reasons)
@@ -1612,6 +1661,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(DryRunStatusText));
         OnPropertyChanged(nameof(ReviewGateOrderText));
         OnPropertyChanged(nameof(DryRunDetailText));
+        OnPropertyChanged(nameof(IsDryRunStale));
+        OnPropertyChanged(nameof(StaleProposalRecoveryText));
         OnPropertyChanged(nameof(ApplyApprovalStatusText));
         OnPropertyChanged(nameof(ApplyResultText));
         OnPropertyChanged(nameof(ApplyResultDetailText));
@@ -1621,6 +1672,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(ValidationRunDetailText));
         OnPropertyChanged(nameof(RollbackStatusText));
         OnPropertyChanged(nameof(RollbackAvailabilityText));
+        OnPropertyChanged(nameof(HasRollbackAvailable));
         OnPropertyChanged(nameof(CanShowRollback));
         OnPropertyChanged(nameof(RecentSessions));
         OnPropertyChanged(nameof(ProposalSummaries));
@@ -1858,6 +1910,11 @@ public sealed record AedaCodeTimelineEventItem(
         if (Contains(text, "dry run") && Contains(text, "passed"))
         {
             return "Dry run passed";
+        }
+
+        if (Contains(text, "dry run") && Contains(text, "staleoriginalcontent"))
+        {
+            return "Dry run blocked: proposal is stale";
         }
 
         if (Contains(text, "dry run"))

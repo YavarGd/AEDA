@@ -231,9 +231,12 @@ public sealed class PatchApplyService(
     {
         await AppendAsync(TaskEventKind.PatchDryRunStarted, "Patch dry run started.", cancellationToken);
         var plan = await validator.DryRunAsync(request, cancellationToken);
+        var failedSummary = plan.FailureReasons.Contains(PatchApplyFailureReason.StaleOriginalContent)
+            ? "Patch dry run failed: StaleOriginalContent."
+            : "Patch dry run failed.";
         await AppendAsync(
             plan.Status == PatchApplyStatus.DryRunPassed ? TaskEventKind.PatchDryRunPassed : TaskEventKind.PatchDryRunFailed,
-            plan.Status == PatchApplyStatus.DryRunPassed ? "Patch dry run passed." : "Patch dry run failed.",
+            plan.Status == PatchApplyStatus.DryRunPassed ? "Patch dry run passed." : failedSummary,
             cancellationToken);
         return plan;
     }

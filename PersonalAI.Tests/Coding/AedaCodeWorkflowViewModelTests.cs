@@ -141,6 +141,127 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyApproval_DoesNotEnableApplyAfterLatestDryRunFails()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Fix safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                workspace.Id,
+                PatchApplyStatus.DryRunPassed,
+                [new PatchApplyOperation("src/App.cs", PatchProposalFileChangeKind.Modify, "old", "new")],
+                [],
+                RequiresApproval: true)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        Assert.True(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
+
+        service.DryRunPlan = new PatchApplyPlan(
+            proposal.Id,
+            workspace.Id,
+            PatchApplyStatus.DryRunFailed,
+            [],
+            [PatchApplyFailureReason.StaleOriginalContent],
+            RequiresApproval: true);
+        await viewModel.DryRunSelectedProposalAsync();
+
+        Assert.False(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
+        Assert.False(viewModel.RequestApplyApprovalCommand.CanExecute(null));
+        Assert.False(viewModel.AllowApplyOnceCommand.CanExecute(null));
+        Assert.True(viewModel.IsDryRunStale);
+        Assert.Contains("proposal is stale", viewModel.DryRunDetailText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("current file state", viewModel.DryRunDetailText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("StaleOriginalContent", viewModel.DryRunDetailText, StringComparison.Ordinal);
+        Assert.Contains("Re-enter the request", viewModel.StaleProposalRecoveryText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not requested", viewModel.ApplyApprovalStatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("StaleOriginalContent", viewModel.DryRunDetailText, StringComparison.Ordinal);
+        Assert.Equal(0, service.ApplyCount);
+        Assert.Equal(0, service.ValidationRunCount);
+        Assert.Equal(0, service.RollbackCount);
+        Assert.Equal(0, service.CreateProposalFromRequestCount);
+    }
+
+    [Fact]
+    public void StaleDryRunTimelineLabel_IsReadableAndPreservesSafeCodeDetail()
+    {
+        var item = new AedaTaskTimelineItem(
+            Guid.NewGuid().ToString("N"),
+            TaskId.NewId(),
+            DateTimeOffset.UtcNow,
+            "Patch dry run failed",
+            "Patch dry run failed: StaleOriginalContent.",
+            null,
+            new AedaTaskStatusBadge(
+                AedaTaskCenterStatus.Failed,
+                "Failed",
+                "task_failed",
+                NeedsAttention: true,
+                IsTerminal: true),
+            new AedaTaskModuleBadge(AedaTaskCenterModule.Code, "Code", AedaModuleId.Code, "aeda-code"),
+            []);
+
+        var mapped = AedaCodeTimelineEventItem.From(item);
+
+        Assert.Equal("Dry run blocked: proposal is stale", mapped.Label);
+        Assert.Contains("StaleOriginalContent", mapped.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("raw payload", mapped.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Rollback_IsHiddenForAppliedNoOpResult()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", " same", ["src/App.cs"]);
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("No op safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                workspace.Id,
+                PatchApplyStatus.DryRunPassed,
+                [new PatchApplyOperation("src/App.cs", PatchProposalFileChangeKind.NoOp, "same", "same")],
+                [],
+                RequiresApproval: true),
+            ApplyResultFactory = request => new PatchApplyResult(
+                PatchApplyResultId.NewId(),
+                request.ProposalId,
+                request.WorkspaceId,
+                PatchApplyStatus.Applied,
+                [new PatchApplyFileResult("src/App.cs", PatchProposalFileChangeKind.NoOp, PatchApplyStatus.Applied)],
+                [],
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        await viewModel.ApplyApprovedProposalAsync();
+
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+        Assert.Contains("Rollback unavailable", viewModel.ApplyResultDetailText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ValidationFlow_ExposesOnlyTemplatesAndSanitizesOutput()
     {
         var registry = CreateRegistry();
@@ -556,7 +677,7 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         public PatchProposal? ProposalDetail { get; set; }
 
-        public PatchApplyPlan? DryRunPlan { get; init; }
+        public PatchApplyPlan? DryRunPlan { get; set; }
 
         public IReadOnlyList<ValidationCommandTemplate> Templates { get; init; } = [];
 
@@ -579,6 +700,8 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         public Exception? CreateProposalFailure { get; init; }
 
         public bool DelayUntilCancelled { get; init; }
+
+        public Func<PatchApplyRequest, PatchApplyResult>? ApplyResultFactory { get; init; }
 
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -695,6 +818,11 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         public Task<PatchApplyResult> ApplyApprovedProposalAsync(PatchApplyRequest request, CancellationToken cancellationToken = default)
         {
             ApplyCount++;
+            if (ApplyResultFactory is not null)
+            {
+                return Task.FromResult(ApplyResultFactory(request));
+            }
+
             return Task.FromResult(new PatchApplyResult(
                 PatchApplyResultId.NewId(),
                 request.ProposalId,
