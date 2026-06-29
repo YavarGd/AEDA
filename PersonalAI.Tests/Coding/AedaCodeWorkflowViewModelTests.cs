@@ -84,6 +84,9 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
 
         Assert.Equal(20, viewModel.ProposalFiles.Count);
+        Assert.Contains("Status:", viewModel.SelectedProposalMetadataText, StringComparison.Ordinal);
+        Assert.Contains("Safe summary", viewModel.SelectedProposalSummaryText, StringComparison.Ordinal);
+        Assert.Contains("Created", viewModel.SelectedProposalTimestampText, StringComparison.Ordinal);
         Assert.DoesNotContain(@"C:\secret", viewModel.UnifiedDiffPreview, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("hunter2", viewModel.UnifiedDiffPreview, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("[redacted]", viewModel.UnifiedDiffPreview, StringComparison.OrdinalIgnoreCase);
@@ -118,13 +121,22 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         Assert.Equal(1, service.DryRunCount);
         Assert.Equal(1, service.ApplyApprovalRequestCount);
+        Assert.Contains("1. Dry run", viewModel.ReviewGateOrderText, StringComparison.Ordinal);
+        Assert.Contains("Dry run passed", viewModel.DryRunDetailText, StringComparison.OrdinalIgnoreCase);
         Assert.False(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
 
+        await viewModel.DenyApplyApprovalAsync();
+        Assert.Contains("denied by user", viewModel.ApplyApprovalStatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
+
+        await viewModel.RequestApplyApprovalAsync();
         await viewModel.AllowApplyOnceAsync();
         await viewModel.ApplyApprovedProposalAsync();
 
         Assert.Equal(1, service.ApplyCount);
         Assert.Equal(PatchApplyStatus.Applied, viewModel.ApplySummaries.Single().Status);
+        Assert.Contains("Backup checkpoint", viewModel.ApplyResultDetailText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rollback available", viewModel.RollbackAvailabilityText, StringComparison.OrdinalIgnoreCase);
         Assert.True(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
     }
 
@@ -160,8 +172,11 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         Assert.Single(viewModel.ValidationTemplates);
         Assert.DoesNotContain("cmd.exe", viewModel.ValidationTemplates.Single().SafeCommandSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allowlisted", viewModel.ValidationTemplateStatusText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, service.ValidationApprovalRequestCount);
         Assert.Equal(1, service.ValidationRunCount);
+        Assert.Contains("Exit code: 0", viewModel.ValidationRunDetailText, StringComparison.Ordinal);
+        Assert.Contains("Duration:", viewModel.ValidationRunDetailText, StringComparison.Ordinal);
         Assert.DoesNotContain(@"C:\secret", viewModel.ValidationOutputPreview, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("hunter2", viewModel.ValidationOutputPreview, StringComparison.OrdinalIgnoreCase);
     }
@@ -199,7 +214,9 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         Assert.Equal(1, service.RollbackCount);
         Assert.Single(viewModel.SelectedTaskTimeline);
-        Assert.DoesNotContain("raw payload", viewModel.SelectedTaskTimeline.Single().Items.Single().Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(viewModel.CodeTimelineGroups);
+        Assert.Contains("Created proposal", viewModel.CodeTimelineGroups.Single().Items.Single().Label, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("raw payload", viewModel.CodeTimelineGroups.Single().Items.Single().Detail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -255,6 +272,7 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Equal(1, service.CreateProposalFromRequestCount);
         Assert.Single(viewModel.Proposals);
         Assert.Equal(proposal.Id, viewModel.SelectedProposal?.ProposalId);
+        Assert.Contains("ready for review", viewModel.ProposalCreationStateText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("+ docs", viewModel.UnifiedDiffPreview, StringComparison.Ordinal);
         Assert.Contains("No files changed", viewModel.SafeStatusMessage, StringComparison.Ordinal);
         Assert.Equal(0, service.ApplyCount);
@@ -278,6 +296,7 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         Assert.Empty(viewModel.Proposals);
         Assert.Equal("invalid_model_json", viewModel.ProposalCreationFailure?.SafeCode);
+        Assert.Contains("Retry is available", viewModel.ProposalCreationStateText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("valid proposal JSON", viewModel.SafeStatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Try a smaller", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("invalid_model_json", viewModel.ProposalCreationFailureDetailText, StringComparison.Ordinal);

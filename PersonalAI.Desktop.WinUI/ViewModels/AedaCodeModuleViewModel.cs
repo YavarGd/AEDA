@@ -88,6 +88,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public ObservableCollection<AedaTaskActivityGroup> SelectedTaskTimeline { get; } = [];
 
+    public ObservableCollection<AedaCodeTimelineGroupItem> CodeTimelineGroups { get; } = [];
+
     public string DisplayName => Descriptor.DisplayName;
 
     public string ShortDescription => Descriptor.ShortDescription;
@@ -108,6 +110,26 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         : $"Workspace: {SelectedWorkspace.DisplayName} - {SelectedWorkspace.PolicyLabel}";
 
     public string ProposalCreationSafetyText => "Proposal only. No files changed, no validation run, no apply.";
+
+    public string ProposalCreationStateText
+    {
+        get
+        {
+            if (IsCreatingProposal)
+            {
+                return "Creating proposal. Context and model output are being checked; no files are changing.";
+            }
+
+            if (ProposalCreationFailure is not null)
+            {
+                return $"Failed safely: {ProposalCreationFailure.SafeCode}. Retry is available.";
+            }
+
+            return SelectedProposal is null
+                ? "Idle. Enter one focused request to create a proposal."
+                : "Proposal ready for review. No files changed.";
+        }
+    }
 
     public string ProposalRequestLengthText => $"{ProposalRequest.Length}/{MaxProposalRequestCharacters}";
 
@@ -139,6 +161,18 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ? "No proposal selected"
         : $"{SelectedProposal.RiskLabel}: {SelectedProposal.RiskReason}";
 
+    public string SelectedProposalMetadataText => SelectedProposalDetail is null
+        ? "Select a proposal to inspect status, risk, affected files, context, and diff."
+        : $"Status: {SelectedProposalDetail.Status} | Risk: {SelectedProposalDetail.Risk} | Files: {SelectedProposalDetail.Files.Count}";
+
+    public string SelectedProposalSummaryText => SelectedProposalDetail is null
+        ? "No proposal selected yet."
+        : RedactSensitiveText(RemoveAbsolutePaths(SelectedProposalDetail.Summary));
+
+    public string SelectedProposalTimestampText => SelectedProposalDetail is null
+        ? string.Empty
+        : $"Created {SelectedProposalDetail.CreatedAtUtc.ToLocalTime():g} | Updated {SelectedProposalDetail.UpdatedAtUtc.ToLocalTime():g}";
+
     public string ValidationPlanText { get; private set; } = "Select a proposal to view validation guidance.";
 
     public string HashStatusText { get; private set; } = "No proposal selected.";
@@ -149,21 +183,40 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ? "Dry run not started."
         : $"{DryRunPlan.Status} · {DryRunPlan.Operations.Count} operation(s)";
 
+    public string ReviewGateOrderText =>
+        "1. Dry run selected proposal\n2. Request apply approval\n3. Apply approved proposal";
+
+    public string DryRunDetailText => DryRunPlan is null
+        ? "Dry run checks patch safety and stale hashes before any write."
+        : DryRunPlan.Status == PatchApplyStatus.DryRunPassed
+            ? $"Dry run passed for {DryRunPlan.Operations.Count} file operation(s)."
+            : $"Dry run blocked: {FormatReasons(DryRunPlan.FailureReasons)}";
+
     public string ApplyApprovalStatusText => ApplyApprovalRequest is null
         ? "Apply approval not requested."
         : ApplyApprovalDecision is null
             ? "Apply approval requested."
-            : $"Apply approval {ApplyApprovalDecision.Kind}.";
+            : ApplyApprovalDecision.IsAllowed
+                ? "Apply approval granted once."
+                : "Apply approval denied by user.";
 
     public string ApplyResultText => ApplyResult is null
         ? "No apply result."
         : $"{ApplyResult.Status} · {ApplyResult.Files.Count} file result(s)";
 
+    public string ApplyResultDetailText => ApplyResult is null
+        ? "Apply is available only after a passed dry run and granted approval."
+        : ApplyResult.Status is PatchApplyStatus.Applied or PatchApplyStatus.PartiallyApplied
+            ? $"Changed files: {ApplyResult.Files.Count}. Backup checkpoint available. Rollback available."
+            : $"Apply did not complete: {FormatReasons(ApplyResult.FailureReasons)}";
+
     public string ValidationApprovalStatusText => ValidationApprovalRequest is null
         ? "Validation approval not requested."
         : ValidationApprovalDecision is null
             ? "Validation approval requested."
-            : $"Validation approval {ValidationApprovalDecision.Kind}.";
+            : ValidationApprovalDecision.IsAllowed
+                ? "Validation approval granted once."
+                : "Validation approval denied by user.";
 
     public string ValidationResultText => ValidationRun is null
         ? "No validation run selected."
@@ -172,6 +225,22 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public string RollbackStatusText => RollbackResult is null
         ? "Rollback not run."
         : $"{RollbackResult.Status} · {RollbackResult.Files.Count} file result(s)";
+
+    public string ValidationTemplateStatusText => HasValidationTemplates
+        ? "Only allowlisted validation templates are shown. No arbitrary command input is available."
+        : "No allowlisted validation templates are available for this workspace.";
+
+    public string ValidationRunDetailText => ValidationRun is null
+        ? "Create a validation run, request approval, then run the approved validation explicitly."
+        : BuildValidationRunDetail(ValidationRun);
+
+    public string RollbackAvailabilityText => CanShowRollback
+        ? $"Rollback available for {ApplyResult?.Files.Count ?? 0} applied file(s). User-triggered only."
+        : "Rollback is hidden until an apply result has rollback capability.";
+
+    public bool HasTimelineItems => CodeTimelineGroups.Count > 0;
+
+    public bool HasNoTimelineItems => !HasTimelineItems;
 
     public bool HasWorkspaces => Workspaces.Count > 0;
 
@@ -902,6 +971,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     {
         SelectedTask = task;
         SelectedTaskTimeline.Clear();
+        CodeTimelineGroups.Clear();
         if (task is null)
         {
             SafeStatusMessage = "Select a Code task to view its timeline.";
@@ -916,6 +986,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         foreach (var group in groups)
         {
             SelectedTaskTimeline.Add(group);
+            CodeTimelineGroups.Add(AedaCodeTimelineGroupItem.From(group));
         }
 
         SafeStatusMessage = groups.Count == 0
@@ -1181,6 +1252,17 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ValidationOutputPreview = "Run an approved validation to view sanitized output.";
     }
 
+    private static string FormatReasons<TReason>(IReadOnlyList<TReason> reasons)
+        where TReason : struct, Enum
+    {
+        if (reasons.Count == 0)
+        {
+            return "none reported";
+        }
+
+        return string.Join(", ", reasons.Take(4).Select(reason => reason.ToString()));
+    }
+
     private static string BuildBoundedDiff(PatchProposal proposal)
     {
         var lines = proposal.Files
@@ -1268,6 +1350,20 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ]);
     }
 
+    private static string BuildValidationRunDetail(ValidationRun run)
+    {
+        var result = run.CommandResult;
+        if (result is null)
+        {
+            var reasons = FormatReasons(run.FailureReasons);
+            return $"Status: {run.Status}. Template: {run.TemplateId}. Reasons: {reasons}.";
+        }
+
+        var failure = result.FailureReason?.ToString()
+            ?? FormatReasons(run.FailureReasons);
+        return $"Status: {run.Status}. Exit code: {result.ExitCode?.ToString() ?? "none"}. Duration: {result.Duration.TotalSeconds:0.#}s. Reason: {failure}.";
+    }
+
     private static string BoundOutput(string value)
     {
         var safe = RedactSensitiveText(RemoveAbsolutePaths(value));
@@ -1345,6 +1441,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkspaceSummary));
         OnPropertyChanged(nameof(ProposalCreationWorkspaceText));
         OnPropertyChanged(nameof(ProposalCreationSafetyText));
+        OnPropertyChanged(nameof(ProposalCreationStateText));
         OnPropertyChanged(nameof(ProposalRequestLengthText));
         OnPropertyChanged(nameof(ProposalTitleLengthText));
         OnPropertyChanged(nameof(HasProposalCreationFailure));
@@ -1355,15 +1452,24 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(ProposalCountText));
         OnPropertyChanged(nameof(AffectedFileCountText));
         OnPropertyChanged(nameof(RiskSummary));
+        OnPropertyChanged(nameof(SelectedProposalMetadataText));
+        OnPropertyChanged(nameof(SelectedProposalSummaryText));
+        OnPropertyChanged(nameof(SelectedProposalTimestampText));
         OnPropertyChanged(nameof(ValidationPlanText));
         OnPropertyChanged(nameof(HashStatusText));
         OnPropertyChanged(nameof(SourceSummaryText));
         OnPropertyChanged(nameof(DryRunStatusText));
+        OnPropertyChanged(nameof(ReviewGateOrderText));
+        OnPropertyChanged(nameof(DryRunDetailText));
         OnPropertyChanged(nameof(ApplyApprovalStatusText));
         OnPropertyChanged(nameof(ApplyResultText));
+        OnPropertyChanged(nameof(ApplyResultDetailText));
         OnPropertyChanged(nameof(ValidationApprovalStatusText));
         OnPropertyChanged(nameof(ValidationResultText));
+        OnPropertyChanged(nameof(ValidationTemplateStatusText));
+        OnPropertyChanged(nameof(ValidationRunDetailText));
         OnPropertyChanged(nameof(RollbackStatusText));
+        OnPropertyChanged(nameof(RollbackAvailabilityText));
         OnPropertyChanged(nameof(CanShowRollback));
         OnPropertyChanged(nameof(RecentSessions));
         OnPropertyChanged(nameof(ProposalSummaries));
@@ -1387,6 +1493,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoRecentCodeTasks));
         OnPropertyChanged(nameof(HasSelectedTaskTimeline));
         OnPropertyChanged(nameof(HasNoSelectedTaskTimeline));
+        OnPropertyChanged(nameof(HasTimelineItems));
+        OnPropertyChanged(nameof(HasNoTimelineItems));
         OnPropertyChanged(nameof(HasRecentSessions));
         OnPropertyChanged(nameof(HasNoRecentSessions));
         OnPropertyChanged(nameof(HasDashboard));
@@ -1545,4 +1653,141 @@ public sealed record AedaCodeValidationRunItem(
             run.ProposalId,
             run.ApplyResultId,
             run.UpdatedAtUtc));
+}
+
+public sealed record AedaCodeTimelineGroupItem(
+    string Title,
+    IReadOnlyList<AedaCodeTimelineEventItem> Items)
+{
+    public static AedaCodeTimelineGroupItem From(AedaTaskActivityGroup group) =>
+        new(
+            Redact(group.Title),
+            group.Items
+                .Take(6)
+                .Select(AedaCodeTimelineEventItem.From)
+                .ToArray());
+
+    private static string Redact(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "Code activity" : value.Trim();
+}
+
+public sealed record AedaCodeTimelineEventItem(
+    string Label,
+    string Detail,
+    string UpdatedText)
+{
+    public static AedaCodeTimelineEventItem From(AedaTaskTimelineItem item)
+    {
+        var label = NormalizeLabel(item.Title, item.Summary);
+        var detail = NormalizeDetail(item.Detail ?? item.Summary);
+        return new(
+            label,
+            detail,
+            item.TimestampUtc.ToLocalTime().ToString("g"));
+    }
+
+    private static string NormalizeLabel(string title, string summary)
+    {
+        var text = $"{title} {summary}";
+        if (Contains(text, "context"))
+        {
+            return "Loaded safe context";
+        }
+
+        if (Contains(text, "proposal") && Contains(text, "created"))
+        {
+            return "Created proposal";
+        }
+
+        if (Contains(text, "proposal") && Contains(text, "validated"))
+        {
+            return "Validated proposal";
+        }
+
+        if (Contains(text, "dry run") && Contains(text, "passed"))
+        {
+            return "Dry run passed";
+        }
+
+        if (Contains(text, "dry run"))
+        {
+            return "Dry run completed";
+        }
+
+        if (Contains(text, "approval") && Contains(text, "denied"))
+        {
+            return "Approval denied";
+        }
+
+        if (Contains(text, "approval") && Contains(text, "granted"))
+        {
+            return "Approval granted";
+        }
+
+        if (Contains(text, "approval"))
+        {
+            return "Waiting for approval";
+        }
+
+        if (Contains(text, "rollback") && Contains(text, "completed"))
+        {
+            return "Rollback completed";
+        }
+
+        if (Contains(text, "rollback"))
+        {
+            return "Rollback event";
+        }
+
+        if (Contains(text, "validation") && Contains(text, "failed"))
+        {
+            return "Validation failed";
+        }
+
+        if (Contains(text, "validation") && Contains(text, "succeeded"))
+        {
+            return "Validation passed";
+        }
+
+        if (Contains(text, "validation"))
+        {
+            return "Validation event";
+        }
+
+        if (Contains(text, "apply") && Contains(text, "completed"))
+        {
+            return "Applied proposal";
+        }
+
+        if (Contains(text, "apply"))
+        {
+            return "Apply event";
+        }
+
+        return string.IsNullOrWhiteSpace(title)
+            ? "Code event"
+            : title.Trim();
+    }
+
+    private static string NormalizeDetail(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Safe event detail unavailable.";
+        }
+
+        var text = value.Trim();
+        if (Contains(text, "raw payload") ||
+            Contains(text, "full command output"))
+        {
+            return "Safe event detail withheld.";
+        }
+
+        text = Regex.Replace(text, @"[A-Za-z]:[\\/][^\s]+", match => Path.GetFileName(match.Value.TrimEnd(',', ';', ':')));
+        text = Regex.Replace(text, @"(?i)(secret|password|token|api[_-]?key)\s*[:=]\s*[^\s,;]+", "$1=[redacted]");
+        return text.Length <= 160 ? text : text[..160] + " [truncated]";
+    }
+
+    private static bool Contains(string value, string token) =>
+        value.Contains(token, StringComparison.OrdinalIgnoreCase);
 }
