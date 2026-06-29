@@ -135,6 +135,46 @@ public sealed class AedaCodeModuleServiceTests
     }
 
     [Fact]
+    public async Task Service_CreatesProposalFromRequest_UsesExplicitRequestedContextTarget()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var context = new FakeCodeContextService(_workspaceId)
+        {
+            SearchMatches =
+            [
+                "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs"
+            ]
+        };
+        var draft = new FakeDraftService();
+        var proposal = CreateProposal(_workspaceId);
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            context,
+            new FakePlanningService(),
+            draft,
+            new FakeProposalService(proposal),
+            new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id)),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null)),
+            new FakeValidationCommandAllowlist());
+
+        var result = await service.CreateProposalFromRequestAsync(
+            new AedaCodeProposalCreationRequest(
+                _workspaceId,
+                "Add an XML documentation comment to one small private helper method in AedaCodeModuleViewModel.cs. Do not change behavior."));
+
+        Assert.Contains("AedaCodeModuleViewModel", context.SearchQueries);
+        Assert.Equal(
+            "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs",
+            result.ContextRelativePaths[0]);
+        Assert.Equal(result.ContextRelativePaths, draft.ContextRelativePaths);
+    }
+
+    [Fact]
     public async Task Service_NoSafeContextFailsWithSpecificTimelineReasonAndNoProposal()
     {
         var workspace = new WorkspaceDescriptor(
@@ -165,6 +205,49 @@ public sealed class AedaCodeModuleServiceTests
         Assert.Equal("no_safe_context", taskRuntime.FailedSafeCode);
         Assert.Equal(0, proposals.CreateCount);
         Assert.Contains("Try selecting", failure.Failure.NextStepHint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Service_UnsafeDraftTargetFailsBeforePersistenceApplyValidationOrRollback()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var proposal = CreateProposal(_workspaceId);
+        var proposals = new FakeProposalService(proposal);
+        var apply = new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id));
+        var validation = new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null));
+        var taskRuntime = new FakeTaskRuntime();
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            new FakeCodeContextService(_workspaceId),
+            new FakePlanningService(),
+            new FakeDraftService
+            {
+                Failure = new AedaCodeProposalCreationException(
+                    AedaCodeProposalCreationFailure.FromReason(
+                        AedaCodeProposalCreationFailureReason.UnsafeFileTarget))
+            },
+            proposals,
+            apply,
+            validation,
+            new FakeValidationCommandAllowlist(),
+            taskRuntime: taskRuntime);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateProposalFromRequestAsync(
+                new AedaCodeProposalCreationRequest(_workspaceId, "Add XML docs.")));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.UnsafeFileTarget, failure.Failure.Reason);
+        Assert.Equal("unsafe_file_target", taskRuntime.FailedSafeCode);
+        Assert.Equal(0, proposals.CreateCount);
+        Assert.Equal(0, apply.ApplyCount);
+        Assert.Equal(0, apply.RollbackCount);
+        Assert.Equal(0, validation.CreateRunCount);
+        Assert.DoesNotContain("AedaCodeModuleViewModel.cs", failure.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -302,6 +385,10 @@ public sealed class AedaCodeModuleServiceTests
     {
         public bool ReturnEmptyContext { get; init; }
 
+        public IReadOnlyList<string> SearchMatches { get; init; } = [];
+
+        public List<string> SearchQueries { get; } = [];
+
         public Task<CodeContextPack> LoadFilesAsync(
             WorkspaceId workspaceId,
             IReadOnlyList<string> relativePaths,
@@ -312,15 +399,26 @@ public sealed class AedaCodeModuleServiceTests
                 ? new CodeContextPack(workspaceId, [], [], ["no_safe_context"], false)
                 : new CodeContextPack(
                     workspaceId,
-                    [new CodeContextFile(workspaceId, relativePaths[0], "old", "old-hash", "utf-8", 3, false, false)],
+                    relativePaths
+                        .Take(maxFiles)
+                        .Select(path => new CodeContextFile(workspaceId, path, "old", "old-hash", "utf-8", 3, false, false))
+                        .ToArray(),
                     [],
                     [],
                     false));
 
         public Task<CodeContextPack> SearchAsync(
             CodeContextSearchRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new CodeContextPack(workspaceId, [], [new CodeContextSearchMatch("src/App.cs", 1, "old")], [], false));
+            CancellationToken cancellationToken = default)
+        {
+            SearchQueries.Add(request.Query);
+            var matches = SearchMatches.Count == 0
+                ? [new CodeContextSearchMatch("src/App.cs", 1, "old")]
+                : SearchMatches
+                    .Select(path => new CodeContextSearchMatch(path, 1, "old"))
+                    .ToArray();
+            return Task.FromResult(new CodeContextPack(workspaceId, [], matches, [], false));
+        }
     }
 
     private sealed class FakePlanningService : ICodeChangePlanningService
@@ -386,6 +484,8 @@ public sealed class AedaCodeModuleServiceTests
     {
         public int ApplyCount { get; private set; }
 
+        public int RollbackCount { get; private set; }
+
         public Task<PatchApplyPlan> DryRunAsync(
             PatchApplyRequest request,
             CancellationToken cancellationToken = default) =>
@@ -426,6 +526,7 @@ public sealed class AedaCodeModuleServiceTests
             PatchRollbackRequest request,
             CancellationToken cancellationToken = default)
         {
+            RollbackCount++;
             var now = DateTimeOffset.UtcNow;
             return Task.FromResult(
                 new PatchRollbackResult(
@@ -547,11 +648,24 @@ public sealed class AedaCodeModuleServiceTests
     {
         public int CreateCount { get; private set; }
 
+        public IReadOnlyList<string> ContextRelativePaths { get; private set; } = [];
+
+        public AedaCodeProposalCreationException? Failure { get; init; }
+
         public Task<CodeProposalDraft> CreateDraftAsync(
             CodeProposalDraftRequest request,
+            IProgress<AedaCodeProposalCreationProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             CreateCount++;
+            if (Failure is not null)
+            {
+                return Task.FromException<CodeProposalDraft>(Failure);
+            }
+
+            ContextRelativePaths = request.Context.Files
+                .Select(file => file.RelativePath)
+                .ToArray();
             var file = request.Context.Files[0];
             return Task.FromResult(new CodeProposalDraft(
                 "Add docs",

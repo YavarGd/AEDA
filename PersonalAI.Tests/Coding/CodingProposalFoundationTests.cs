@@ -1,3 +1,4 @@
+using System.Text.Json;
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Chat;
@@ -286,6 +287,141 @@ public sealed class CodingProposalFoundationTests : IDisposable
         Assert.Equal(1, provider.RequestCount);
     }
 
+    [Theory]
+    [InlineData("src/Root.cs", "src/Root.cs")]
+    [InlineData("App.cs", "PersonalAI.Desktop.WinUI/ViewModels/App.cs")]
+    [InlineData("ViewModels/App.cs", "PersonalAI.Desktop.WinUI/ViewModels/App.cs")]
+    public async Task DraftService_AcceptsExactOrUniqueContextSuffixTargets(
+        string modelTarget,
+        string expectedCanonicalPath)
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var provider = new FakeChatProvider(DraftJson(modelTarget));
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [
+                new CodeContextFile(workspaceId, "src/Root.cs", "old root", "hash", "utf-8", 8, false, false),
+                new CodeContextFile(workspaceId, "PersonalAI.Desktop.WinUI/ViewModels/App.cs", "old vm", "hash", "utf-8", 6, false, false)
+            ],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs."),
+            context));
+
+        var edit = Assert.Single(draft.FileEdits);
+        Assert.Equal(expectedCanonicalPath, edit.RelativePath);
+        Assert.Equal(
+            expectedCanonicalPath == "src/Root.cs" ? "old root" : "old vm",
+            edit.OriginalContent);
+    }
+
+    [Theory]
+    [InlineData("App.cs")]
+    [InlineData("Features/App.cs")]
+    [InlineData("Missing.cs")]
+    [InlineData("/src/App.cs")]
+    [InlineData("../src/App.cs")]
+    [InlineData("C:/safe/src/App.cs")]
+    [InlineData("//server/share/App.cs")]
+    [InlineData("src/App.cs:Zone.Identifier")]
+    public async Task DraftService_RejectsUnsafeAmbiguousOrOutOfContextTargets(string modelTarget)
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var provider = new FakeChatProvider(DraftJson(modelTarget));
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [
+                new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false),
+                new CodeContextFile(workspaceId, "tests/App.cs", "old", "hash", "utf-8", 3, false, false),
+                new CodeContextFile(workspaceId, "src/Features/App.cs", "old", "hash", "utf-8", 3, false, false),
+                new CodeContextFile(workspaceId, "tests/Features/App.cs", "old", "hash", "utf-8", 3, false, false)
+            ],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Add XML docs."),
+                context)));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.UnsafeFileTarget, failure.Failure.Reason);
+        Assert.Equal("unsafe_file_target", failure.Failure.SafeCode);
+        Assert.DoesNotContain(modelTarget, failure.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("path", "proposedContent")]
+    [InlineData("file", "replacement")]
+    [InlineData("filePath", "newText")]
+    public async Task DraftService_NormalizesCommonSchemaAliases(
+        string pathField,
+        string contentField)
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var output =
+            $$"""
+            {"title":"Add docs","summary":"Adds XML docs.","changes":[{ {{JsonSerializer.Serialize(pathField)}}:"App.cs",{{JsonSerializer.Serialize(contentField)}}:"new"}]}
+            """;
+        var provider = new FakeChatProvider(output);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs."),
+            context));
+
+        var edit = Assert.Single(draft.FileEdits);
+        Assert.Equal("src/App.cs", edit.RelativePath);
+        Assert.Equal("new", edit.ProposedContent);
+    }
+
+    [Theory]
+    [InlineData("""{"summary":"s","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]}""", "missing_title")]
+    [InlineData("""{"title":"t","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]}""", "missing_summary")]
+    [InlineData("""{"title":"t","summary":"s"}""", "missing_changes")]
+    [InlineData("""{"title":"t","summary":"s","changes":"bad"}""", "changes_wrong_type")]
+    [InlineData("""{"title":"t","summary":"s","changes":[]}""", "empty_changes")]
+    [InlineData("""{"title":"t","summary":"s","changes":["bad"]}""", "change_wrong_type")]
+    [InlineData("""{"title":"t","summary":"s","changes":[{"proposedContent":"new"}]}""", "change_missing_path")]
+    [InlineData("""{"title":"t","summary":"s","changes":[{"relativePath":"src/App.cs"}]}""", "change_missing_replacement")]
+    [InlineData("""{"title":"t","summary":"s","changes":[{"relativePath":"src/App.cs","path":"src/App.cs","proposedContent":"new"}]}""", "ambiguous_change_field")]
+    [InlineData("""{"title":"t","summary":"s","changes":[{"relativePath":"src/App.cs","proposedContent":"new","note":"bad"}]}""", "extra_keys")]
+    public async Task DraftService_InvalidSchemaIncludesSafeIssueCode(
+        string output,
+        string expectedIssueCode)
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var provider = new FakeChatProvider(output, output);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Add XML docs."),
+                context)));
+
+        Assert.Equal("invalid_model_schema", failure.Failure.SafeCode);
+        Assert.Equal(expectedIssueCode, failure.Failure.SchemaIssueCode);
+        Assert.True(failure.Failure.RetryAttempted);
+        Assert.DoesNotContain(output, failure.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task DraftService_RejectsInvalidOrOutOfContextModelOutput()
     {
@@ -506,8 +642,9 @@ public sealed class CodingProposalFoundationTests : IDisposable
     {
         public Task<CodeProposalDraft> CreateDraftAsync(
             CodeProposalDraftRequest request,
+            IProgress<AedaCodeProposalCreationProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
-            Service.CreateDraftAsync(request, cancellationToken);
+            Service.CreateDraftAsync(request, progress, cancellationToken);
     }
 
     private static DraftServiceFixture CreateDraftService(
@@ -562,6 +699,11 @@ public sealed class CodingProposalFoundationTests : IDisposable
             }),
             provider);
     }
+
+    private static string DraftJson(string relativePath) =>
+        $$"""
+        {"title":"Add docs","summary":"Adds XML docs.","changes":[{"relativePath":{{JsonSerializer.Serialize(relativePath)}},"proposedContent":"new"}]}
+        """;
 
     private sealed class FakeChatProvider : IChatProvider
     {

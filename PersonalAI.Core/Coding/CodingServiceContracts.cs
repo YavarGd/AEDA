@@ -40,6 +40,7 @@ public interface ICodeProposalDraftService
 {
     Task<CodeProposalDraft> CreateDraftAsync(
         CodeProposalDraftRequest request,
+        IProgress<AedaCodeProposalCreationProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
 

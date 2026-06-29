@@ -117,7 +117,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             if (IsCreatingProposal)
             {
-                return "Creating proposal. Context and model output are being checked; no files are changing.";
+                return $"{ProposalCreationPhaseLabel}. No files are changing.";
             }
 
             if (ProposalCreationFailure is not null)
@@ -143,7 +143,46 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public string ProposalCreationFailureDetailText => ProposalCreationFailure is null
         ? string.Empty
-        : $"Details: {ProposalCreationFailure.SafeCode}";
+        : BuildProposalCreationFailureDetail(ProposalCreationFailure);
+
+    public string ProposalCreationPhaseLabel => ProposalCreationPhase switch
+    {
+        AedaCodeProposalCreationPhase.PreparingRequest => "Preparing request",
+        AedaCodeProposalCreationPhase.LoadingBoundedContext => "Loading bounded context",
+        AedaCodeProposalCreationPhase.CallingCodingModel => "Calling coding model",
+        AedaCodeProposalCreationPhase.ParsingModelDraft => "Parsing model draft",
+        AedaCodeProposalCreationPhase.RetryingStructuredDraft => "Retrying structured draft",
+        AedaCodeProposalCreationPhase.ValidatingProposal => "Validating proposal",
+        AedaCodeProposalCreationPhase.SavingProposal => "Saving proposal",
+        AedaCodeProposalCreationPhase.Succeeded => "Proposal created",
+        AedaCodeProposalCreationPhase.Failed => "Proposal creation failed safely",
+        AedaCodeProposalCreationPhase.Cancelled => "Proposal creation cancelled",
+        _ => "Idle"
+    };
+
+    public string ProposalCreationProgressText
+    {
+        get
+        {
+            var parts = new List<string> { $"Phase: {ProposalCreationPhaseLabel}" };
+            if (ProposalCreationContextFileCount is > 0)
+            {
+                parts.Add($"Context files: {ProposalCreationContextFileCount}");
+            }
+
+            if (ProposalCreationRetryAttempted)
+            {
+                parts.Add("Structured retry: yes");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ProposalCreationSchemaIssueCode))
+            {
+                parts.Add($"Schema issue: {ProposalCreationSchemaIssueCode}");
+            }
+
+            return string.Join(" | ", parts);
+        }
+    }
 
     public string SessionStatusText => Session is null
         ? "No active Code session"
@@ -376,6 +415,24 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ProposalCreationFailureDetailText))]
     private AedaCodeProposalCreationFailure? _proposalCreationFailure;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationStateText))]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationPhaseLabel))]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationProgressText))]
+    private AedaCodeProposalCreationPhase _proposalCreationPhase = AedaCodeProposalCreationPhase.Idle;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationProgressText))]
+    private int? _proposalCreationContextFileCount;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationProgressText))]
+    private bool _proposalCreationRetryAttempted;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationProgressText))]
+    private string? _proposalCreationSchemaIssueCode;
+
     private CancellationTokenSource? _proposalCreationCancellation;
 
     private PatchApplyPlan? DryRunPlan { get; set; }
@@ -596,38 +653,55 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             IsBusy = true;
             IsCreatingProposal = true;
+            ProposalCreationPhase = AedaCodeProposalCreationPhase.PreparingRequest;
+            ProposalCreationContextFileCount = null;
+            ProposalCreationRetryAttempted = false;
+            ProposalCreationSchemaIssueCode = null;
             ProposalCreationFailure = null;
             SafeStatusMessage = "Creating proposal only. No files will be changed.";
-            var result = await _moduleService.CreateProposalFromRequestAsync(
-                new AedaCodeProposalCreationRequest(
-                    SelectedWorkspace.WorkspaceId,
-                    ProposalRequest,
-                    string.IsNullOrWhiteSpace(ProposalTitle) ? null : ProposalTitle),
-                cancellationToken).ConfigureAwait(false);
+            var request = new AedaCodeProposalCreationRequest(
+                SelectedWorkspace.WorkspaceId,
+                ProposalRequest,
+                string.IsNullOrWhiteSpace(ProposalTitle) ? null : ProposalTitle);
+            var progress = new Progress<AedaCodeProposalCreationProgress>(OnProposalCreationProgress);
+            var result = await Task.Run(
+                () => _moduleService.CreateProposalFromRequestAsync(
+                    request,
+                    progress,
+                    cancellationToken),
+                cancellationToken);
 
             AddOrUpdateProposal(result.Summary);
             ProposalRequest = string.Empty;
             ProposalTitle = string.Empty;
             ProposalCreationFailure = null;
+            ProposalCreationPhase = AedaCodeProposalCreationPhase.Succeeded;
             await SelectProposalAsync(
                 Proposals.FirstOrDefault(item => item.ProposalId == result.Proposal.Id),
-                cancellationToken).ConfigureAwait(false);
-            await LoadRecentCodeTasksAsync(cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+            await LoadRecentCodeTasksAsync(cancellationToken);
             SafeStatusMessage = "Proposal created for review. No files changed.";
         }
         catch (OperationCanceledException)
         {
+            ProposalCreationPhase = AedaCodeProposalCreationPhase.Cancelled;
             ProposalCreationFailure = AedaCodeProposalCreationFailure.FromReason(
                 AedaCodeProposalCreationFailureReason.ModelCancelled);
             SafeStatusMessage = "Proposal creation cancelled. No files changed.";
         }
         catch (AedaCodeProposalCreationException exception)
         {
+            ProposalCreationPhase = exception.Failure.Reason == AedaCodeProposalCreationFailureReason.ModelCancelled
+                ? AedaCodeProposalCreationPhase.Cancelled
+                : AedaCodeProposalCreationPhase.Failed;
+            ProposalCreationRetryAttempted = exception.Failure.RetryAttempted;
+            ProposalCreationSchemaIssueCode = exception.Failure.SchemaIssueCode;
             ProposalCreationFailure = exception.Failure;
             SafeStatusMessage = exception.Failure.UserMessage;
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
+            ProposalCreationPhase = AedaCodeProposalCreationPhase.Failed;
             ProposalCreationFailure = MapProposalCreationFailure(exception);
             SafeStatusMessage = ProposalCreationFailure.UserMessage;
         }
@@ -645,6 +719,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public void CancelProposalCreation()
     {
         _proposalCreationCancellation?.Cancel();
+        ProposalCreationPhase = AedaCodeProposalCreationPhase.Cancelled;
         SafeStatusMessage = "Cancelling proposal creation.";
         NotifyAll();
     }
@@ -668,6 +743,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             SafeStatusMessage = DryRunPlan.Status == PatchApplyStatus.DryRunPassed
                 ? "Dry run passed."
                 : "Dry run completed with safe blockers.";
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -700,6 +776,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 cancellationToken).ConfigureAwait(false);
             ApplyApprovalDecision = null;
             SafeStatusMessage = "Apply approval requested.";
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -729,6 +806,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             "Allowed from AEDA Code workflow.",
             cancellationToken).ConfigureAwait(false);
         SafeStatusMessage = "Apply approved once.";
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         NotifyAll();
     }
 
@@ -746,6 +824,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             "Denied from AEDA Code workflow.",
             cancellationToken).ConfigureAwait(false);
         SafeStatusMessage = "Apply approval denied.";
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         NotifyAll();
     }
 
@@ -774,6 +853,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             SafeStatusMessage = ApplyResult.Status == PatchApplyStatus.Applied
                 ? "Proposal applied."
                 : "Apply completed with safe blockers.";
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -813,6 +893,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ValidationApprovalDecision = null;
             ValidationOutputPreview = "Validation run created. Request approval before running it.";
             SafeStatusMessage = "Validation run created.";
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -843,6 +924,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 cancellationToken).ConfigureAwait(false);
             ValidationApprovalDecision = null;
             SafeStatusMessage = "Validation approval requested.";
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -872,6 +954,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             "Allowed from AEDA Code workflow.",
             cancellationToken).ConfigureAwait(false);
         SafeStatusMessage = "Validation approved once.";
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         NotifyAll();
     }
 
@@ -889,6 +972,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             "Denied from AEDA Code workflow.",
             cancellationToken).ConfigureAwait(false);
         SafeStatusMessage = "Validation approval denied.";
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         NotifyAll();
     }
 
@@ -913,6 +997,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             AddOrUpdateValidationRun(ValidationRun);
             ValidationOutputPreview = BuildValidationOutput(ValidationRun);
             SafeStatusMessage = "Validation run completed.";
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -948,6 +1033,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             SafeStatusMessage = RollbackResult.Status == PatchApplyStatus.RolledBack
                 ? "Rollback completed."
                 : "Rollback completed with safe blockers.";
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -1132,8 +1218,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         SelectedValidationTemplate = ValidationTemplates.FirstOrDefault();
     }
 
-    private async Task LoadRecentCodeTasksAsync(CancellationToken cancellationToken)
+    private async Task LoadRecentCodeTasksAsync(
+        CancellationToken cancellationToken,
+        bool refreshSelectedTimeline = false)
     {
+        var selectedTaskId = SelectedTask?.Id;
         RecentCodeTasks.Clear();
         var tasks = await _taskCenterService.ListTasksByModuleAsync(
             AedaTaskCenterModule.Code,
@@ -1144,11 +1233,23 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             RecentCodeTasks.Add(task);
         }
 
-        SelectedTask ??= RecentCodeTasks.FirstOrDefault();
-        if (SelectedTask is not null && SelectedTaskTimeline.Count == 0)
+        SelectedTask = selectedTaskId is null
+            ? SelectedTask ?? RecentCodeTasks.FirstOrDefault()
+            : RecentCodeTasks.FirstOrDefault(task => task.Id == selectedTaskId) ??
+                RecentCodeTasks.FirstOrDefault();
+        if (SelectedTask is not null &&
+            (refreshSelectedTimeline || SelectedTaskTimeline.Count == 0))
         {
             await SelectTaskAsync(SelectedTask, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private async Task RefreshCodeTasksPreservingStatusAsync(CancellationToken cancellationToken)
+    {
+        var status = SafeStatusMessage;
+        await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true)
+            .ConfigureAwait(false);
+        SafeStatusMessage = status;
     }
 
     private void ApplyDashboard(AedaCodeDashboardModel dashboard)
@@ -1436,12 +1537,62 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         };
     }
 
+    private void OnProposalCreationProgress(AedaCodeProposalCreationProgress progress)
+    {
+        ProposalCreationPhase = progress.Phase;
+        if (progress.SafeContextFileCount is not null)
+        {
+            ProposalCreationContextFileCount = progress.SafeContextFileCount;
+        }
+
+        ProposalCreationRetryAttempted |= progress.RetryAttempted;
+        if (!string.IsNullOrWhiteSpace(progress.SchemaIssueCode))
+        {
+            ProposalCreationSchemaIssueCode = progress.SchemaIssueCode;
+        }
+
+        SafeStatusMessage = progress.Phase switch
+        {
+            AedaCodeProposalCreationPhase.LoadingBoundedContext => "Loading bounded workspace context. No files changed.",
+            AedaCodeProposalCreationPhase.CallingCodingModel => string.IsNullOrWhiteSpace(progress.SafeProviderLabel)
+                ? "Calling coding model. No files changed."
+                : $"Calling {progress.SafeProviderLabel} coding model. No files changed.",
+            AedaCodeProposalCreationPhase.ParsingModelDraft => "Parsing structured proposal draft. No files changed.",
+            AedaCodeProposalCreationPhase.RetryingStructuredDraft => "Retrying structured draft format. No files changed.",
+            AedaCodeProposalCreationPhase.ValidatingProposal => "Validating proposal safety. No files changed.",
+            AedaCodeProposalCreationPhase.SavingProposal => "Saving proposal for review. No files changed.",
+            AedaCodeProposalCreationPhase.Succeeded => "Proposal created for review. No files changed.",
+            AedaCodeProposalCreationPhase.Cancelled => "Proposal creation cancelled. No files changed.",
+            AedaCodeProposalCreationPhase.Failed => "Proposal creation failed safely. No files changed.",
+            _ => "Preparing proposal request. No files changed."
+        };
+        NotifyAll();
+    }
+
+    private static string BuildProposalCreationFailureDetail(AedaCodeProposalCreationFailure failure)
+    {
+        var parts = new List<string> { $"Details: {failure.SafeCode}" };
+        if (!string.IsNullOrWhiteSpace(failure.SchemaIssueCode))
+        {
+            parts.Add($"schema issue: {failure.SchemaIssueCode}");
+        }
+
+        if (failure.RetryAttempted)
+        {
+            parts.Add("structured retry: yes");
+        }
+
+        return string.Join(" | ", parts);
+    }
+
     private void NotifyAll()
     {
         OnPropertyChanged(nameof(WorkspaceSummary));
         OnPropertyChanged(nameof(ProposalCreationWorkspaceText));
         OnPropertyChanged(nameof(ProposalCreationSafetyText));
         OnPropertyChanged(nameof(ProposalCreationStateText));
+        OnPropertyChanged(nameof(ProposalCreationPhaseLabel));
+        OnPropertyChanged(nameof(ProposalCreationProgressText));
         OnPropertyChanged(nameof(ProposalRequestLengthText));
         OnPropertyChanged(nameof(ProposalTitleLengthText));
         OnPropertyChanged(nameof(HasProposalCreationFailure));

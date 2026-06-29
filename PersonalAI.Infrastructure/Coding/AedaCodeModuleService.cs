@@ -132,9 +132,11 @@ public sealed class AedaCodeModuleService(
 
     public async Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
         AedaCodeProposalCreationRequest request,
+        IProgress<AedaCodeProposalCreationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        progress?.Report(new AedaCodeProposalCreationProgress(AedaCodeProposalCreationPhase.PreparingRequest));
         if (draftService is null)
         {
             throw Failure(AedaCodeProposalCreationFailureReason.ProviderUnavailable);
@@ -185,6 +187,7 @@ public sealed class AedaCodeModuleService(
             CodeContextPack context;
             try
             {
+                progress?.Report(new AedaCodeProposalCreationProgress(AedaCodeProposalCreationPhase.LoadingBoundedContext));
                 context = await GatherBoundedContextAsync(
                     workspace.Id,
                     request.UserRequest,
@@ -198,6 +201,9 @@ public sealed class AedaCodeModuleService(
             await AppendTaskAsync(task?.Id, TaskEventKind.CodeContextLoaded, "Bounded code context loaded.", cancellationToken)
                 .ConfigureAwait(false);
 
+            progress?.Report(new AedaCodeProposalCreationProgress(
+                AedaCodeProposalCreationPhase.LoadingBoundedContext,
+                SafeContextFileCount: context.Files.Count));
             var changeRequest = CodeChangeRequest.Create(
                 workspace.Id,
                 request.UserRequest,
@@ -215,11 +221,15 @@ public sealed class AedaCodeModuleService(
                     changeRequest,
                     context,
                     request.OptionalTitle),
+                progress,
                 cancellationToken).ConfigureAwait(false);
 
             PatchProposal proposal;
             try
             {
+                progress?.Report(new AedaCodeProposalCreationProgress(
+                    AedaCodeProposalCreationPhase.SavingProposal,
+                    SafeContextFileCount: context.Files.Count));
                 proposal = await proposalService.CreateProposalAsync(
                     new PatchProposalCreateRequest(
                         workspace.Id,
@@ -255,6 +265,9 @@ public sealed class AedaCodeModuleService(
                 await taskRuntime.CompleteTaskAsync(task.Id, cancellationToken).ConfigureAwait(false);
             }
 
+            progress?.Report(new AedaCodeProposalCreationProgress(
+                AedaCodeProposalCreationPhase.Succeeded,
+                SafeContextFileCount: context.Files.Count));
             return new AedaCodeProposalCreationResult(
                 proposal,
                 ToProposalSummary(proposal),
@@ -264,6 +277,12 @@ public sealed class AedaCodeModuleService(
         catch (Exception exception)
         {
             var failure = ToFailure(exception);
+            progress?.Report(new AedaCodeProposalCreationProgress(
+                exception is OperationCanceledException
+                    ? AedaCodeProposalCreationPhase.Cancelled
+                    : AedaCodeProposalCreationPhase.Failed,
+                SchemaIssueCode: failure.SchemaIssueCode,
+                RetryAttempted: failure.RetryAttempted));
             if (taskRuntime is not null && task is not null)
             {
                 await taskRuntime.FailTaskAsync(
@@ -439,7 +458,24 @@ public sealed class AedaCodeModuleService(
         string userRequest,
         CancellationToken cancellationToken)
     {
-        var paths = DiscoverContextPaths(workspaceId, cancellationToken);
+        var paths = (await DiscoverRequestedContextPathsAsync(
+                workspaceId,
+                userRequest,
+                cancellationToken).ConfigureAwait(false))
+            .ToList();
+        foreach (var path in DiscoverContextPaths(workspaceId, cancellationToken))
+        {
+            if (paths.Count >= MaxContextFiles)
+            {
+                break;
+            }
+
+            if (!paths.Contains(path, StringComparer.OrdinalIgnoreCase))
+            {
+                paths.Add(path);
+            }
+        }
+
         if (paths.Count == 0)
         {
             var query = CreateSearchQuery(userRequest);
@@ -453,11 +489,10 @@ public sealed class AedaCodeModuleService(
                         null,
                         MaxResults: MaxContextFiles),
                     cancellationToken).ConfigureAwait(false);
-                paths = search.SearchMatches
+                paths.AddRange(search.SearchMatches
                     .Select(match => match.RelativePath)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .Take(MaxContextFiles)
-                    .ToArray();
+                    .Take(MaxContextFiles));
             }
         }
 
@@ -473,6 +508,47 @@ public sealed class AedaCodeModuleService(
         }
 
         return context;
+    }
+
+    private async Task<IReadOnlyList<string>> DiscoverRequestedContextPathsAsync(
+        WorkspaceId workspaceId,
+        string userRequest,
+        CancellationToken cancellationToken)
+    {
+        var paths = new List<string>();
+        foreach (var query in CreateRequestedContextQueries(userRequest))
+        {
+            if (paths.Count >= MaxContextFiles)
+            {
+                break;
+            }
+
+            var search = await codeContextService.SearchAsync(
+                new CodeContextSearchRequest(
+                    workspaceId,
+                    query,
+                    ".",
+                    null,
+                    MaxResults: MaxContextFiles),
+                cancellationToken).ConfigureAwait(false);
+            foreach (var path in search.SearchMatches
+                         .Select(match => match.RelativePath.Replace('\\', '/'))
+                         .Where(IsPreferredContextPath)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (paths.Count >= MaxContextFiles)
+                {
+                    break;
+                }
+
+                if (!paths.Contains(path, StringComparer.OrdinalIgnoreCase))
+                {
+                    paths.Add(path);
+                }
+            }
+        }
+
+        return paths;
     }
 
     private IReadOnlyList<string> DiscoverContextPaths(
@@ -561,6 +637,37 @@ public sealed class AedaCodeModuleService(
         }
 
         return 2;
+    }
+
+    private static bool IsPreferredContextPath(string relativePath)
+    {
+        var extension = Path.GetExtension(relativePath);
+        return !Path.IsPathRooted(relativePath) &&
+            !relativePath.Contains("..", StringComparison.Ordinal) &&
+            PreferredContextExtensions.Contains(extension);
+    }
+
+    private static IReadOnlyList<string> CreateRequestedContextQueries(string userRequest)
+    {
+        var tokens = userRequest
+            .Split([' ', '\r', '\n', '\t', '.', ',', ';', ':', '"', '\'', '`', '/', '\\', '(', ')', '[', ']'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => token.Trim())
+            .Where(token => token.Length >= 4)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var fileStemQueries = tokens
+            .Where(token => PreferredContextExtensions.Contains(Path.GetExtension(token)))
+            .Select(token => Path.GetFileNameWithoutExtension(token))
+            .Where(token => token.Length >= 4);
+        var identifierQueries = tokens
+            .Where(token => token.Any(char.IsUpper) || token.Contains('_', StringComparison.Ordinal))
+            .Where(token => !PreferredContextExtensions.Contains(Path.GetExtension(token)));
+
+        return fileStemQueries
+            .Concat(identifierQueries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToArray();
     }
 
     private static string CreateSearchQuery(string userRequest)

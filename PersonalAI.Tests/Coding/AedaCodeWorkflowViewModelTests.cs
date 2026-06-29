@@ -220,6 +220,40 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task SupervisedActions_RefreshTaskTimeline()
+    {
+        var registry = CreateRegistry();
+        var taskCenter = new FakeTaskCenterService();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Fix safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                registry.List().Single().Id,
+                PatchApplyStatus.DryRunPassed,
+                [],
+                [],
+                RequiresApproval: true)
+        };
+        var viewModel = CreateViewModel(registry, service, taskCenter);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+        var initialTimelineRequests = taskCenter.TimelineRequestCount;
+
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        await viewModel.ApplyApprovedProposalAsync();
+
+        Assert.True(taskCenter.TimelineRequestCount >= initialTimelineRequests + 4);
+        Assert.Single(viewModel.CodeTimelineGroups);
+        Assert.Equal(1, service.ApplyCount);
+    }
+
+    [Fact]
     public void SafetyCommands_DoNotExposeGitShellOrAutomaticActions()
     {
         var viewModel = CreateViewModel(new WorkspaceRegistry(), new FakeAedaCodeModuleService());
@@ -281,6 +315,73 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateProposal_RunningStateDoesNotBlockAndCancelClearsState()
+    {
+        var registry = CreateRegistry();
+        var service = new FakeAedaCodeModuleService
+        {
+            DelayUntilCancelled = true
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        viewModel.ProposalRequest = "Add XML docs.";
+
+        var running = viewModel.CreateProposalAsync();
+        await service.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.False(running.IsCompleted);
+        Assert.True(viewModel.IsCreatingProposal);
+        Assert.False(viewModel.CreateProposalCommand.CanExecute(null));
+        Assert.True(viewModel.CancelProposalCreationCommand.CanExecute(null));
+
+        viewModel.CancelProposalCreation();
+        await running.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.False(viewModel.IsCreatingProposal);
+        Assert.Equal("model_cancelled", viewModel.ProposalCreationFailure?.SafeCode);
+        Assert.Equal(AedaCodeProposalCreationPhase.Cancelled, viewModel.ProposalCreationPhase);
+        Assert.True(viewModel.CreateProposalCommand.CanExecute(null));
+        Assert.Empty(viewModel.Proposals);
+    }
+
+    [Fact]
+    public async Task CreateProposal_ProgressAndSchemaIssueAreExposedSafely()
+    {
+        var registry = CreateRegistry();
+        var service = new FakeAedaCodeModuleService
+        {
+            CreateProposalFailure = new AedaCodeProposalCreationException(
+                AedaCodeProposalCreationFailure.FromReason(
+                    AedaCodeProposalCreationFailureReason.InvalidModelSchema,
+                    "missing_title",
+                    retryAttempted: true)),
+            ProgressToReport =
+            [
+                new AedaCodeProposalCreationProgress(
+                    AedaCodeProposalCreationPhase.LoadingBoundedContext,
+                    SafeContextFileCount: 3),
+                new AedaCodeProposalCreationProgress(
+                    AedaCodeProposalCreationPhase.RetryingStructuredDraft,
+                    SafeContextFileCount: 3,
+                    RetryAttempted: true,
+                    SchemaIssueCode: "missing_title")
+            ]
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        viewModel.ProposalRequest = "Add XML docs.";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Equal("invalid_model_schema", viewModel.ProposalCreationFailure?.SafeCode);
+        Assert.Equal("missing_title", viewModel.ProposalCreationSchemaIssueCode);
+        Assert.True(viewModel.ProposalCreationRetryAttempted);
+        Assert.Contains("Schema issue: missing_title", viewModel.ProposalCreationProgressText, StringComparison.Ordinal);
+        Assert.Contains("structured retry: yes", viewModel.ProposalCreationFailureDetailText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("{\"title\"", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CreateProposal_InvalidModelOutputHandledSafely()
     {
         var registry = CreateRegistry();
@@ -301,6 +402,32 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Contains("Try a smaller", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("invalid_model_json", viewModel.ProposalCreationFailureDetailText, StringComparison.Ordinal);
         Assert.DoesNotContain("not json", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, service.ApplyCount);
+        Assert.Equal(0, service.ValidationRunCount);
+    }
+
+    [Fact]
+    public async Task CreateProposal_UnsafeFileTargetShowsSafeActionableMessage()
+    {
+        var registry = CreateRegistry();
+        var service = new FakeAedaCodeModuleService
+        {
+            CreateProposalFailure = new AedaCodeProposalCreationException(
+                AedaCodeProposalCreationFailure.FromReason(
+                    AedaCodeProposalCreationFailureReason.UnsafeFileTarget))
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        viewModel.ProposalRequest = "Add XML docs to AedaCodeModuleViewModel.cs.";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Empty(viewModel.Proposals);
+        Assert.Equal("unsafe_file_target", viewModel.ProposalCreationFailure?.SafeCode);
+        Assert.Contains("not uniquely available", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("exact relative path", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unsafe_file_target", viewModel.ProposalCreationFailureDetailText, StringComparison.Ordinal);
+        Assert.DoesNotContain("AedaCodeModuleViewModel.cs", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, service.ApplyCount);
         Assert.Equal(0, service.ValidationRunCount);
     }
@@ -451,6 +578,12 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         public Exception? CreateProposalFailure { get; init; }
 
+        public bool DelayUntilCancelled { get; init; }
+
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IReadOnlyList<AedaCodeProposalCreationProgress> ProgressToReport { get; init; } = [];
+
         public Task<AedaCodeSession> StartSessionAsync(WorkspaceId workspaceId, string? safeSummary = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AedaCodeSession(
                 AedaCodeSessionId.NewId(),
@@ -485,9 +618,21 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         public Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
             AedaCodeProposalCreationRequest request,
+            IProgress<AedaCodeProposalCreationProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             CreateProposalFromRequestCount++;
+            Started.TrySetResult();
+            foreach (var item in ProgressToReport)
+            {
+                progress?.Report(item);
+            }
+
+            if (DelayUntilCancelled)
+            {
+                return WaitUntilCancelledAsync(cancellationToken);
+            }
+
             if (CreateProposalFailure is not null)
             {
                 return Task.FromException<AedaCodeProposalCreationResult>(CreateProposalFailure);
@@ -508,6 +653,13 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
                 summary,
                 proposal.Sources.Select(source => source.RelativePath).ToArray(),
                 []));
+        }
+
+        private async Task<AedaCodeProposalCreationResult> WaitUntilCancelledAsync(
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("unreachable");
         }
 
         public Task<PatchProposal?> GetProposalAsync(PatchProposalId proposalId, CancellationToken cancellationToken = default) =>
@@ -650,8 +802,15 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         public ValueTask<IReadOnlyList<AedaTaskSummary>> ListTasksByModuleAsync(AedaTaskCenterModule module, int limit, CancellationToken cancellationToken = default) =>
             new ValueTask<IReadOnlyList<AedaTaskSummary>>(module == AedaTaskCenterModule.Code ? [_task] : []);
 
+        public int TimelineRequestCount { get; private set; }
+
         public ValueTask<IReadOnlyList<AedaTaskActivityGroup>> GetTimelineAsync(TaskId taskId, int limit = 100, CancellationToken cancellationToken = default) =>
-            new ValueTask<IReadOnlyList<AedaTaskActivityGroup>>(
+            new(CreateTimeline(taskId));
+
+        private IReadOnlyList<AedaTaskActivityGroup> CreateTimeline(TaskId taskId)
+        {
+            TimelineRequestCount++;
+            return
             [
                 new AedaTaskActivityGroup(
                     "code",
@@ -668,7 +827,8 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
                             new AedaTaskModuleBadge(AedaTaskCenterModule.Code, "Code", AedaModuleId.Code, "aeda-code"),
                             [])
                     ])
-            ]);
+            ];
+        }
 
         public ValueTask<AedaTaskTimelineItem?> GetSafeEventDetailsAsync(TaskId taskId, Guid eventId, CancellationToken cancellationToken = default) =>
             new ValueTask<AedaTaskTimelineItem?>((AedaTaskTimelineItem?)null);

@@ -74,6 +74,28 @@ public sealed record AedaCodeProposalCreationRequest(
     string UserRequest,
     string? OptionalTitle = null);
 
+public enum AedaCodeProposalCreationPhase
+{
+    Idle,
+    PreparingRequest,
+    LoadingBoundedContext,
+    CallingCodingModel,
+    ParsingModelDraft,
+    RetryingStructuredDraft,
+    ValidatingProposal,
+    SavingProposal,
+    Succeeded,
+    Failed,
+    Cancelled
+}
+
+public sealed record AedaCodeProposalCreationProgress(
+    AedaCodeProposalCreationPhase Phase,
+    int? SafeContextFileCount = null,
+    bool RetryAttempted = false,
+    string? SchemaIssueCode = null,
+    string? SafeProviderLabel = null);
+
 public enum AedaCodeProposalCreationFailureReason
 {
     WorkspaceMissing,
@@ -98,10 +120,14 @@ public sealed record AedaCodeProposalCreationFailure(
     AedaCodeProposalCreationFailureReason Reason,
     string SafeCode,
     string UserMessage,
-    string NextStepHint)
+    string NextStepHint,
+    string? SchemaIssueCode = null,
+    bool RetryAttempted = false)
 {
     public static AedaCodeProposalCreationFailure FromReason(
-        AedaCodeProposalCreationFailureReason reason) =>
+        AedaCodeProposalCreationFailureReason reason,
+        string? schemaIssueCode = null,
+        bool retryAttempted = false) =>
         reason switch
         {
             AedaCodeProposalCreationFailureReason.WorkspaceMissing => new(
@@ -158,12 +184,14 @@ public sealed record AedaCodeProposalCreationFailure(
                 reason,
                 "invalid_model_schema",
                 "The model response did not match the proposal schema.",
-                "Try a more explicit request that names the intended change."),
+                "AEDA retried once when possible; try a more explicit request that names the intended change.",
+                schemaIssueCode,
+                retryAttempted),
             AedaCodeProposalCreationFailureReason.UnsafeFileTarget => new(
                 reason,
                 "unsafe_file_target",
-                "The proposed change targeted a file outside the bounded context.",
-                "Ask for a change in a file that is already visible in the safe context."),
+                "The proposed change targeted a file that was not uniquely available in the bounded context.",
+                "Try naming the exact relative path, or make the request more specific if multiple files share that name."),
             AedaCodeProposalCreationFailureReason.UnsafePatch => new(
                 reason,
                 "unsafe_patch",
@@ -280,6 +308,7 @@ public interface IAedaCodeModuleService
 
     Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
         AedaCodeProposalCreationRequest request,
+        IProgress<AedaCodeProposalCreationProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
     Task<PatchProposal?> GetProposalAsync(

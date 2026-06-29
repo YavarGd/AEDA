@@ -416,6 +416,7 @@ public sealed class AedaShellDashboardTests
 
         public Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
             AedaCodeProposalCreationRequest request,
+            IProgress<AedaCodeProposalCreationProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
