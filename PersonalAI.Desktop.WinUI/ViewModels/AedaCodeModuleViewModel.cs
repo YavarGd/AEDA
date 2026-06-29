@@ -17,6 +17,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     private const int DiffLineLimit = 900;
     private const int DiffCharacterLimit = 60_000;
     private const int ValidationOutputLimit = 3_000;
+    public const int MaxProposalRequestCharacters = 4_000;
+    public const int MaxProposalTitleCharacters = 120;
     private readonly IAedaCodeModuleService _moduleService;
     private readonly IWorkspaceRegistry _workspaceRegistry;
     private readonly IAedaTaskCenterService _taskCenterService;
@@ -100,6 +102,26 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public string WorkspaceSummary => SelectedWorkspace is null
         ? "Select a registered workspace to start a supervised Code session."
         : $"{SelectedWorkspace.DisplayName} · {SelectedWorkspace.RootSummary} · {SelectedWorkspace.PolicyLabel}";
+
+    public string ProposalCreationWorkspaceText => SelectedWorkspace is null
+        ? "No workspace selected."
+        : $"Workspace: {SelectedWorkspace.DisplayName} - {SelectedWorkspace.PolicyLabel}";
+
+    public string ProposalCreationSafetyText => "Proposal only. No files changed, no validation run, no apply.";
+
+    public string ProposalRequestLengthText => $"{ProposalRequest.Length}/{MaxProposalRequestCharacters}";
+
+    public string ProposalTitleLengthText => $"{ProposalTitle.Length}/{MaxProposalTitleCharacters}";
+
+    public bool HasProposalCreationFailure => ProposalCreationFailure is not null;
+
+    public string ProposalCreationFailureText => ProposalCreationFailure is null
+        ? string.Empty
+        : $"{ProposalCreationFailure.UserMessage} {ProposalCreationFailure.NextStepHint}";
+
+    public string ProposalCreationFailureDetailText => ProposalCreationFailure is null
+        ? string.Empty
+        : $"Details: {ProposalCreationFailure.SafeCode}";
 
     public string SessionStatusText => Session is null
         ? "No active Code session"
@@ -267,6 +289,25 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isBusy;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProposalRequestLengthText))]
+    private string _proposalRequest = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProposalTitleLengthText))]
+    private string _proposalTitle = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCreatingProposal;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProposalCreationFailure))]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationFailureText))]
+    [NotifyPropertyChangedFor(nameof(ProposalCreationFailureDetailText))]
+    private AedaCodeProposalCreationFailure? _proposalCreationFailure;
+
+    private CancellationTokenSource? _proposalCreationCancellation;
 
     private PatchApplyPlan? DryRunPlan { get; set; }
 
@@ -470,10 +511,73 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanCreateProposal))]
-    public Task CreateProposalAsync()
+    public async Task CreateProposalAsync()
     {
-        SafeStatusMessage = "Proposal creation is available only through existing safe backend paths.";
-        return Task.CompletedTask;
+        if (SelectedWorkspace is null)
+        {
+            SafeStatusMessage = "Select a registered workspace first.";
+            return;
+        }
+
+        _proposalCreationCancellation?.Dispose();
+        _proposalCreationCancellation = new CancellationTokenSource();
+        var cancellationToken = _proposalCreationCancellation.Token;
+
+        try
+        {
+            IsBusy = true;
+            IsCreatingProposal = true;
+            ProposalCreationFailure = null;
+            SafeStatusMessage = "Creating proposal only. No files will be changed.";
+            var result = await _moduleService.CreateProposalFromRequestAsync(
+                new AedaCodeProposalCreationRequest(
+                    SelectedWorkspace.WorkspaceId,
+                    ProposalRequest,
+                    string.IsNullOrWhiteSpace(ProposalTitle) ? null : ProposalTitle),
+                cancellationToken).ConfigureAwait(false);
+
+            AddOrUpdateProposal(result.Summary);
+            ProposalRequest = string.Empty;
+            ProposalTitle = string.Empty;
+            ProposalCreationFailure = null;
+            await SelectProposalAsync(
+                Proposals.FirstOrDefault(item => item.ProposalId == result.Proposal.Id),
+                cancellationToken).ConfigureAwait(false);
+            await LoadRecentCodeTasksAsync(cancellationToken).ConfigureAwait(false);
+            SafeStatusMessage = "Proposal created for review. No files changed.";
+        }
+        catch (OperationCanceledException)
+        {
+            ProposalCreationFailure = AedaCodeProposalCreationFailure.FromReason(
+                AedaCodeProposalCreationFailureReason.ModelCancelled);
+            SafeStatusMessage = "Proposal creation cancelled. No files changed.";
+        }
+        catch (AedaCodeProposalCreationException exception)
+        {
+            ProposalCreationFailure = exception.Failure;
+            SafeStatusMessage = exception.Failure.UserMessage;
+        }
+        catch (Exception exception) when (IsSafeFailure(exception))
+        {
+            ProposalCreationFailure = MapProposalCreationFailure(exception);
+            SafeStatusMessage = ProposalCreationFailure.UserMessage;
+        }
+        finally
+        {
+            IsCreatingProposal = false;
+            IsBusy = false;
+            _proposalCreationCancellation?.Dispose();
+            _proposalCreationCancellation = null;
+            NotifyAll();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCancelProposalCreation))]
+    public void CancelProposalCreation()
+    {
+        _proposalCreationCancellation?.Cancel();
+        SafeStatusMessage = "Cancelling proposal creation.";
+        NotifyAll();
     }
 
     [RelayCommand(CanExecute = nameof(CanDryRun))]
@@ -836,7 +940,15 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     private bool CanStartSession() => !IsBusy && SelectedWorkspace is not null;
 
-    private bool CanCreateProposal() => false;
+    private bool CanCreateProposal() =>
+        !IsBusy &&
+        !IsCreatingProposal &&
+        SelectedWorkspace is not null &&
+        !string.IsNullOrWhiteSpace(ProposalRequest) &&
+        ProposalRequest.Length <= MaxProposalRequestCharacters &&
+        ProposalTitle.Length <= MaxProposalTitleCharacters;
+
+    private bool CanCancelProposalCreation() => IsCreatingProposal;
 
     private bool CanDryRun() => !IsBusy && SelectedProposal is not null && SelectedWorkspace is not null;
 
@@ -888,6 +1000,12 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     partial void OnSelectedProposalChanged(AedaCodeProposalItem? value) => NotifyCommandStates();
 
     partial void OnSelectedValidationTemplateChanged(AedaCodeValidationTemplateItem? value) => NotifyCommandStates();
+
+    partial void OnProposalRequestChanged(string value) => NotifyCommandStates();
+
+    partial void OnProposalTitleChanged(string value) => NotifyCommandStates();
+
+    partial void OnIsCreatingProposalChanged(bool value) => NotifyCommandStates();
 
     partial void OnDashboardChanged(AedaCodeDashboardModel? value)
     {
@@ -1005,6 +1123,21 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         while (ApplyResults.Count > SummaryLimit)
         {
             ApplyResults.RemoveAt(ApplyResults.Count - 1);
+        }
+    }
+
+    private void AddOrUpdateProposal(AedaCodeProposalSummary summary)
+    {
+        var existing = Proposals.FirstOrDefault(item => item.ProposalId == summary.ProposalId);
+        if (existing is not null)
+        {
+            Proposals.Remove(existing);
+        }
+
+        Proposals.Insert(0, AedaCodeProposalItem.From(summary));
+        while (Proposals.Count > SummaryLimit)
+        {
+            Proposals.RemoveAt(Proposals.Count - 1);
         }
     }
 
@@ -1190,9 +1323,33 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         exception is ArgumentException ||
         exception is WorkspaceAccessException;
 
+    private static AedaCodeProposalCreationFailure MapProposalCreationFailure(Exception exception)
+    {
+        var code = exception.Message;
+        return code switch
+        {
+            "code_request_empty" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.RequestEmpty),
+            "code_request_too_long" or "code_title_too_long" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.RequestTooLong),
+            "code_context_empty" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.NoSafeContext),
+            "model_patch_invalid" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.InvalidModelJson),
+            "model_patch_path_not_in_context" or "model_patch_path_invalid" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.UnsafeFileTarget),
+            "model_patch_content_invalid" or "model_patch_file_count_invalid" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.UnsafePatch),
+            "remote_workspace_context_denied" or "remote_provider_disabled" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.ProviderRejectedByPolicy),
+            "provider_capability_unavailable" or "provider_chat_unavailable" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.ProviderUnavailable),
+            _ => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.UnknownSafeFailure)
+        };
+    }
+
     private void NotifyAll()
     {
         OnPropertyChanged(nameof(WorkspaceSummary));
+        OnPropertyChanged(nameof(ProposalCreationWorkspaceText));
+        OnPropertyChanged(nameof(ProposalCreationSafetyText));
+        OnPropertyChanged(nameof(ProposalRequestLengthText));
+        OnPropertyChanged(nameof(ProposalTitleLengthText));
+        OnPropertyChanged(nameof(HasProposalCreationFailure));
+        OnPropertyChanged(nameof(ProposalCreationFailureText));
+        OnPropertyChanged(nameof(ProposalCreationFailureDetailText));
         OnPropertyChanged(nameof(SessionStatusText));
         OnPropertyChanged(nameof(RecentCodeTaskCountText));
         OnPropertyChanged(nameof(ProposalCountText));
@@ -1248,6 +1405,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     {
         StartSessionCommand.NotifyCanExecuteChanged();
         CreateProposalCommand.NotifyCanExecuteChanged();
+        CancelProposalCreationCommand.NotifyCanExecuteChanged();
         DryRunSelectedProposalCommand.NotifyCanExecuteChanged();
         RequestApplyApprovalCommand.NotifyCanExecuteChanged();
         AllowApplyOnceCommand.NotifyCanExecuteChanged();

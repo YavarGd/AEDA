@@ -1,6 +1,9 @@
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
+using PersonalAI.Core.Chat;
 using PersonalAI.Core.Coding;
+using PersonalAI.Core.Providers;
+using PersonalAI.Core.Settings;
 using PersonalAI.Core.Workspaces;
 using PersonalAI.Infrastructure.Coding;
 using PersonalAI.Infrastructure.Workspaces;
@@ -230,6 +233,206 @@ public sealed class CodingProposalFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task DraftService_UsesCodeProviderAndBuildsSafeFileEdits()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var provider = new FakeChatProvider(
+            """
+            {"title":"Add docs","summary":"Adds XML docs.","changes":[{"relativePath":"src/App.cs","proposedContent":"/// <summary>Docs.</summary>\nclass App {}\n"}]}
+            """);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "class App {}\n", "hash", "utf-8", 13, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs to this helper method."),
+            context));
+
+        var edit = Assert.Single(draft.FileEdits);
+        Assert.Equal("src/App.cs", edit.RelativePath);
+        Assert.Equal("class App {}\n", edit.OriginalContent);
+        Assert.Contains("summary", edit.ProposedContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("qwen2.5-coder:7b", provider.LastRequest?.Model);
+        Assert.Contains("No markdown", provider.LastRequest?.Messages[1].Content, StringComparison.Ordinal);
+        Assert.Contains("\"changes\"", provider.LastRequest?.Messages[1].Content, StringComparison.Ordinal);
+        Assert.Contains("src/App.cs", provider.LastRequest?.Messages[1].Content, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("""{"title":"Add docs","summary":"Adds XML docs.","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]}""")]
+    [InlineData("```json\n{\"title\":\"Add docs\",\"summary\":\"Adds XML docs.\",\"changes\":[{\"relativePath\":\"src/App.cs\",\"proposedContent\":\"new\"}]}\n```")]
+    [InlineData("Here is the JSON:\n{\"title\":\"Add docs\",\"summary\":\"Adds XML docs.\",\"changes\":[{\"relativePath\":\"src/App.cs\",\"proposedContent\":\"new\"}]}\nDone.")]
+    public async Task DraftService_AcceptsValidJsonFencesAndSurroundingProse(string output)
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var provider = new FakeChatProvider(output);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Change app."),
+            context));
+
+        Assert.Single(draft.FileEdits);
+        Assert.Equal(1, provider.RequestCount);
+    }
+
+    [Fact]
+    public async Task DraftService_RejectsInvalidOrOutOfContextModelOutput()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "class App {}\n", "hash", "utf-8", 13, false, false)],
+            [],
+            [],
+            false);
+        var invalidJson = CreateDraftService(new FakeChatProvider("not json", "still not json"));
+        var malformedJson = CreateDraftService(new FakeChatProvider("""{"title":"Bad","summary":""", """{"title":"Bad","summary":"""));
+        var multipleObjects = CreateDraftService(new FakeChatProvider(
+            """{"title":"A","summary":"A","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]} {"title":"B","summary":"B","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]}""",
+            """{"title":"A","summary":"A","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]} {"title":"B","summary":"B","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]}"""));
+        var schemaMismatch = CreateDraftService(new FakeChatProvider("""{"title":"Bad","summary":"Bad"}""", """{"title":"Bad","summary":"Bad"}"""));
+        var wrongType = CreateDraftService(new FakeChatProvider("""{"title":"Bad","summary":"Bad","changes":"nope"}""", """{"title":"Bad","summary":"Bad","changes":"nope"}"""));
+        var outsideContext = CreateDraftService(new FakeChatProvider(
+            """{"title":"Bad","summary":"Bad","changes":[{"relativePath":"src/Other.cs","proposedContent":"new"}]}"""));
+
+        var invalid = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            invalidJson.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var malformed = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            malformedJson.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var multiple = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            multipleObjects.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var schema = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            schemaMismatch.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var wrong = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            wrongType.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var unsafeTarget = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            outsideContext.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.InvalidModelJson, invalid.Failure.Reason);
+        Assert.Equal("invalid_model_json", invalid.Failure.SafeCode);
+        Assert.Equal("invalid_model_json", malformed.Failure.SafeCode);
+        Assert.Equal("invalid_model_json", multiple.Failure.SafeCode);
+        Assert.Equal(AedaCodeProposalCreationFailureReason.InvalidModelSchema, schema.Failure.Reason);
+        Assert.Equal("invalid_model_schema", schema.Failure.SafeCode);
+        Assert.Equal("invalid_model_schema", wrong.Failure.SafeCode);
+        Assert.Equal(AedaCodeProposalCreationFailureReason.UnsafeFileTarget, unsafeTarget.Failure.Reason);
+        Assert.Equal("unsafe_file_target", unsafeTarget.Failure.SafeCode);
+        Assert.DoesNotContain("not json", invalid.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, invalidJson.ChatProvider.RequestCount);
+        Assert.Equal(2, schemaMismatch.ChatProvider.RequestCount);
+        Assert.Equal(1, outsideContext.ChatProvider.RequestCount);
+    }
+
+    [Fact]
+    public async Task DraftService_RetriesInvalidJsonOrSchemaOnce()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var valid = """{"title":"Fixed","summary":"Fixed JSON.","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]}""";
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+        var invalidThenValidProvider = new FakeChatProvider("not json", valid);
+        var schemaThenValidProvider = new FakeChatProvider("""{"title":"Bad","summary":"Bad"}""", valid);
+        var invalidStillProvider = new FakeChatProvider("not json", "still not json", valid);
+        var invalidThenValid = CreateDraftService(invalidThenValidProvider);
+        var schemaThenValid = CreateDraftService(schemaThenValidProvider);
+        var invalidStill = CreateDraftService(invalidStillProvider);
+
+        var draft = await invalidThenValid.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Change app."),
+            context));
+        var schemaDraft = await schemaThenValid.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Change app."),
+            context));
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            invalidStill.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+
+        Assert.Single(draft.FileEdits);
+        Assert.Single(schemaDraft.FileEdits);
+        Assert.Equal(2, invalidThenValidProvider.RequestCount);
+        Assert.Equal(2, schemaThenValidProvider.RequestCount);
+        Assert.Equal(2, invalidStillProvider.RequestCount);
+        Assert.Equal("invalid_model_json", failure.Failure.SafeCode);
+    }
+
+    [Fact]
+    public async Task DraftService_MapsProviderFailuresAndCancellationSafely()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "class App {}\n", "hash", "utf-8", 13, false, false)],
+            [],
+            [],
+            false);
+        var providerUnavailable = CreateDraftService(
+            new FakeChatProvider("{}"),
+            includeCodeCapability: false);
+        var providerRejected = CreateDraftService(
+            new FakeChatProvider("{}"),
+            isRemote: true,
+            configureSettings: settings => settings with
+            {
+                LocalOnlyMode = false,
+                AllowRemoteChat = true,
+                AllowRemoteWithWorkspaceContext = false
+            });
+        var cancelled = CreateDraftService(new FakeChatProvider(null, new OperationCanceledException()));
+        var timedOut = CreateDraftService(new FakeChatProvider(null, new TimeoutException("raw provider timeout")));
+
+        var unavailable = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            providerUnavailable.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var rejected = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            providerRejected.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var cancelledFailure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            cancelled.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var timeoutFailure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            timedOut.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+
+        Assert.Equal("provider_unavailable", unavailable.Failure.SafeCode);
+        Assert.Equal("provider_rejected_by_policy", rejected.Failure.SafeCode);
+        Assert.Equal("model_cancelled", cancelledFailure.Failure.SafeCode);
+        Assert.Equal("model_timeout", timeoutFailure.Failure.SafeCode);
+        Assert.DoesNotContain("raw provider timeout", timeoutFailure.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Capabilities_ExposeProposalAndDeferApplyAndTests()
     {
         var registry = BackendCapabilityRegistry.CreateDefault(
@@ -295,6 +498,109 @@ public sealed class CodingProposalFoundationTests : IDisposable
             new ValidationPlanService().CreatePlan([file]),
             now,
             now);
+    }
+
+    private sealed record DraftServiceFixture(
+        CodeProposalDraftService Service,
+        FakeChatProvider ChatProvider)
+    {
+        public Task<CodeProposalDraft> CreateDraftAsync(
+            CodeProposalDraftRequest request,
+            CancellationToken cancellationToken = default) =>
+            Service.CreateDraftAsync(request, cancellationToken);
+    }
+
+    private static DraftServiceFixture CreateDraftService(
+        FakeChatProvider provider,
+        bool includeCodeCapability = true,
+        bool isRemote = false,
+        Func<ProviderRoutingSettings, ProviderRoutingSettings>? configureSettings = null)
+    {
+        var providerId = new ProviderId("fake");
+        var capabilities = ModelCapability.Chat | ModelCapability.StreamingChat |
+            (isRemote ? ModelCapability.Remote : ModelCapability.LocalOnly);
+        if (includeCodeCapability)
+        {
+            capabilities |= ModelCapability.Code;
+        }
+
+        var model = new ModelDescriptor(
+            providerId,
+            new ModelId("qwen2.5-coder:7b"),
+            capabilities,
+            new ModelSafetyProfile(
+                IsLocalOnly: !isRemote,
+                IsRemote: isRemote,
+                AllowsWorkspaceContext: !isRemote,
+                AllowsMemoryContext: false,
+                AllowsScreenshots: false,
+                AllowsClipboardOrAppContext: false),
+            "Qwen Coder");
+        var profile = new ProviderProfile(
+            providerId,
+            isRemote ? ProviderKind.CloudGateway : ProviderKind.TestFake,
+            "Fake",
+            ProviderEndpointClassifier.Classify(isRemote ? "https://example.test" : "http://localhost:1"),
+            IsEnabled: true,
+            ChatModel: model.ModelId.Value,
+            EmbeddingModel: null,
+            SecretReference: null,
+            [model]);
+        var registry = new StaticProviderRegistry([profile]);
+        return new DraftServiceFixture(new CodeProposalDraftService(
+            new LocalFirstModelRoutingPolicy(registry),
+            new ContextPrivacyFilter(),
+            new Dictionary<ProviderId, IChatProvider> { [providerId] = provider },
+            () =>
+            {
+                var settings = ProviderRoutingSettings.Default with
+                {
+                    SelectedChatProvider = providerId.Value,
+                    LocalOnlyMode = !isRemote
+                };
+                return configureSettings?.Invoke(settings) ?? settings;
+            }),
+            provider);
+    }
+
+    private sealed class FakeChatProvider : IChatProvider
+    {
+        private readonly Queue<string?> _outputs;
+        private readonly Exception? _failure;
+
+        public FakeChatProvider(string? output, Exception? failure = null)
+        {
+            _outputs = new Queue<string?>([output]);
+            _failure = failure;
+        }
+
+        public FakeChatProvider(params string?[] outputs)
+        {
+            _outputs = new Queue<string?>(outputs);
+        }
+
+        public string ProviderName => "Fake";
+
+        public ChatRequest? LastRequest { get; private set; }
+
+        public int RequestCount { get; private set; }
+
+        public async IAsyncEnumerable<ChatChunk> StreamAsync(
+            ChatRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            LastRequest = request;
+            RequestCount++;
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_failure is not null)
+            {
+                throw _failure;
+            }
+
+            var output = _outputs.Count == 0 ? string.Empty : _outputs.Dequeue();
+            yield return new ChatChunk(output ?? string.Empty, true);
+        }
     }
 
     private void Write(string relativePath, string content)

@@ -25,6 +25,24 @@ public interface ICodeChangePlanningService
         CancellationToken cancellationToken = default);
 }
 
+public sealed record CodeProposalDraftRequest(
+    CodeChangeRequest ChangeRequest,
+    CodeContextPack Context,
+    string? OptionalTitle = null);
+
+public sealed record CodeProposalDraft(
+    string Title,
+    string Summary,
+    IReadOnlyList<PatchProposalFileEdit> FileEdits,
+    IReadOnlyList<string> SafeNotices);
+
+public interface ICodeProposalDraftService
+{
+    Task<CodeProposalDraft> CreateDraftAsync(
+        CodeProposalDraftRequest request,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IUnifiedDiffBuilder
 {
     PatchProposalFile BuildFileDiff(

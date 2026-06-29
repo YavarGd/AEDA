@@ -33,6 +33,7 @@ public sealed class AedaCodeModuleServiceTests
             reader,
             context,
             planner,
+            null,
             proposals,
             apply,
             validation,
@@ -81,6 +82,7 @@ public sealed class AedaCodeModuleServiceTests
             new FakeWorkspaceReader(workspace),
             new FakeCodeContextService(_workspaceId),
             new FakePlanningService(),
+            null,
             new FakeProposalService(CreateProposal(_workspaceId)),
             new FakeApplyService(CreateApplyResult(_workspaceId, PatchProposalId.NewId())),
             new FakeValidationRunnerService(CreateValidationRun(_workspaceId, PatchProposalId.NewId(), null)),
@@ -88,6 +90,116 @@ public sealed class AedaCodeModuleServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.GetDashboardAsync(AedaCodeSessionId.NewId()));
+    }
+
+    [Fact]
+    public async Task Service_CreatesProposalFromRequestWithTaskEventsAndNoApplyOrValidation()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var reader = new FakeWorkspaceReader(workspace);
+        var context = new FakeCodeContextService(_workspaceId);
+        var planner = new FakePlanningService();
+        var draft = new FakeDraftService();
+        var proposal = CreateProposal(_workspaceId);
+        var proposals = new FakeProposalService(proposal);
+        var apply = new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id));
+        var validation = new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null));
+        var taskRuntime = new FakeTaskRuntime();
+        var service = new AedaCodeModuleService(
+            reader,
+            context,
+            planner,
+            draft,
+            proposals,
+            apply,
+            validation,
+            new FakeValidationCommandAllowlist(),
+            taskRuntime: taskRuntime);
+
+        var result = await service.CreateProposalFromRequestAsync(
+            new AedaCodeProposalCreationRequest(_workspaceId, "Add XML docs."));
+
+        Assert.Equal(proposal.Id, result.Proposal.Id);
+        Assert.Equal(1, draft.CreateCount);
+        Assert.Equal(1, proposals.CreateCount);
+        Assert.Equal(0, apply.ApplyCount);
+        Assert.Equal(0, validation.CreateRunCount);
+        Assert.Contains(taskRuntime.Events, item => item.Kind == TaskEventKind.CodeContextLoaded);
+        Assert.Contains(taskRuntime.Events, item => item.Kind == TaskEventKind.PatchProposalCreated);
+        Assert.Equal(1, taskRuntime.CompletedCount);
+    }
+
+    [Fact]
+    public async Task Service_NoSafeContextFailsWithSpecificTimelineReasonAndNoProposal()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var proposal = CreateProposal(_workspaceId);
+        var proposals = new FakeProposalService(proposal);
+        var taskRuntime = new FakeTaskRuntime();
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            new FakeCodeContextService(_workspaceId) { ReturnEmptyContext = true },
+            new FakePlanningService(),
+            new FakeDraftService(),
+            proposals,
+            new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id)),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null)),
+            new FakeValidationCommandAllowlist(),
+            taskRuntime: taskRuntime);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateProposalFromRequestAsync(
+                new AedaCodeProposalCreationRequest(_workspaceId, "Add XML docs.")));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.NoSafeContext, failure.Failure.Reason);
+        Assert.Equal("no_safe_context", taskRuntime.FailedSafeCode);
+        Assert.Equal(0, proposals.CreateCount);
+        Assert.Contains("Try selecting", failure.Failure.NextStepHint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Service_ProposalValidationFailureDoesNotPersistAndUsesSpecificReason()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var proposal = CreateProposal(_workspaceId);
+        var proposals = new FakeProposalService(proposal)
+        {
+            CreateFailure = new InvalidOperationException("unsafe_patch_path")
+        };
+        var taskRuntime = new FakeTaskRuntime();
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            new FakeCodeContextService(_workspaceId),
+            new FakePlanningService(),
+            new FakeDraftService(),
+            proposals,
+            new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id)),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null)),
+            new FakeValidationCommandAllowlist(),
+            taskRuntime: taskRuntime);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateProposalFromRequestAsync(
+                new AedaCodeProposalCreationRequest(_workspaceId, "Add XML docs.")));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.ProposalValidationFailed, failure.Failure.Reason);
+        Assert.Equal("proposal_validation_failed", taskRuntime.FailedSafeCode);
+        Assert.Equal(1, proposals.CreateCount);
     }
 
     private static PatchProposal CreateProposal(WorkspaceId workspaceId)
@@ -188,14 +300,17 @@ public sealed class AedaCodeModuleServiceTests
 
     private sealed class FakeCodeContextService(WorkspaceId workspaceId) : ICodeContextService
     {
+        public bool ReturnEmptyContext { get; init; }
+
         public Task<CodeContextPack> LoadFilesAsync(
             WorkspaceId workspaceId,
             IReadOnlyList<string> relativePaths,
             int maxFiles = 20,
             int maxCharactersPerFile = 100_000,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(
-                new CodeContextPack(
+            Task.FromResult(ReturnEmptyContext
+                ? new CodeContextPack(workspaceId, [], [], ["no_safe_context"], false)
+                : new CodeContextPack(
                     workspaceId,
                     [new CodeContextFile(workspaceId, relativePaths[0], "old", "old-hash", "utf-8", 3, false, false)],
                     [],
@@ -228,10 +343,22 @@ public sealed class AedaCodeModuleServiceTests
 
     private sealed class FakeProposalService(PatchProposal proposal) : IPatchProposalService
     {
+        public int CreateCount { get; private set; }
+
+        public Exception? CreateFailure { get; init; }
+
         public Task<PatchProposal> CreateProposalAsync(
             PatchProposalCreateRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(proposal);
+            CancellationToken cancellationToken = default)
+        {
+            CreateCount++;
+            if (CreateFailure is not null)
+            {
+                return Task.FromException<PatchProposal>(CreateFailure);
+            }
+
+            return Task.FromResult(proposal);
+        }
 
         public Task<PatchProposal?> GetProposalAsync(
             PatchProposalId proposalId,
@@ -257,6 +384,8 @@ public sealed class AedaCodeModuleServiceTests
 
     private sealed class FakeApplyService(PatchApplyResult result) : IPatchApplyService
     {
+        public int ApplyCount { get; private set; }
+
         public Task<PatchApplyPlan> DryRunAsync(
             PatchApplyRequest request,
             CancellationToken cancellationToken = default) =>
@@ -277,8 +406,11 @@ public sealed class AedaCodeModuleServiceTests
 
         public Task<PatchApplyResult> ApplyAsync(
             PatchApplyRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(result);
+            CancellationToken cancellationToken = default)
+        {
+            ApplyCount++;
+            return Task.FromResult(result);
+        }
 
         public Task<PatchApplyResult?> GetApplyResultAsync(
             PatchApplyResultId resultId,
@@ -310,10 +442,15 @@ public sealed class AedaCodeModuleServiceTests
 
     private sealed class FakeValidationRunnerService(ValidationRun run) : IValidationRunnerService
     {
+        public int CreateRunCount { get; private set; }
+
         public Task<ValidationRun> CreateRunAsync(
             ValidationRunRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(run);
+            CancellationToken cancellationToken = default)
+        {
+            CreateRunCount++;
+            return Task.FromResult(run);
+        }
 
         public Task<ValidationRun> DryRunAsync(
             ValidationRunRequest request,
@@ -404,6 +541,94 @@ public sealed class AedaCodeModuleServiceTests
             int limit,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<IReadOnlyList<TaskRun>>([]);
+    }
+
+    private sealed class FakeDraftService : ICodeProposalDraftService
+    {
+        public int CreateCount { get; private set; }
+
+        public Task<CodeProposalDraft> CreateDraftAsync(
+            CodeProposalDraftRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            CreateCount++;
+            var file = request.Context.Files[0];
+            return Task.FromResult(new CodeProposalDraft(
+                "Add docs",
+                "Adds XML docs.",
+                [new PatchProposalFileEdit(file.RelativePath, file.Content, file.Content + "\n// docs")],
+                []));
+        }
+    }
+
+    private sealed class FakeTaskRuntime : ITaskRuntime
+    {
+        private readonly TaskRun _run = TaskRun.Create("Create code proposal", "aeda-code");
+
+        public List<(TaskEventKind Kind, string Summary)> Events { get; } = [];
+
+        public int CompletedCount { get; private set; }
+
+        public string? FailedSafeCode { get; private set; }
+
+        public ValueTask<TaskRun> StartTaskAsync(
+            string title,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(_run);
+
+        public ValueTask<TaskRun> StartTaskAsync(
+            string title,
+            string source = "unknown",
+            Guid? conversationId = null,
+            string? model = null,
+            string? provider = null,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(_run);
+
+        public ValueTask AppendEventAsync(
+            TaskId taskId,
+            TaskEventKind kind,
+            string summary,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add((kind, summary));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask AttachArtifactAsync(
+            TaskId taskId,
+            TaskArtifact artifact,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask CompleteTaskAsync(
+            TaskId taskId,
+            CancellationToken cancellationToken = default)
+        {
+            CompletedCount++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask CancelTaskAsync(
+            TaskId taskId,
+            TaskCancellationReason reason,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask FailTaskAsync(
+            TaskId taskId,
+            string safeErrorCode,
+            CancellationToken cancellationToken = default)
+        {
+            FailedSafeCode = safeErrorCode;
+            Events.Add((TaskEventKind.TaskFailed, safeErrorCode));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<TaskRunRecord?> GetTaskAsync(
+            TaskId taskId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<TaskRunRecord?>(null);
     }
 
     private static ApprovalRequest CreateApproval(

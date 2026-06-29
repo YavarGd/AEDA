@@ -9,12 +9,21 @@ public sealed class AedaCodeModuleService(
     IWorkspaceReader workspaceReader,
     ICodeContextService codeContextService,
     ICodeChangePlanningService planningService,
+    ICodeProposalDraftService? draftService,
     IPatchProposalService proposalService,
     IPatchApplyService applyService,
     IValidationRunnerService validationRunnerService,
     IValidationCommandAllowlist validationCommandAllowlist,
-    ITaskQueryService? taskQueryService = null) : IAedaCodeModuleService
+    ITaskQueryService? taskQueryService = null,
+    ITaskRuntime? taskRuntime = null) : IAedaCodeModuleService
 {
+    private const int MaxCreationRequestCharacters = 4_000;
+    private const int MaxCreationTitleCharacters = 120;
+    private const int MaxContextFiles = 8;
+    private const int MaxContextCharactersPerFile = 30_000;
+    private static readonly HashSet<string> PreferredContextExtensions = new(
+        [".cs", ".xaml", ".csproj", ".props", ".json", ".md", ".ts", ".tsx", ".js", ".jsx", ".css"],
+        StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
     private readonly List<AedaCodeSession> _sessions = [];
 
@@ -120,6 +129,154 @@ public sealed class AedaCodeModuleService(
         PatchProposalCreateRequest request,
         CancellationToken cancellationToken = default) =>
         proposalService.CreateProposalAsync(request, cancellationToken);
+
+    public async Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
+        AedaCodeProposalCreationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (draftService is null)
+        {
+            throw Failure(AedaCodeProposalCreationFailureReason.ProviderUnavailable);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.UserRequest))
+        {
+            throw Failure(AedaCodeProposalCreationFailureReason.RequestEmpty);
+        }
+
+        if (request.UserRequest.Length > MaxCreationRequestCharacters)
+        {
+            throw Failure(AedaCodeProposalCreationFailureReason.RequestTooLong);
+        }
+
+        if (request.OptionalTitle?.Length > MaxCreationTitleCharacters)
+        {
+            throw Failure(AedaCodeProposalCreationFailureReason.RequestTooLong);
+        }
+
+        WorkspaceDescriptor workspace;
+        try
+        {
+            workspace = workspaceReader.GetWorkspace(request.WorkspaceId);
+        }
+        catch (WorkspaceAccessException exception)
+        {
+            throw Failure(AedaCodeProposalCreationFailureReason.WorkspaceUnavailable, exception);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw Failure(AedaCodeProposalCreationFailureReason.WorkspaceMissing, exception);
+        }
+
+        var task = taskRuntime is null
+            ? null
+            : await taskRuntime.StartTaskAsync(
+                CreateTaskTitle(request),
+                "aeda-code",
+                model: null,
+                provider: null,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await AppendTaskAsync(task?.Id, TaskEventKind.CodeChangeRequested, "Code proposal creation requested.", cancellationToken)
+                .ConfigureAwait(false);
+            CodeContextPack context;
+            try
+            {
+                context = await GatherBoundedContextAsync(
+                    workspace.Id,
+                    request.UserRequest,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (WorkspaceAccessException exception)
+            {
+                throw Failure(AedaCodeProposalCreationFailureReason.WorkspaceUnavailable, exception);
+            }
+
+            await AppendTaskAsync(task?.Id, TaskEventKind.CodeContextLoaded, "Bounded code context loaded.", cancellationToken)
+                .ConfigureAwait(false);
+
+            var changeRequest = CodeChangeRequest.Create(
+                workspace.Id,
+                request.UserRequest,
+                context.Files.Select(file => file.RelativePath).ToArray(),
+                "aeda-code-ui");
+            var plan = await planningService.CreatePlanAsync(
+                changeRequest,
+                context,
+                cancellationToken).ConfigureAwait(false);
+            await AppendTaskAsync(task?.Id, TaskEventKind.CodeChangePlanCreated, "Code change plan created.", cancellationToken)
+                .ConfigureAwait(false);
+
+            var draft = await draftService.CreateDraftAsync(
+                new CodeProposalDraftRequest(
+                    changeRequest,
+                    context,
+                    request.OptionalTitle),
+                cancellationToken).ConfigureAwait(false);
+
+            PatchProposal proposal;
+            try
+            {
+                proposal = await proposalService.CreateProposalAsync(
+                    new PatchProposalCreateRequest(
+                        workspace.Id,
+                        string.IsNullOrWhiteSpace(request.OptionalTitle)
+                            ? draft.Title
+                            : request.OptionalTitle.Trim(),
+                        draft.Summary,
+                        draft.FileEdits,
+                        plan.ContextSources,
+                        plan.ValidationPlan),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException exception)
+            {
+                throw Failure(AedaCodeProposalCreationFailureReason.ProposalValidationFailed, exception);
+            }
+            catch (IOException exception)
+            {
+                throw Failure(AedaCodeProposalCreationFailureReason.ProposalPersistenceFailed, exception);
+            }
+
+            await AppendTaskAsync(task?.Id, TaskEventKind.PatchProposalCreated, "Patch proposal created for review.", cancellationToken)
+                .ConfigureAwait(false);
+            if (taskRuntime is not null && task is not null)
+            {
+                await taskRuntime.AttachArtifactAsync(
+                    task.Id,
+                    TaskArtifact.Create(
+                        proposal.Title,
+                        "patch-proposal",
+                        proposal.Id.ToString()),
+                    cancellationToken).ConfigureAwait(false);
+                await taskRuntime.CompleteTaskAsync(task.Id, cancellationToken).ConfigureAwait(false);
+            }
+
+            return new AedaCodeProposalCreationResult(
+                proposal,
+                ToProposalSummary(proposal),
+                context.Files.Select(file => file.RelativePath).ToArray(),
+                draft.SafeNotices);
+        }
+        catch (Exception exception)
+        {
+            var failure = ToFailure(exception);
+            if (taskRuntime is not null && task is not null)
+            {
+                await taskRuntime.FailTaskAsync(
+                    task.Id,
+                    failure.SafeCode,
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+
+            throw exception is AedaCodeProposalCreationException
+                ? exception
+                : new AedaCodeProposalCreationException(failure, exception);
+        }
+    }
 
     public Task<PatchProposal?> GetProposalAsync(
         PatchProposalId proposalId,
@@ -275,6 +432,208 @@ public sealed class AedaCodeModuleService(
                 "task",
                 $"{run.Title} ({run.Status})"))
             .ToArray();
+    }
+
+    private async Task<CodeContextPack> GatherBoundedContextAsync(
+        WorkspaceId workspaceId,
+        string userRequest,
+        CancellationToken cancellationToken)
+    {
+        var paths = DiscoverContextPaths(workspaceId, cancellationToken);
+        if (paths.Count == 0)
+        {
+            var query = CreateSearchQuery(userRequest);
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                var search = await codeContextService.SearchAsync(
+                    new CodeContextSearchRequest(
+                        workspaceId,
+                        query,
+                        ".",
+                        null,
+                        MaxResults: MaxContextFiles),
+                    cancellationToken).ConfigureAwait(false);
+                paths = search.SearchMatches
+                    .Select(match => match.RelativePath)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(MaxContextFiles)
+                    .ToArray();
+            }
+        }
+
+        var context = await codeContextService.LoadFilesAsync(
+            workspaceId,
+            paths,
+            MaxContextFiles,
+            MaxContextCharactersPerFile,
+            cancellationToken).ConfigureAwait(false);
+        if (context.Files.Count == 0)
+        {
+            throw Failure(AedaCodeProposalCreationFailureReason.NoSafeContext);
+        }
+
+        return context;
+    }
+
+    private IReadOnlyList<string> DiscoverContextPaths(
+        WorkspaceId workspaceId,
+        CancellationToken cancellationToken)
+    {
+        var paths = new List<string>();
+        AddPreferredFiles(workspaceId, ".", paths, cancellationToken);
+        foreach (var directory in workspaceReader.ListDirectory(
+                     workspaceId,
+                     ".",
+                     maxEntries: 100,
+                     includeHidden: false,
+                     cancellationToken)
+                     .Where(entry => entry.Type == WorkspaceEntryType.Directory)
+                     .Select(entry => entry.RelativePath)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                     .Take(12))
+        {
+            if (paths.Count >= MaxContextFiles)
+            {
+                break;
+            }
+
+            AddPreferredFiles(workspaceId, directory, paths, cancellationToken);
+        }
+
+        return paths
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaxContextFiles)
+            .ToArray();
+    }
+
+    private void AddPreferredFiles(
+        WorkspaceId workspaceId,
+        string relativeDirectory,
+        List<string> paths,
+        CancellationToken cancellationToken)
+    {
+        if (paths.Count >= MaxContextFiles)
+        {
+            return;
+        }
+
+        IReadOnlyList<WorkspaceDirectoryEntry> entries;
+        try
+        {
+            entries = workspaceReader.ListDirectory(
+                workspaceId,
+                relativeDirectory,
+                maxEntries: 120,
+                includeHidden: false,
+                cancellationToken);
+        }
+        catch (WorkspaceAccessException)
+        {
+            return;
+        }
+
+        foreach (var entry in entries
+                     .Where(entry => entry.Type == WorkspaceEntryType.File)
+                     .Where(entry => PreferredContextExtensions.Contains(entry.Extension))
+                     .OrderBy(entry => ContextPathPriority(entry.RelativePath))
+                     .ThenBy(entry => entry.RelativePath, StringComparer.OrdinalIgnoreCase))
+        {
+            paths.Add(entry.RelativePath.Replace('\\', '/'));
+            if (paths.Count >= MaxContextFiles)
+            {
+                return;
+            }
+        }
+    }
+
+    private static int ContextPathPriority(string relativePath)
+    {
+        var path = relativePath.Replace('\\', '/');
+        if (path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        return 2;
+    }
+
+    private static string CreateSearchQuery(string userRequest)
+    {
+        var token = userRequest
+            .Split([' ', '\r', '\n', '\t', '.', ',', ';', ':', '"', '\''], StringSplitOptions.RemoveEmptyEntries)
+            .Where(part => part.Length >= 4)
+            .FirstOrDefault();
+        return token ?? string.Empty;
+    }
+
+    private async ValueTask AppendTaskAsync(
+        TaskId? taskId,
+        TaskEventKind kind,
+        string summary,
+        CancellationToken cancellationToken)
+    {
+        if (taskRuntime is null || taskId is null)
+        {
+            return;
+        }
+
+        await taskRuntime.AppendEventAsync(taskId.Value, kind, summary, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static string CreateTaskTitle(AedaCodeProposalCreationRequest request)
+    {
+        var title = string.IsNullOrWhiteSpace(request.OptionalTitle)
+            ? request.UserRequest
+            : request.OptionalTitle!;
+        title = string.IsNullOrWhiteSpace(title) ? "Create code proposal" : title.Trim();
+        return title.Length <= 80 ? title : title[..80];
+    }
+
+    private static AedaCodeProposalCreationException Failure(
+        AedaCodeProposalCreationFailureReason reason,
+        Exception? innerException = null) =>
+        new(AedaCodeProposalCreationFailure.FromReason(reason), innerException);
+
+    private static AedaCodeProposalCreationFailure ToFailure(Exception exception)
+    {
+        if (exception is AedaCodeProposalCreationException proposalException)
+        {
+            return proposalException.Failure;
+        }
+
+        if (exception is OperationCanceledException)
+        {
+            return AedaCodeProposalCreationFailure.FromReason(
+                AedaCodeProposalCreationFailureReason.ModelCancelled);
+        }
+
+        if (exception is TimeoutException)
+        {
+            return AedaCodeProposalCreationFailure.FromReason(
+                AedaCodeProposalCreationFailureReason.ModelTimeout);
+        }
+
+        if (exception is WorkspaceAccessException)
+        {
+            return AedaCodeProposalCreationFailure.FromReason(
+                AedaCodeProposalCreationFailureReason.WorkspaceUnavailable);
+        }
+
+        if (exception is IOException)
+        {
+            return AedaCodeProposalCreationFailure.FromReason(
+                AedaCodeProposalCreationFailureReason.ProposalPersistenceFailed);
+        }
+
+        return AedaCodeProposalCreationFailure.FromReason(
+            AedaCodeProposalCreationFailureReason.UnknownSafeFailure);
     }
 
     private static AedaCodeProposalSummary ToProposalSummary(PatchProposal proposal) =>

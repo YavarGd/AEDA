@@ -178,6 +178,11 @@ public partial class App : Application
             taskRuntime);
         var codeContextService = new CodeContextService(workspaceReader);
         var validationPlanService = new ValidationPlanService();
+        var codeProposalDraftService = new CodeProposalDraftService(
+            new PersonalAI.Core.Providers.LocalFirstModelRoutingPolicy(providerCatalog.Registry),
+            new PersonalAI.Core.Providers.ContextPrivacyFilter(),
+            providerCatalog.ChatProviders,
+            () => _settingsService.Current.ProviderRouting);
         var patchProposalService = new PatchProposalService(
             patchProposalRepository,
             new UnifiedDiffBuilder(),
@@ -269,11 +274,13 @@ public partial class App : Application
             workspaceReader,
             codeContextService,
             new CodeChangePlanningService(validationPlanService),
+            codeProposalDraftService,
             patchProposalService,
             patchApplyService,
             validationRunnerService,
             validationCommandAllowlist,
-            taskQueryService);
+            taskQueryService,
+            taskRuntime);
         var aedaCodeViewModel = new AedaCodeModuleViewModel(
             aedaCodeModule,
             moduleRegistry,

@@ -414,6 +414,11 @@ public sealed class AedaShellDashboardTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
+            AedaCodeProposalCreationRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<PatchProposal?> GetProposalAsync(
             PatchProposalId proposalId,
             CancellationToken cancellationToken = default) =>

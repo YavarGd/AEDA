@@ -1810,6 +1810,65 @@
                                 CornerRadius="{StaticResource CardCornerRadius}"
                                 Padding="{StaticResource CardPadding}">
                             <StackPanel Spacing="10">
+                                <TextBlock Text="Create Proposal"
+                                           Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
+                                <TextBlock Text="{Binding ProposalCreationWorkspaceText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ProposalCreationSafetyText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <TextBox Header="Task title"
+                                         Text="{Binding ProposalTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         MaxLength="120"
+                                         PlaceholderText="Optional"
+                                         AutomationProperties.Name="Optional proposal title" />
+                                <TextBlock Text="{Binding ProposalTitleLengthText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                <TextBox Header="Coding request"
+                                         Text="{Binding ProposalRequest, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         MaxLength="4000"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MinHeight="112"
+                                         PlaceholderText="Describe the exact code change to propose."
+                                         AutomationProperties.Name="Coding request" />
+                                <TextBlock Text="{Binding ProposalRequestLengthText}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Create proposal"
+                                            Command="{Binding CreateProposalCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                    <Button Grid.Column="1"
+                                            Content="Cancel"
+                                            Command="{Binding CancelProposalCreationCommand}"
+                                            HorizontalAlignment="Stretch" />
+                                </Grid>
+                                <TextBlock Text="{Binding SafeStatusMessage}"
+                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                           TextWrapping="Wrap" />
+                                <StackPanel Spacing="4"
+                                            Visibility="{Binding HasProposalCreationFailure, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock Text="{Binding ProposalCreationFailureText}"
+                                               TextWrapping="Wrap"
+                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="{Binding ProposalCreationFailureDetailText}"
+                                               Style="{ThemeResource PersonalAiSecondaryTextStyle}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                                BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="{StaticResource CardPadding}">
+                            <StackPanel Spacing="10">
                                 <TextBlock Text="Proposals"
                                            Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
                                 <TextBlock Text="{Binding ProposalCountText}"

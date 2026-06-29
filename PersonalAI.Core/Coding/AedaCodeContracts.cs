@@ -69,6 +69,143 @@ public sealed record AedaCodeProposalSummary(
     IReadOnlyList<string> RelativePaths,
     DateTimeOffset UpdatedAtUtc);
 
+public sealed record AedaCodeProposalCreationRequest(
+    WorkspaceId WorkspaceId,
+    string UserRequest,
+    string? OptionalTitle = null);
+
+public enum AedaCodeProposalCreationFailureReason
+{
+    WorkspaceMissing,
+    WorkspaceUnavailable,
+    RequestEmpty,
+    RequestTooLong,
+    NoSafeContext,
+    ProviderUnavailable,
+    ProviderRejectedByPolicy,
+    ModelTimeout,
+    ModelCancelled,
+    InvalidModelJson,
+    InvalidModelSchema,
+    UnsafeFileTarget,
+    UnsafePatch,
+    ProposalValidationFailed,
+    ProposalPersistenceFailed,
+    UnknownSafeFailure
+}
+
+public sealed record AedaCodeProposalCreationFailure(
+    AedaCodeProposalCreationFailureReason Reason,
+    string SafeCode,
+    string UserMessage,
+    string NextStepHint)
+{
+    public static AedaCodeProposalCreationFailure FromReason(
+        AedaCodeProposalCreationFailureReason reason) =>
+        reason switch
+        {
+            AedaCodeProposalCreationFailureReason.WorkspaceMissing => new(
+                reason,
+                "workspace_missing",
+                "No registered workspace was selected.",
+                "Select a registered workspace, then try creating the proposal again."),
+            AedaCodeProposalCreationFailureReason.WorkspaceUnavailable => new(
+                reason,
+                "workspace_unavailable",
+                "The selected workspace could not be read safely.",
+                "Refresh the workspace list or re-register the workspace."),
+            AedaCodeProposalCreationFailureReason.RequestEmpty => new(
+                reason,
+                "request_empty",
+                "Enter a coding request first.",
+                "Describe one explicit code change, then create the proposal."),
+            AedaCodeProposalCreationFailureReason.RequestTooLong => new(
+                reason,
+                "request_too_long",
+                "The coding request is too long.",
+                "Shorten the request to one focused change."),
+            AedaCodeProposalCreationFailureReason.NoSafeContext => new(
+                reason,
+                "no_safe_context",
+                "No safe context was available.",
+                "Try selecting a more specific workspace or use VS Code to send a file or selection first."),
+            AedaCodeProposalCreationFailureReason.ProviderUnavailable => new(
+                reason,
+                "provider_unavailable",
+                "No coding model was available.",
+                "Check that qwen2.5-coder:7b or another configured coding model is installed."),
+            AedaCodeProposalCreationFailureReason.ProviderRejectedByPolicy => new(
+                reason,
+                "provider_rejected_by_policy",
+                "Provider privacy policy blocked this request.",
+                "Use a local coding model or adjust provider privacy settings for workspace context."),
+            AedaCodeProposalCreationFailureReason.ModelTimeout => new(
+                reason,
+                "model_timeout",
+                "The coding model did not finish in time.",
+                "Try a smaller, more specific request."),
+            AedaCodeProposalCreationFailureReason.ModelCancelled => new(
+                reason,
+                "model_cancelled",
+                "Proposal creation was cancelled before the model finished.",
+                "Try again when you are ready."),
+            AedaCodeProposalCreationFailureReason.InvalidModelJson => new(
+                reason,
+                "invalid_model_json",
+                "The model response was not valid proposal JSON.",
+                "Try a smaller, more specific request."),
+            AedaCodeProposalCreationFailureReason.InvalidModelSchema => new(
+                reason,
+                "invalid_model_schema",
+                "The model response did not match the proposal schema.",
+                "Try a more explicit request that names the intended change."),
+            AedaCodeProposalCreationFailureReason.UnsafeFileTarget => new(
+                reason,
+                "unsafe_file_target",
+                "The proposed change targeted a file outside the bounded context.",
+                "Ask for a change in a file that is already visible in the safe context."),
+            AedaCodeProposalCreationFailureReason.UnsafePatch => new(
+                reason,
+                "unsafe_patch",
+                "The proposed patch did not pass safety checks.",
+                "Try a smaller change that modifies existing text only."),
+            AedaCodeProposalCreationFailureReason.ProposalValidationFailed => new(
+                reason,
+                "proposal_validation_failed",
+                "AEDA rejected the generated diff during proposal validation.",
+                "Try a smaller request or include a more specific target file."),
+            AedaCodeProposalCreationFailureReason.ProposalPersistenceFailed => new(
+                reason,
+                "proposal_persistence_failed",
+                "The proposal could not be saved safely.",
+                "Try again after refreshing AEDA Code."),
+            _ => new(
+                AedaCodeProposalCreationFailureReason.UnknownSafeFailure,
+                "unknown_safe_failure",
+                "Proposal creation failed safely.",
+                "Try again with a smaller request or a more specific target file.")
+        };
+}
+
+public sealed class AedaCodeProposalCreationException : InvalidOperationException
+{
+    public AedaCodeProposalCreationException(
+        AedaCodeProposalCreationFailure failure,
+        Exception? innerException = null)
+        : base(failure.SafeCode, innerException)
+    {
+        Failure = failure;
+    }
+
+    public AedaCodeProposalCreationFailure Failure { get; }
+}
+
+public sealed record AedaCodeProposalCreationResult(
+    PatchProposal Proposal,
+    AedaCodeProposalSummary Summary,
+    IReadOnlyList<string> ContextRelativePaths,
+    IReadOnlyList<string> SafeNotices);
+
 public sealed record AedaCodeApplySummary(
     PatchApplyResultId ApplyResultId,
     PatchProposalId ProposalId,
@@ -139,6 +276,10 @@ public interface IAedaCodeModuleService
 
     Task<PatchProposal> CreateProposalAsync(
         PatchProposalCreateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
+        AedaCodeProposalCreationRequest request,
         CancellationToken cancellationToken = default);
 
     Task<PatchProposal?> GetProposalAsync(

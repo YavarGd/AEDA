@@ -183,6 +183,12 @@ public sealed class ProviderFactory(
                 ModelCapability.StreamingChat |
                 ModelCapability.SupportsSystemPrompt |
                 (isLocal ? ModelCapability.LocalOnly : ModelCapability.Remote);
+            if (chatModel.Contains("code", StringComparison.OrdinalIgnoreCase) ||
+                chatModel.Contains("coder", StringComparison.OrdinalIgnoreCase))
+            {
+                capabilities |= ModelCapability.Code;
+            }
+
             if (profile.Kind == ProviderKind.Ollama)
             {
                 capabilities |= ModelCapability.StructuredToolCalls |

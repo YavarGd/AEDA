@@ -213,6 +213,100 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
     }
 
+    [Fact]
+    public async Task CreateProposal_DisabledWithoutWorkspaceEmptyRequestAndOverLimit()
+    {
+        var viewModel = CreateViewModel(new WorkspaceRegistry(), new FakeAedaCodeModuleService());
+        await viewModel.InitializeAsync();
+
+        viewModel.ProposalRequest = "Add XML docs.";
+        Assert.False(viewModel.CreateProposalCommand.CanExecute(null));
+
+        var registry = CreateRegistry();
+        viewModel = CreateViewModel(registry, new FakeAedaCodeModuleService());
+        await viewModel.InitializeAsync();
+        Assert.False(viewModel.CreateProposalCommand.CanExecute(null));
+
+        viewModel.ProposalRequest = new string('a', AedaCodeModuleViewModel.MaxProposalRequestCharacters + 1);
+        Assert.False(viewModel.CreateProposalCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task CreateProposal_DelegatesShowsDetailAndDoesNotRunApplyOrValidation()
+    {
+        var registry = CreateRegistry();
+        var workspace = registry.List().Single();
+        var proposal = CreateProposal("src/App.cs", "+ docs", ["src/App.cs"]) with
+        {
+            WorkspaceId = workspace.Id
+        };
+        var service = new FakeAedaCodeModuleService
+        {
+            CreatedProposal = proposal,
+            ProposalDetail = proposal
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        viewModel.ProposalRequest = "Add XML docs to this helper method.";
+        viewModel.ProposalTitle = "Docs";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Equal(1, service.CreateProposalFromRequestCount);
+        Assert.Single(viewModel.Proposals);
+        Assert.Equal(proposal.Id, viewModel.SelectedProposal?.ProposalId);
+        Assert.Contains("+ docs", viewModel.UnifiedDiffPreview, StringComparison.Ordinal);
+        Assert.Contains("No files changed", viewModel.SafeStatusMessage, StringComparison.Ordinal);
+        Assert.Equal(0, service.ApplyCount);
+        Assert.Equal(0, service.ValidationRunCount);
+        Assert.Equal(0, service.DryRunCount);
+    }
+
+    [Fact]
+    public async Task CreateProposal_InvalidModelOutputHandledSafely()
+    {
+        var registry = CreateRegistry();
+        var service = new FakeAedaCodeModuleService
+        {
+            CreateProposalFailure = new InvalidOperationException("model_patch_invalid")
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        viewModel.ProposalRequest = "Make a safe change.";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Empty(viewModel.Proposals);
+        Assert.Equal("invalid_model_json", viewModel.ProposalCreationFailure?.SafeCode);
+        Assert.Contains("valid proposal JSON", viewModel.SafeStatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Try a smaller", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("invalid_model_json", viewModel.ProposalCreationFailureDetailText, StringComparison.Ordinal);
+        Assert.DoesNotContain("not json", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, service.ApplyCount);
+        Assert.Equal(0, service.ValidationRunCount);
+    }
+
+    [Fact]
+    public async Task CreateProposal_RetryAvailableAfterFailure()
+    {
+        var registry = CreateRegistry();
+        var service = new FakeAedaCodeModuleService
+        {
+            CreateProposalFailure = new AedaCodeProposalCreationException(
+                AedaCodeProposalCreationFailure.FromReason(
+                    AedaCodeProposalCreationFailureReason.NoSafeContext))
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        viewModel.ProposalRequest = "Make a safe change.";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Equal("no_safe_context", viewModel.ProposalCreationFailure?.SafeCode);
+        Assert.True(viewModel.CreateProposalCommand.CanExecute(null));
+        Assert.False(viewModel.CancelProposalCreationCommand.CanExecute(null));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -312,9 +406,9 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
     private sealed class FakeAedaCodeModuleService : IAedaCodeModuleService
     {
-        public IReadOnlyList<AedaCodeProposalSummary> ProposalSummaries { get; init; } = [];
+        public IReadOnlyList<AedaCodeProposalSummary> ProposalSummaries { get; set; } = [];
 
-        public PatchProposal? ProposalDetail { get; init; }
+        public PatchProposal? ProposalDetail { get; set; }
 
         public PatchApplyPlan? DryRunPlan { get; init; }
 
@@ -331,6 +425,12 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         public int ValidationRunCount { get; private set; }
 
         public int RollbackCount { get; private set; }
+
+        public int CreateProposalFromRequestCount { get; private set; }
+
+        public PatchProposal? CreatedProposal { get; init; }
+
+        public Exception? CreateProposalFailure { get; init; }
 
         public Task<AedaCodeSession> StartSessionAsync(WorkspaceId workspaceId, string? safeSummary = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AedaCodeSession(
@@ -363,6 +463,33 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         public Task<PatchProposal> CreateProposalAsync(PatchProposalCreateRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
+            AedaCodeProposalCreationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            CreateProposalFromRequestCount++;
+            if (CreateProposalFailure is not null)
+            {
+                return Task.FromException<AedaCodeProposalCreationResult>(CreateProposalFailure);
+            }
+
+            var proposal = CreatedProposal ?? CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+            ProposalDetail = proposal;
+            var summary = new AedaCodeProposalSummary(
+                proposal.Id,
+                proposal.Title,
+                proposal.Status,
+                new AedaCodeRiskBadge(proposal.Risk, proposal.Risk.ToString(), string.Join(", ", proposal.RiskReasons)),
+                proposal.Files.Select(file => file.RelativePath).ToArray(),
+                proposal.UpdatedAtUtc);
+            ProposalSummaries = [summary];
+            return Task.FromResult(new AedaCodeProposalCreationResult(
+                proposal,
+                summary,
+                proposal.Sources.Select(source => source.RelativePath).ToArray(),
+                []));
+        }
 
         public Task<PatchProposal?> GetProposalAsync(PatchProposalId proposalId, CancellationToken cancellationToken = default) =>
             Task.FromResult(ProposalDetail);
