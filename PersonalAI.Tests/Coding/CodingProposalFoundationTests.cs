@@ -215,6 +215,135 @@ public sealed class CodingProposalFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task ProposalService_CapturesFullWorkspaceBaselineIgnoringModelOriginal()
+    {
+        var registry = new WorkspaceRegistry();
+        Directory.CreateDirectory(_root);
+        var workspace = registry.Register(_root, "Test");
+        var original = string.Join(
+            "\n",
+            Enumerable.Range(0, 2_000).Select(index => $"line {index}")) + "\n";
+        var proposed = original.Replace("line 1999", "line 1999 // docs", StringComparison.Ordinal);
+        Write("src/App.cs", original);
+        var before = File.ReadAllText(Path.Combine(_root, "src", "App.cs"));
+        var repository = CreateRepository();
+        await repository.InitializeAsync();
+        var reader = CreateReader(registry);
+        var service = new PatchProposalService(
+            repository,
+            new UnifiedDiffBuilder(),
+            new PatchRiskClassifier(),
+            new ValidationPlanService(),
+            reader);
+
+        var proposal = await service.CreateProposalAsync(new PatchProposalCreateRequest(
+            workspace.Id,
+            "Change app",
+            "Change text",
+            [new PatchProposalFileEdit("src/App.cs", "line 0\nline 1\n", proposed)],
+            []));
+        var plan = await new PatchApplyValidator(
+            repository,
+            reader,
+            new WorkspacePathResolver(registry)).DryRunAsync(
+                new PatchApplyRequest(proposal.Id, workspace.Id));
+
+        Assert.Equal(before, File.ReadAllText(Path.Combine(_root, "src", "App.cs")));
+        Assert.Equal(PatchApplyStatus.DryRunPassed, plan.Status);
+        Assert.DoesNotContain(PatchApplyFailureReason.StaleOriginalContent, plan.FailureReasons);
+        Assert.Equal(original, proposal.Files[0].OriginalContent);
+        Assert.Equal(CodeContextService.ComputeHash(original), proposal.Files[0].OriginalContentHash);
+    }
+
+    [Fact]
+    public async Task ProposalService_RealChangeAfterProposalStillFailsStale()
+    {
+        var registry = new WorkspaceRegistry();
+        Directory.CreateDirectory(_root);
+        var workspace = registry.Register(_root, "Test");
+        Write("src/App.cs", "old\n");
+        var repository = CreateRepository();
+        await repository.InitializeAsync();
+        var reader = CreateReader(registry);
+        var service = new PatchProposalService(
+            repository,
+            new UnifiedDiffBuilder(),
+            new PatchRiskClassifier(),
+            new ValidationPlanService(),
+            reader);
+        var proposal = await service.CreateProposalAsync(new PatchProposalCreateRequest(
+            workspace.Id,
+            "Change app",
+            "Change text",
+            [new PatchProposalFileEdit("src/App.cs", null, "new\n")],
+            []));
+
+        Write("src/App.cs", "user changed\n");
+        var plan = await new PatchApplyValidator(
+            repository,
+            reader,
+            new WorkspacePathResolver(registry)).DryRunAsync(
+                new PatchApplyRequest(proposal.Id, workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.DryRunFailed, plan.Status);
+        Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, plan.FailureReasons);
+    }
+
+    [Theory]
+    [InlineData("lf")]
+    [InlineData("crlf")]
+    [InlineData("utf8bom")]
+    public async Task ProposalService_BaselineMatchesDryRunForSupportedTextRepresentations(
+        string representation)
+    {
+        var registry = new WorkspaceRegistry();
+        Directory.CreateDirectory(_root);
+        var workspace = registry.Register(_root, "Test");
+        var content = representation == "crlf"
+            ? "class App\r\n{\r\n}\r\n"
+            : "class App\n{\n}\n";
+        var path = Path.Combine(_root, "src", "App.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (representation == "utf8bom")
+        {
+            File.WriteAllBytes(
+                path,
+                System.Text.Encoding.UTF8.GetPreamble()
+                    .Concat(System.Text.Encoding.UTF8.GetBytes(content))
+                    .ToArray());
+        }
+        else
+        {
+            File.WriteAllText(path, content);
+        }
+
+        var repository = CreateRepository();
+        await repository.InitializeAsync();
+        var reader = CreateReader(registry);
+        var service = new PatchProposalService(
+            repository,
+            new UnifiedDiffBuilder(),
+            new PatchRiskClassifier(),
+            new ValidationPlanService(),
+            reader);
+        var proposal = await service.CreateProposalAsync(new PatchProposalCreateRequest(
+            workspace.Id,
+            "Change app",
+            "Change text",
+            [new PatchProposalFileEdit("src/App.cs", "model original ignored", content + "// docs\n")],
+            []));
+
+        var plan = await new PatchApplyValidator(
+            repository,
+            reader,
+            new WorkspacePathResolver(registry)).DryRunAsync(
+                new PatchApplyRequest(proposal.Id, workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.DryRunPassed, plan.Status);
+        Assert.DoesNotContain(PatchApplyFailureReason.StaleOriginalContent, plan.FailureReasons);
+    }
+
+    [Fact]
     public async Task Planner_CreatesDeterministicPlan()
     {
         var workspaceId = WorkspaceId.NewId();

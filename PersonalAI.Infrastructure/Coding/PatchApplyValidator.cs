@@ -8,7 +8,6 @@ public sealed class PatchApplyValidator(
     IWorkspaceReader workspaceReader,
     IWorkspacePathResolver pathResolver) : IPatchApplyValidator
 {
-    private const int MaxFileCharacters = 500_000;
     private const int MaxPatchCharacters = 500_000;
 
     public async Task<PatchApplyPlan> DryRunAsync(
@@ -90,17 +89,11 @@ public sealed class PatchApplyValidator(
                         request.WorkspaceId,
                         file.RelativePath,
                         WorkspacePathKind.File);
-                    var current = workspaceReader.ReadTextFile(
+                    var current = PatchFileBaseline.ReadCurrentText(
+                        workspaceReader,
                         request.WorkspaceId,
                         file.RelativePath,
-                        MaxFileCharacters,
                         cancellationToken);
-                    if (current.IsTruncated || current.HadDecodingErrors)
-                    {
-                        failures.Add(PatchApplyFailureReason.LargeFileRejected);
-                        continue;
-                    }
-
                     var currentHash = CodeContextService.ComputeHash(current.Content);
                     if (currentHash != file.OriginalContentHash)
                     {
@@ -117,6 +110,11 @@ public sealed class PatchApplyValidator(
                 catch (WorkspaceAccessException)
                 {
                     failures.Add(PatchApplyFailureReason.StaleOriginalContent);
+                    continue;
+                }
+                catch (InvalidOperationException)
+                {
+                    failures.Add(PatchApplyFailureReason.LargeFileRejected);
                     continue;
                 }
             }

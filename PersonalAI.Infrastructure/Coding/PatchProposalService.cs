@@ -29,7 +29,10 @@ public sealed class PatchProposalService(
             throw new InvalidOperationException("patch_file_count_invalid");
         }
 
-        var files = request.FileEdits
+        var canonicalEdits = request.FileEdits
+            .Select(edit => CaptureWorkspaceBaseline(request.WorkspaceId, edit, cancellationToken))
+            .ToArray();
+        var files = canonicalEdits
             .Select(edit => diffBuilder.BuildFileDiff(edit))
             .ToArray();
         var (risk, reasons) = riskClassifier.Classify(files);
@@ -136,5 +139,31 @@ public sealed class PatchProposalService(
     {
         var trimmed = string.IsNullOrWhiteSpace(value) ? "Patch proposal" : value.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
+    private PatchProposalFileEdit CaptureWorkspaceBaseline(
+        WorkspaceId workspaceId,
+        PatchProposalFileEdit edit,
+        CancellationToken cancellationToken)
+    {
+        if (edit.ChangeKind == PatchProposalFileChangeKind.Add)
+        {
+            return edit with
+            {
+                OriginalContent = string.Empty,
+                RelativePath = edit.RelativePath.Replace('\\', '/')
+            };
+        }
+
+        var current = PatchFileBaseline.ReadCurrentText(
+            workspaceReader,
+            workspaceId,
+            edit.RelativePath,
+            cancellationToken);
+        return edit with
+        {
+            RelativePath = current.RelativePath.Replace('\\', '/'),
+            OriginalContent = current.Content
+        };
     }
 }
