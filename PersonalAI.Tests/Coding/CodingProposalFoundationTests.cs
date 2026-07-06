@@ -685,7 +685,7 @@ public sealed class CodingProposalFoundationTests : IDisposable
 
         Assert.Equal("invalid_model_json", failure.Failure.SafeCode);
         Assert.True(failure.Failure.RetryAttempted);
-        Assert.Contains("required JSON object", failure.Failure.NextStepHint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Retry usually helps", failure.Failure.NextStepHint, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(2, provider.RequestCount);
     }
 

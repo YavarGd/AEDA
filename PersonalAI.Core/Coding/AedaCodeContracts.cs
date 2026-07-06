@@ -247,13 +247,13 @@ public sealed record AedaCodeProposalCreationFailure(
             AedaCodeProposalCreationFailureReason.InvalidModelJson => new(
                 reason,
                 "invalid_model_json",
-                "The model response was not valid proposal JSON.",
-                "The coding model did not return the required JSON object. No files were changed. Try a smaller method or retry."),
+                "The model did not return valid JSON.",
+                "Retry usually helps. No files were changed."),
             AedaCodeProposalCreationFailureReason.InvalidModelSchema => new(
                 reason,
                 "invalid_model_schema",
-                "The model response did not match the proposal schema.",
-                "AEDA retried once when possible; try a more explicit request that names the intended change.",
+                "The model returned JSON, but it did not match AEDA's safe proposal format.",
+                "No files were changed. Retry or make the request more explicit.",
                 schemaIssueCode,
                 retryAttempted),
             AedaCodeProposalCreationFailureReason.UnsafeFileTarget => new(
@@ -274,12 +274,12 @@ public sealed record AedaCodeProposalCreationFailure(
             AedaCodeProposalCreationFailureReason.PartialProposedContent => new(
                 reason,
                 "partial_proposed_content",
-                "AEDA blocked this proposal because the model returned only a small snippet instead of a safe file edit.",
-                "No files were changed. Try a more specific request or select a smaller file."),
+                "AEDA blocked a partial proposal.",
+                "The model returned only a small snippet instead of a safe file edit. No files were changed."),
             AedaCodeProposalCreationFailureReason.UnsafeLargeDeletion => new(
                 reason,
                 "unsafe_large_deletion",
-                "AEDA blocked this proposal because it would delete most of an existing file.",
+                "AEDA blocked a proposal that looked like a large destructive deletion.",
                 "No files were changed. Try a more specific request or select a smaller file."),
             AedaCodeProposalCreationFailureReason.InvalidFileShape => new(
                 reason,
@@ -289,8 +289,8 @@ public sealed record AedaCodeProposalCreationFailure(
             AedaCodeProposalCreationFailureReason.TargetTextNotFound => new(
                 reason,
                 "target_text_not_found",
-                "AEDA could not find the exact text the model tried to replace.",
-                "No files were changed. Try a smaller selected file, select the exact file, or name the method you want to edit."),
+                "The model picked text that no longer matches the file.",
+                "No files were changed. Refresh context or choose the method again."),
             AedaCodeProposalCreationFailureReason.AmbiguousTextReplacement => new(
                 reason,
                 "ambiguous_text_replacement",
@@ -299,13 +299,13 @@ public sealed record AedaCodeProposalCreationFailure(
             AedaCodeProposalCreationFailureReason.SelectedTargetStale => new(
                 reason,
                 "selected_target_stale",
-                "The selected target snippet no longer matches the current file.",
-                "Refresh the selected context and choose the target snippet again."),
+                "The selected method changed or could not be revalidated.",
+                "Refresh context and choose the method again."),
             AedaCodeProposalCreationFailureReason.UnsafePatch => new(
                 reason,
                 "unsafe_patch",
-                "The proposed patch did not pass safety checks.",
-                "Try a smaller change that modifies existing text only."),
+                "The model tried to change content outside AEDA's safe proposal rules.",
+                "AEDA blocked it. No files were changed."),
             AedaCodeProposalCreationFailureReason.ProposalValidationFailed => new(
                 reason,
                 "proposal_validation_failed",

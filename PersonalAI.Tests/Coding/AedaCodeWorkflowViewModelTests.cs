@@ -430,6 +430,8 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Contains("ready for review", viewModel.ProposalCreationStateText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("+ docs", viewModel.UnifiedDiffPreview, StringComparison.Ordinal);
         Assert.Contains("No files changed", viewModel.SafeStatusMessage, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, viewModel.ProposalRequest);
+        Assert.Equal(string.Empty, viewModel.ProposalTitle);
         Assert.Equal(0, service.ApplyCount);
         Assert.Equal(0, service.ValidationRunCount);
         Assert.Equal(0, service.DryRunCount);
@@ -664,7 +666,20 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         {
             CreateProposalFailure = new AedaCodeProposalCreationException(
                 AedaCodeProposalCreationFailure.FromReason(
-                    AedaCodeProposalCreationFailureReason.ModelTimeout))
+                    AedaCodeProposalCreationFailureReason.ModelTimeout)),
+            TargetSnippetCandidates =
+            [
+                new(
+                    "snippet-1",
+                    "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs",
+                    "Helper",
+                    "private void Helper()",
+                    3,
+                    5,
+                    64,
+                    false,
+                    "private void Helper()")
+            ]
         };
         var viewModel = CreateViewModel(registry, service);
         await viewModel.InitializeAsync();
@@ -681,17 +696,22 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
             false,
             null));
         viewModel.ProposalRequest = "Add XML docs to the selected file.";
+        viewModel.ProposalTitle = "Docs";
+        viewModel.SelectTargetSnippet(viewModel.TargetSnippetCandidates.Single());
 
         await viewModel.CreateProposalAsync();
 
         Assert.Single(viewModel.SelectedContextFiles);
+        Assert.True(viewModel.HasSelectedTargetSnippet);
         Assert.Equal(
             "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs",
             viewModel.SelectedContextFiles.Single().RelativePath);
         Assert.Equal(
             ["PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs"],
             service.LastProposalCreationRequest?.ContextSelection?.RelativePaths);
+        Assert.Equal("snippet-1", service.LastProposalCreationRequest?.ContextSelection?.SelectedTargetSnippet?.Id);
         Assert.Equal("Add XML docs to the selected file.", viewModel.ProposalRequest);
+        Assert.Equal("Docs", viewModel.ProposalTitle);
         Assert.Equal("model_timeout", viewModel.ProposalCreationFailure?.SafeCode);
         Assert.False(viewModel.IsCreatingProposal);
         Assert.Empty(viewModel.Proposals);
@@ -781,8 +801,8 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Empty(viewModel.Proposals);
         Assert.Equal("invalid_model_json", viewModel.ProposalCreationFailure?.SafeCode);
         Assert.Contains("Retry is available", viewModel.ProposalCreationStateText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("valid proposal JSON", viewModel.SafeStatusMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Try a smaller", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("valid JSON", viewModel.SafeStatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Retry usually helps", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("invalid_model_json", viewModel.ProposalCreationFailureDetailText, StringComparison.Ordinal);
         Assert.DoesNotContain("not json", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, service.ApplyCount);
@@ -834,6 +854,108 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Equal("no_safe_context", viewModel.ProposalCreationFailure?.SafeCode);
         Assert.True(viewModel.CreateProposalCommand.CanExecute(null));
         Assert.False(viewModel.CancelProposalCreationCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task CreateProposal_RetryUsesSameRequestContextAndSnippet()
+    {
+        var registry = CreateRegistry();
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            CreateProposalFailure = new AedaCodeProposalCreationException(
+                AedaCodeProposalCreationFailure.FromReason(
+                    AedaCodeProposalCreationFailureReason.InvalidModelJson))
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.AddContextFileAsync(new AedaCodeContextFileCandidate(
+            workspace.Id,
+            "src/App.cs",
+            "App.cs",
+            "src",
+            ".cs",
+            "C#",
+            "16 B",
+            16,
+            true,
+            false,
+            null));
+        viewModel.SelectTargetSnippet(viewModel.TargetSnippetCandidates.Single());
+        viewModel.ProposalRequest = "Add XML docs.";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.True(viewModel.CreateProposalCommand.CanExecute(null));
+        service.CreateProposalFailure = null;
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Equal(2, service.CreateProposalFromRequestCount);
+        Assert.Equal("Add XML docs.", service.LastProposalCreationRequest?.UserRequest);
+        Assert.Equal(["src/App.cs"], service.LastProposalCreationRequest?.ContextSelection?.RelativePaths);
+        Assert.Equal("snippet-1", service.LastProposalCreationRequest?.ContextSelection?.SelectedTargetSnippet?.Id);
+        Assert.Single(viewModel.Proposals);
+        Assert.Equal(0, service.ApplyCount);
+        Assert.Equal(0, service.ValidationRunCount);
+        Assert.Equal(0, service.DryRunCount);
+    }
+
+    [Fact]
+    public async Task WorkingIndicatorTracksBusySearchAndProposalPhase()
+    {
+        var registry = CreateRegistry();
+        var service = new FakeAedaCodeModuleService
+        {
+            DelayUntilCancelled = true
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        viewModel.IsSearchingContext = true;
+        Assert.True(viewModel.IsWorking);
+        Assert.Contains("Searching context files", viewModel.WorkingIndicatorText, StringComparison.Ordinal);
+
+        viewModel.IsSearchingContext = false;
+        viewModel.IsBusy = true;
+        viewModel.SafeStatusMessage = "Refreshing Code dashboard.";
+        Assert.True(viewModel.IsWorking);
+        Assert.Equal("Refreshing Code dashboard.", viewModel.WorkingIndicatorText);
+
+        viewModel.IsBusy = false;
+        viewModel.ProposalRequest = "Add XML docs.";
+        var running = viewModel.CreateProposalAsync();
+        await service.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        viewModel.ProposalCreationPhase = AedaCodeProposalCreationPhase.CallingCodingModel;
+
+        Assert.True(viewModel.IsWorking);
+        Assert.Contains("Calling coding model", viewModel.WorkingIndicatorText, StringComparison.Ordinal);
+        Assert.False(viewModel.CreateProposalCommand.CanExecute(null));
+
+        viewModel.CancelProposalCreation();
+        await running.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.False(viewModel.IsWorking);
+        Assert.Equal(string.Empty, viewModel.WorkingIndicatorText);
+    }
+
+    [Theory]
+    [InlineData(AedaCodeProposalCreationFailureReason.InvalidModelSchema, "safe proposal format")]
+    [InlineData(AedaCodeProposalCreationFailureReason.PartialProposedContent, "partial proposal")]
+    [InlineData(AedaCodeProposalCreationFailureReason.UnsafeLargeDeletion, "large destructive deletion")]
+    [InlineData(AedaCodeProposalCreationFailureReason.TargetTextNotFound, "no longer matches")]
+    [InlineData(AedaCodeProposalCreationFailureReason.SelectedTargetStale, "could not be revalidated")]
+    [InlineData(AedaCodeProposalCreationFailureReason.UnsafePatch, "blocked it")]
+    public void ProposalCreationFailureMessagesArePlainLanguage(
+        AedaCodeProposalCreationFailureReason reason,
+        string expected)
+    {
+        var failure = AedaCodeProposalCreationFailure.FromReason(reason, "raw_model_output");
+
+        Assert.Contains(expected, $"{failure.UserMessage} {failure.NextStepHint}", StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("{", failure.UserMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("raw_model_output", failure.UserMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("raw_model_output", failure.NextStepHint, StringComparison.Ordinal);
     }
 
     public void Dispose()
@@ -959,7 +1081,7 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         public PatchProposal? CreatedProposal { get; init; }
 
-        public Exception? CreateProposalFailure { get; init; }
+        public Exception? CreateProposalFailure { get; set; }
 
         public bool DelayUntilCancelled { get; init; }
 

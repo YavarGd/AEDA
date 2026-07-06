@@ -218,6 +218,30 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ? string.Empty
         : BuildProposalCreationFailureDetail(ProposalCreationFailure);
 
+    public bool IsWorking => IsBusy || IsCreatingProposal || IsSearchingContext;
+
+    public string WorkingIndicatorText
+    {
+        get
+        {
+            if (IsCreatingProposal)
+            {
+                return $"{ProposalCreationPhaseLabel}. No files are changing.";
+            }
+
+            if (IsSearchingContext)
+            {
+                return "Searching context files...";
+            }
+
+            return IsBusy
+                ? string.IsNullOrWhiteSpace(SafeStatusMessage)
+                    ? "Working..."
+                    : SafeStatusMessage
+                : string.Empty;
+        }
+    }
+
     public string ProposalCreationPhaseLabel => ProposalCreationPhase switch
     {
         AedaCodeProposalCreationPhase.PreparingRequest => "Preparing request",
@@ -483,9 +507,12 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     private string _validationOutputPreview = "Run an approved validation to view sanitized output.";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WorkingIndicatorText))]
     private string _safeStatusMessage = "AEDA Code ready.";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWorking))]
+    [NotifyPropertyChangedFor(nameof(WorkingIndicatorText))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -502,6 +529,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ContextSearchStatusText))]
+    [NotifyPropertyChangedFor(nameof(IsWorking))]
+    [NotifyPropertyChangedFor(nameof(WorkingIndicatorText))]
     private bool _isSearchingContext;
 
     [ObservableProperty]
@@ -510,6 +539,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     private AedaCodeTargetSnippetCandidate? _selectedTargetSnippet;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWorking))]
+    [NotifyPropertyChangedFor(nameof(WorkingIndicatorText))]
     private bool _isCreatingProposal;
 
     [ObservableProperty]
@@ -522,6 +553,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ProposalCreationStateText))]
     [NotifyPropertyChangedFor(nameof(ProposalCreationPhaseLabel))]
     [NotifyPropertyChangedFor(nameof(ProposalCreationProgressText))]
+    [NotifyPropertyChangedFor(nameof(WorkingIndicatorText))]
     private AedaCodeProposalCreationPhase _proposalCreationPhase = AedaCodeProposalCreationPhase.Idle;
 
     [ObservableProperty]
@@ -2030,6 +2062,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(HasProposalCreationFailure));
         OnPropertyChanged(nameof(ProposalCreationFailureText));
         OnPropertyChanged(nameof(ProposalCreationFailureDetailText));
+        OnPropertyChanged(nameof(IsWorking));
+        OnPropertyChanged(nameof(WorkingIndicatorText));
         OnPropertyChanged(nameof(SessionStatusText));
         OnPropertyChanged(nameof(RecentCodeTaskCountText));
         OnPropertyChanged(nameof(ProposalCountText));

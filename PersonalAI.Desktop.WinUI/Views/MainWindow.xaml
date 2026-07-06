@@ -1686,6 +1686,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel MinWidth="0"
+                                Spacing="4"
                                 DataContext="{Binding AedaCode}">
                         <TextBlock Text="{Binding DisplayName}"
                                    Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
@@ -1697,6 +1698,19 @@
                                    Style="{ThemeResource PersonalAiSecondaryTextStyle}"
                                    TextWrapping="NoWrap"
                                    TextTrimming="CharacterEllipsis" />
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8"
+                                    Margin="0,6,0,0"
+                                    Visibility="{Binding IsWorking, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ProgressRing Width="18"
+                                          Height="18"
+                                          IsActive="{Binding IsWorking}"
+                                          AutomationProperties.Name="{Binding WorkingIndicatorText}" />
+                            <TextBlock Text="{Binding WorkingIndicatorText}"
+                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1"
                                 HorizontalAlignment="Right"
@@ -2014,6 +2028,10 @@
                                     <TextBlock Text="{Binding ProposalCreationFailureDetailText}"
                                                Style="{ThemeResource PersonalAiSecondaryTextStyle}"
                                                TextWrapping="Wrap" />
+                                    <Button Content="Retry proposal"
+                                            Command="{Binding CreateProposalCommand}"
+                                            HorizontalAlignment="Left"
+                                            AutomationProperties.Name="Retry proposal" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
