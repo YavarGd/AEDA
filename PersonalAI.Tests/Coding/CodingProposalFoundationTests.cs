@@ -105,6 +105,62 @@ public sealed class CodingProposalFoundationTests : IDisposable
     }
 
     [Fact]
+    public void DiffBuilder_TinyInsertionInLargeFileCreatesCompactLocalHunk()
+    {
+        var builder = new UnifiedDiffBuilder();
+        var originalLines = Enumerable.Range(1, 2_000)
+            .Select(index => $"line {index}")
+            .ToArray();
+        var proposedLines = originalLines.ToList();
+        proposedLines.InsertRange(
+            1_234,
+            [
+                "/// <summary>",
+                "/// Does the selected work.",
+                "/// </summary>",
+                "line docs marker"
+            ]);
+
+        var file = builder.BuildFileDiff(new PatchProposalFileEdit(
+            "src/App.cs",
+            string.Join('\n', originalLines) + "\n",
+            string.Join('\n', proposedLines) + "\n"));
+
+        var hunk = Assert.Single(file.Hunks);
+        Assert.DoesNotContain("@@ -1,2000", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.True(hunk.OldStart > 1);
+        Assert.True(hunk.OldLineCount < 20);
+        Assert.Contains("+/// <summary>", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.Contains(" line 1234", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.DoesNotContain("line 1\n line 2", file.UnifiedDiff, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DiffBuilder_FarApartChangesCreateSeparateCompactHunks()
+    {
+        var builder = new UnifiedDiffBuilder();
+        var originalLines = Enumerable.Range(1, 80)
+            .Select(index => $"line {index}")
+            .ToArray();
+        var proposedLines = originalLines.ToArray();
+        proposedLines[10] = "line 11 changed";
+        proposedLines[60] = "line 61 changed";
+
+        var file = builder.BuildFileDiff(new PatchProposalFileEdit(
+            "src/App.cs",
+            string.Join('\n', originalLines) + "\n",
+            string.Join('\n', proposedLines) + "\n"));
+
+        Assert.Equal(2, file.Hunks.Count);
+        Assert.Contains("@@ -8,7 +8,7 @@", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.Contains("@@ -58,7 +58,7 @@", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.Contains("-line 11", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.Contains("+line 11 changed", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.Contains("-line 61", file.UnifiedDiff, StringComparison.Ordinal);
+        Assert.Contains("+line 61 changed", file.UnifiedDiff, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DiffBuilder_RejectsUnsafeBinaryAndLargeDiffs()
     {
         var builder = new UnifiedDiffBuilder();
@@ -256,6 +312,38 @@ public sealed class CodingProposalFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task ProposalService_RejectsDestructivePartialSnippetBeforePersistence()
+    {
+        var registry = new WorkspaceRegistry();
+        Directory.CreateDirectory(_root);
+        var workspace = registry.Register(_root, "Test");
+        var original = string.Join(
+            "\n",
+            Enumerable.Range(0, 2_000).Select(index => $"public void M{index}() {{ }}")) + "\n";
+        Write("src/App.cs", original);
+        var repository = CreateRepository();
+        await repository.InitializeAsync();
+        var service = new PatchProposalService(
+            repository,
+            new UnifiedDiffBuilder(),
+            new PatchRiskClassifier(),
+            new ValidationPlanService(),
+            CreateReader(registry));
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateProposalAsync(new PatchProposalCreateRequest(
+                workspace.Id,
+                "Bad snippet",
+                "Bad snippet",
+                [new PatchProposalFileEdit("src/App.cs", null, "/// <summary>Docs.</summary>\nprivate void Helper() {}\n")],
+                [])));
+
+        Assert.Equal("partial_proposed_content", failure.Message);
+        Assert.Empty(await repository.ListRecentAsync());
+        Assert.Equal(original, File.ReadAllText(Path.Combine(_root, "src", "App.cs")));
+    }
+
+    [Fact]
     public async Task ProposalService_RealChangeAfterProposalStillFailsStale()
     {
         var registry = new WorkspaceRegistry();
@@ -392,6 +480,565 @@ public sealed class CodingProposalFoundationTests : IDisposable
         Assert.Contains("src/App.cs", provider.LastRequest?.Messages[1].Content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task DraftService_SelectedContextPromptUsesExactAllowedTargetPath()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string selectedPath = "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs";
+        var provider = new FakeChatProvider(DraftJson(selectedPath));
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, selectedPath, "class ViewModel {}\n", "hash", "utf-8", 19, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(
+                workspaceId,
+                "Add XML docs to one helper in the selected file.",
+                [selectedPath],
+                "aeda-code-ui"),
+            context));
+
+        var prompt = provider.LastRequest?.Messages[1].Content ?? string.Empty;
+        Assert.Equal(selectedPath, Assert.Single(draft.FileEdits).RelativePath);
+        Assert.Contains($"Allowed target file: {selectedPath}", prompt, StringComparison.Ordinal);
+        Assert.Contains("\"relativePath\":" + JsonSerializer.Serialize(selectedPath), prompt, StringComparison.Ordinal);
+        Assert.Contains("selected file is not a relativePath", prompt, StringComparison.Ordinal);
+        Assert.Contains("Target only one of the allowed target files", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not target .csproj", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"relativePath\":\"src/Example.cs\"", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_LargeSelectedCSharpPromptIncludesCandidateSnippets()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string selectedPath = "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs";
+        var method = "    private string FormatThing(string value)\n    {\n        var trimmed = value.Trim();\n        return trimmed.Length == 0 ? \"none\" : trimmed;\n    }\n";
+        var content = "public sealed class ViewModel\n{\n" + method + new string('\n', 40) + "}\n";
+        var provider = new FakeChatProvider(DraftJson(selectedPath));
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, selectedPath, content, "hash", "utf-8", content.Length, false, false)],
+            [],
+            [],
+            false);
+
+        await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs to selected file.", [selectedPath], "test"),
+            context));
+
+        var prompt = provider.LastRequest?.Messages[1].Content ?? string.Empty;
+        Assert.Contains("Candidate method snippets from selected file.", prompt, StringComparison.Ordinal);
+        Assert.Contains("Copy one candidate exactly as originalText", prompt, StringComparison.Ordinal);
+        Assert.Contains($"Candidate 1 ({selectedPath}):", prompt, StringComparison.Ordinal);
+        Assert.Contains(method, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("C:\\", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetXmlDocBuildsReplacementFromSummary()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var content = "class App\n{\n" + method + "}\nUNRELATED_FULL_FILE_CONTEXT\n";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","documentation":{"summary":"Does work."}}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, content, "hash", "utf-8", content.Length, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs to the selected method.", [path], "test"),
+            context,
+            SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                "snippet-1",
+                path,
+                "Helper",
+                "private void Helper()",
+                method)));
+
+        var prompt = provider.LastRequest?.Messages[1].Content ?? string.Empty;
+        Assert.Contains("Selected target snippet", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not return originalText", prompt, StringComparison.Ordinal);
+        Assert.Contains("\"documentation\":{\"summary\":\"string\"}", prompt, StringComparison.Ordinal);
+        Assert.Contains("Only write documentation.summary text", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not include the method", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"replacementText\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not include proposedContent", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not output markdown", prompt, StringComparison.Ordinal);
+        Assert.Contains("Example valid JSON", prompt, StringComparison.Ordinal);
+        Assert.Contains(path, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Context files:", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("UNRELATED_FULL_FILE_CONTEXT", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Full-file fallback schema", prompt, StringComparison.Ordinal);
+        var edit = Assert.Single(draft.FileEdits);
+        Assert.Equal(content, edit.OriginalContent);
+        Assert.Contains("    /// <summary>\n    /// Does work.\n    /// </summary>\n" + method, edit.ProposedContent, StringComparison.Ordinal);
+        Assert.Contains("UNRELATED_FULL_FILE_CONTEXT", edit.ProposedContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetXmlDocEscapesSummary()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private bool Helper()\n    {\n        return true;\n    }\n";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","documentation":{"summary":"Checks value < limit & result > zero."}}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+            context,
+            SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                "snippet-1",
+                path,
+                "Helper",
+                "private bool Helper()",
+                method)));
+
+        var proposed = Assert.Single(draft.FileEdits).ProposedContent;
+        Assert.Contains("Checks value &lt; limit &amp; result &gt; zero.", proposed, StringComparison.Ordinal);
+        Assert.Contains(method, proposed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetInvalidJsonRetryUsesShortSchemaAndCanSucceed()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var provider = new FakeChatProvider(
+            "plain replacement text",
+            """{"title":"T","summary":"S","documentation":{"summary":"Does work."}}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\nUNRELATED_FULL_FILE_CONTEXT\n", "hash", "utf-8", 100, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+            context,
+            SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                "snippet-1",
+                path,
+                "Helper",
+                "private void Helper()",
+                method)));
+
+        Assert.Equal(2, provider.RequestCount);
+        var retryPrompt = provider.Requests[1].Messages[1].Content;
+        Assert.Contains("previous response was not valid JSON", retryPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"documentation\":{\"summary\":\"string\"}", retryPrompt, StringComparison.Ordinal);
+        Assert.Contains("Only write documentation.summary text", retryPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"replacementText\":\"string\"", retryPrompt, StringComparison.Ordinal);
+        Assert.Contains("Do not include originalText", retryPrompt, StringComparison.Ordinal);
+        Assert.Contains("Do not include proposedContent", retryPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("UNRELATED_FULL_FILE_CONTEXT", retryPrompt, StringComparison.Ordinal);
+        Assert.Contains("/// <summary>", Assert.Single(draft.FileEdits).ProposedContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetInvalidJsonRetryFailureStaysSafe()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var provider = new FakeChatProvider("plain replacement text", "still not json");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+                context,
+                SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                    "snippet-1",
+                    path,
+                    "Helper",
+                    "private void Helper()",
+                    method))));
+
+        Assert.Equal("invalid_model_json", failure.Failure.SafeCode);
+        Assert.True(failure.Failure.RetryAttempted);
+        Assert.Contains("required JSON object", failure.Failure.NextStepHint, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, provider.RequestCount);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetRetriesInvalidSummaryThenAcceptsXmlDocSummary()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","documentation":{"summary":"return true;"}}""",
+            """{"title":"T","summary":"S","documentation":{"summary":"Does work."}}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+            context,
+            SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                "snippet-1",
+                path,
+                "Helper",
+                "private void Helper()",
+                method)));
+
+        Assert.Equal(2, provider.RequestCount);
+        Assert.Contains("invalid_xml_doc_summary", provider.Requests[1].Messages[1].Content, StringComparison.Ordinal);
+        Assert.Contains("Only write documentation.summary text", provider.Requests[1].Messages[1].Content, StringComparison.Ordinal);
+        var proposed = Assert.Single(draft.FileEdits).ProposedContent;
+        Assert.Contains("/// <summary>", proposed, StringComparison.Ordinal);
+        Assert.Contains(method, proposed, StringComparison.Ordinal);
+        Assert.DoesNotContain("return true;", proposed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetRejectsEmptyXmlDocSummary()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","documentation":{"summary":"   "}}""",
+            """{"title":"T","summary":"S","documentation":{"summary":"   "}}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+                context,
+                SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                    "snippet-1",
+                    path,
+                    "Helper",
+                    "private void Helper()",
+                    method))));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.InvalidModelSchema, failure.Failure.Reason);
+        Assert.Equal("invalid_xml_doc_summary", failure.Failure.SchemaIssueCode);
+        Assert.True(failure.Failure.RetryAttempted);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetRejectsCodeLikeXmlDocSummary()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","documentation":{"summary":"public void Other() { return; }"}}""",
+            """{"title":"T","summary":"S","documentation":{"summary":"public void Other() { return; }"}}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+                context,
+                SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                    "snippet-1",
+                    path,
+                    "Helper",
+                    "private void Helper()",
+                    method))));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.InvalidModelSchema, failure.Failure.Reason);
+        Assert.Equal("invalid_xml_doc_summary", failure.Failure.SchemaIssueCode);
+        Assert.True(failure.Failure.RetryAttempted);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetRejectsReplacementTextForXmlDocRequest()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var replacement = "    /// <summary>\n    /// Does work.\n    /// </summary>\n" + method;
+        var provider = new FakeChatProvider(
+            $$"""{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","replacementText":{{JsonSerializer.Serialize(replacement)}}}]}""",
+            $$"""{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","replacementText":{{JsonSerializer.Serialize(replacement)}}}]}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+                context,
+                SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                    "snippet-1",
+                    path,
+                    "Helper",
+                    "private void Helper()",
+                    method))));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.InvalidModelSchema, failure.Failure.Reason);
+        Assert.Equal("extra_keys", failure.Failure.SchemaIssueCode);
+        Assert.True(failure.Failure.RetryAttempted);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetNonDocEditStillUsesReplacementText()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var replacement = "    private void Helper()\n    {\n        DoMoreWork();\n    }\n";
+        var provider = new FakeChatProvider(
+            $$"""{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","originalText":"private void Other() {}","replacementText":{{JsonSerializer.Serialize(replacement)}}}]}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Change the selected method to call DoMoreWork.", [path], "test"),
+            context,
+            SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                "snippet-1",
+                path,
+                "Helper",
+                "private void Helper()",
+                method)));
+
+        Assert.Contains("DoMoreWork();", Assert.Single(draft.FileEdits).ProposedContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_SelectedTargetSnippetRejectsReplacementForAnotherMethod()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","replacementText":"    private void Other()\n    {\n        DoWork();\n    }\n"}]}""",
+            """{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","replacementText":"    private void Other()\n    {\n        DoWork();\n    }\n"}]}""");
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, "class App\n{\n" + method + "}\n", "hash", "utf-8", 70, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Rename the selected helper.", [path], "test"),
+                context,
+                SelectedTargetSnippet: new CodeProposalSelectedTargetSnippet(
+                    "snippet-1",
+                    path,
+                    "Helper",
+                    "private void Helper()",
+                    method))));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.UnsafePatch, failure.Failure.Reason);
+    }
+
+    [Fact]
+    public async Task DraftService_TargetedEditConstructsFullProposedContent()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string path = "src/App.cs";
+        var original = "class App\n{\n    private void Helper()\n    {\n        DoWork();\n    }\n}\n";
+        var originalText = "    private void Helper()\n    {\n        DoWork();\n    }";
+        var replacementText = "    /// <summary>\n    /// Performs helper work.\n    /// </summary>\n    private void Helper()\n    {\n        DoWork();\n    }";
+        var provider = new FakeChatProvider(
+            $$"""
+            {"title":"Add docs","summary":"Adds XML docs.","changes":[{"relativePath":"src/App.cs","originalText":{{JsonSerializer.Serialize(originalText)}},"replacementText":{{JsonSerializer.Serialize(replacementText)}}}]}
+            """);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, path, original, "hash", "utf-8", original.Length, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs.", [path], "test"),
+            context));
+
+        var edit = Assert.Single(draft.FileEdits);
+        Assert.Equal(original, edit.OriginalContent);
+        Assert.Contains("/// <summary>", edit.ProposedContent, StringComparison.Ordinal);
+        Assert.Contains("class App", edit.ProposedContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_TargetedEditRejectsMissingOrAmbiguousText()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "x();\nx();\n", "hash", "utf-8", 10, false, false)],
+            [],
+            [],
+            false);
+        const string missingOutput = """{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","originalText":"missing();","replacementText":"ok();"}]}""";
+        var missing = CreateDraftService(new FakeChatProvider(
+            missingOutput,
+            missingOutput));
+        var ambiguous = CreateDraftService(new FakeChatProvider(
+            """{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","originalText":"x();","replacementText":"ok();"}]}"""));
+
+        var missingFailure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            missing.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+        var ambiguousFailure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            ambiguous.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+
+        Assert.Equal("target_text_not_found", missingFailure.Failure.SafeCode);
+        Assert.True(missingFailure.Failure.RetryAttempted);
+        Assert.Equal("ambiguous_text_replacement", ambiguousFailure.Failure.SafeCode);
+    }
+
+    [Fact]
+    public async Task DraftService_TargetTextNotFoundRetryCanSucceed()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var valid = """{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","originalText":"x();","replacementText":"ok();"}]}""";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","originalText":"missing();","replacementText":"ok();"}]}""",
+            valid);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "x();\n", "hash", "utf-8", 5, false, false)],
+            [],
+            [],
+            false);
+
+        var draft = await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Change app."),
+            context));
+
+        Assert.Equal(2, provider.RequestCount);
+        Assert.Contains("originalText did not match", provider.Requests[1].Messages[1].Content, StringComparison.Ordinal);
+        Assert.Equal("ok();\n", Assert.Single(draft.FileEdits).ProposedContent);
+    }
+
+    [Fact]
+    public async Task DraftService_TargetTextNotFoundRetryIncludesCandidateSnippets()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var method = "    private void Helper()\n    {\n        DoWork();\n    }\n";
+        var valid = $$"""{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","originalText":{{JsonSerializer.Serialize(method)}},"replacementText":"    /// <summary>\n    /// Does work.\n    /// </summary>\n    private void Helper()\n    {\n        DoWork();\n    }\n"}]}""";
+        var provider = new FakeChatProvider(
+            """{"title":"T","summary":"S","changes":[{"relativePath":"src/App.cs","originalText":"missing();","replacementText":"ok();"}]}""",
+            valid);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "class App\n{\n" + method + "}\n", "hash", "utf-8", 50, false, false)],
+            [],
+            [],
+            false);
+
+        await service.CreateDraftAsync(new CodeProposalDraftRequest(
+            CodeChangeRequest.Create(workspaceId, "Add XML docs.", ["src/App.cs"], "test"),
+            context));
+
+        var retryPrompt = provider.Requests[1].Messages[1].Content;
+        Assert.Contains("Candidate method snippets from selected file.", retryPrompt, StringComparison.Ordinal);
+        Assert.Contains(method, retryPrompt, StringComparison.Ordinal);
+        Assert.Contains("originalText did not match", retryPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DraftService_InvalidSelectedContextSchemaRetryUsesSameAllowedTargetPath()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        const string selectedPath = "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs";
+        var valid = DraftJson(selectedPath);
+        var provider = new FakeChatProvider(
+            """{"summary":"Adds XML docs.","changes":[{"relativePath":"PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs","proposedContent":"new"}]}""",
+            valid);
+        var service = CreateDraftService(provider);
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, selectedPath, "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+        var progressEvents = new CapturingProgress<AedaCodeProposalCreationProgress>();
+
+        var draft = await service.CreateDraftAsync(
+            new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(
+                    workspaceId,
+                    "Add XML docs to one helper in the selected file.",
+                    [selectedPath],
+                    "aeda-code-ui"),
+                context),
+            progressEvents);
+
+        var retryPrompt = provider.Requests[1].Messages[1].Content;
+        Assert.Equal(2, provider.RequestCount);
+        Assert.Equal(selectedPath, Assert.Single(draft.FileEdits).RelativePath);
+        Assert.Contains($"Allowed target file: {selectedPath}", retryPrompt, StringComparison.Ordinal);
+        Assert.Contains("Safe schema issue code: missing_title", retryPrompt, StringComparison.Ordinal);
+        Assert.Contains("selected file", retryPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(progressEvents.Events, item =>
+            item.Phase == AedaCodeProposalCreationPhase.RetryingStructuredDraft &&
+            item.RetryAttempted &&
+            item.SchemaIssueCode == "missing_title");
+    }
+
     [Theory]
     [InlineData("""{"title":"Add docs","summary":"Adds XML docs.","changes":[{"relativePath":"src/App.cs","proposedContent":"new"}]}""")]
     [InlineData("```json\n{\"title\":\"Add docs\",\"summary\":\"Adds XML docs.\",\"changes\":[{\"relativePath\":\"src/App.cs\",\"proposedContent\":\"new\"}]}\n```")]
@@ -486,11 +1133,9 @@ public sealed class CodingProposalFoundationTests : IDisposable
 
     [Theory]
     [InlineData("path", "proposedContent")]
-    [InlineData("file", "replacement")]
-    [InlineData("filePath", "newText")]
-    public async Task DraftService_NormalizesCommonSchemaAliases(
-        string pathField,
-        string contentField)
+    [InlineData("file", "proposedContent")]
+    [InlineData("filePath", "proposedContent")]
+    public async Task DraftService_NormalizesCommonPathAliases(string pathField, string contentField)
     {
         var workspaceId = WorkspaceId.NewId();
         var output =
@@ -513,6 +1158,33 @@ public sealed class CodingProposalFoundationTests : IDisposable
         var edit = Assert.Single(draft.FileEdits);
         Assert.Equal("src/App.cs", edit.RelativePath);
         Assert.Equal("new", edit.ProposedContent);
+    }
+
+    [Theory]
+    [InlineData("replacement")]
+    [InlineData("newText")]
+    public async Task DraftService_DoesNotMapReplacementAliasesToFullFileContent(string contentField)
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var output =
+            $$"""
+            {"title":"Add docs","summary":"Adds XML docs.","changes":[{"relativePath":"src/App.cs",{{JsonSerializer.Serialize(contentField)}}:"new"}]}
+            """;
+        var service = CreateDraftService(new FakeChatProvider(output, output));
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Add XML docs."),
+                context)));
+
+        Assert.Equal("invalid_model_schema", failure.Failure.SafeCode);
+        Assert.Equal("change_missing_original_text", failure.Failure.SchemaIssueCode);
     }
 
     [Theory]
@@ -698,6 +1370,32 @@ public sealed class CodingProposalFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task DraftService_ModelGenerationTimeoutCancelsProviderCallSafely()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var provider = new FakeChatProvider(DraftJson("src/App.cs"))
+        {
+            Delay = TimeSpan.FromMilliseconds(200)
+        };
+        var service = CreateDraftService(provider, modelGenerationTimeout: TimeSpan.FromMilliseconds(10));
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+
+        Assert.Equal("model_timeout", failure.Failure.SafeCode);
+        Assert.Contains("took too long", failure.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, provider.RequestCount);
+    }
+
+    [Fact]
     public void Capabilities_ExposeProposalAndDeferApplyAndTests()
     {
         var registry = BackendCapabilityRegistry.CreateDefault(
@@ -780,7 +1478,8 @@ public sealed class CodingProposalFoundationTests : IDisposable
         FakeChatProvider provider,
         bool includeCodeCapability = true,
         bool isRemote = false,
-        Func<ProviderRoutingSettings, ProviderRoutingSettings>? configureSettings = null)
+        Func<ProviderRoutingSettings, ProviderRoutingSettings>? configureSettings = null,
+        TimeSpan? modelGenerationTimeout = null)
     {
         var providerId = new ProviderId("fake");
         var capabilities = ModelCapability.Chat | ModelCapability.StreamingChat |
@@ -825,7 +1524,8 @@ public sealed class CodingProposalFoundationTests : IDisposable
                     LocalOnlyMode = !isRemote
                 };
                 return configureSettings?.Invoke(settings) ?? settings;
-            }),
+            },
+            modelGenerationTimeout),
             provider);
     }
 
@@ -854,15 +1554,28 @@ public sealed class CodingProposalFoundationTests : IDisposable
 
         public ChatRequest? LastRequest { get; private set; }
 
+        public List<ChatRequest> Requests { get; } = [];
+
         public int RequestCount { get; private set; }
+
+        public TimeSpan Delay { get; init; }
 
         public async IAsyncEnumerable<ChatChunk> StreamAsync(
             ChatRequest request,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             LastRequest = request;
+            Requests.Add(request);
             RequestCount++;
-            await Task.Yield();
+            if (Delay > TimeSpan.Zero)
+            {
+                await Task.Delay(Delay, cancellationToken);
+            }
+            else
+            {
+                await Task.Yield();
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             if (_failure is not null)
             {
@@ -872,6 +1585,13 @@ public sealed class CodingProposalFoundationTests : IDisposable
             var output = _outputs.Count == 0 ? string.Empty : _outputs.Dequeue();
             yield return new ChatChunk(output ?? string.Empty, true);
         }
+    }
+
+    private sealed class CapturingProgress<T> : IProgress<T>
+    {
+        public List<T> Events { get; } = [];
+
+        public void Report(T value) => Events.Add(value);
     }
 
     private void Write(string relativePath, string content)

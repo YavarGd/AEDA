@@ -436,6 +436,268 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task ContextPicker_SearchAddRemoveAndClearUsesRelativeMetadata()
+    {
+        var registry = CreateRegistry();
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            ContextCandidates =
+            [
+                new AedaCodeContextFileCandidate(
+                    workspace.Id,
+                    "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs",
+                    "AedaCodeModuleViewModel.cs",
+                    "PersonalAI.Desktop.WinUI/ViewModels",
+                    ".cs",
+                    "C#",
+                    "16 B",
+                    16,
+                    true,
+                    false,
+                    null)
+            ]
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        viewModel.ContextFileSearchQuery = "AedaCodeModuleViewModel";
+        await viewModel.SearchContextFilesAsync();
+        await viewModel.AddContextFileAsync(viewModel.ContextFileCandidates.Single());
+        await viewModel.AddContextFileAsync(viewModel.ContextFileCandidates.Single());
+
+        Assert.Single(viewModel.ContextFileCandidates);
+        Assert.Single(viewModel.SelectedContextFiles);
+        Assert.Contains("1 file", viewModel.SelectedContextSummaryText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("about", viewModel.SelectedContextSummaryText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(_root, viewModel.SelectedContextFiles.Single().RelativePath, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.AddContextFileCommand.CanExecute(viewModel.ContextFileCandidates.Single()));
+        Assert.True(viewModel.ContextFileCandidates.Single().IsAlreadySelected);
+
+        viewModel.RemoveContextFile(viewModel.SelectedContextFiles.Single());
+        Assert.Empty(viewModel.SelectedContextFiles);
+        Assert.False(viewModel.ContextFileCandidates.Single().IsAlreadySelected);
+
+        await viewModel.AddContextFileAsync(viewModel.ContextFileCandidates.Single());
+        viewModel.ClearSelectedContext();
+
+        Assert.Empty(viewModel.SelectedContextFiles);
+        Assert.Contains("bounded request-derived context", viewModel.SelectedContextSummaryText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ContextPicker_ChangingWorkspaceClearsSelection()
+    {
+        var registry = CreateRegistry();
+        var otherRoot = Path.Combine(_root, "Other");
+        Directory.CreateDirectory(otherRoot);
+        registry.Register(otherRoot, "Other");
+        var workspace = registry.List().First();
+        var service = new FakeAedaCodeModuleService();
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        await viewModel.AddContextFileAsync(new AedaCodeContextFileCandidate(
+            workspace.Id,
+            "src/App.cs",
+            "App.cs",
+            "src",
+            ".cs",
+            "C#",
+            "16 B",
+            16,
+            true,
+            false,
+            null));
+        Assert.Single(viewModel.SelectedContextFiles);
+
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Last());
+
+        Assert.Empty(viewModel.SelectedContextFiles);
+        Assert.Empty(viewModel.ContextFileCandidates);
+        Assert.Contains("bounded request-derived context", viewModel.SelectedContextSummaryText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateProposal_PassesSelectedContextAndKeepsSafetyGates()
+    {
+        var registry = CreateRegistry();
+        var workspace = registry.List().Single();
+        var proposal = CreateProposal("src/App.cs", "+ docs", ["src/App.cs"]) with
+        {
+            WorkspaceId = workspace.Id
+        };
+        var service = new FakeAedaCodeModuleService
+        {
+            CreatedProposal = proposal,
+            ProposalDetail = proposal
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.AddContextFileAsync(new AedaCodeContextFileCandidate(
+            workspace.Id,
+            "src/App.cs",
+            "App.cs",
+            "src",
+            ".cs",
+            "C#",
+            "16 B",
+            16,
+            true,
+            false,
+            null));
+        viewModel.ProposalRequest = "Add XML docs to the selected file.";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Equal(1, service.CreateProposalFromRequestCount);
+        Assert.Equal(["src/App.cs"], service.LastProposalCreationRequest?.ContextSelection?.RelativePaths);
+        Assert.Single(viewModel.SelectedContextFiles);
+        Assert.Equal(0, service.ApplyCount);
+        Assert.Equal(0, service.ValidationRunCount);
+        Assert.False(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
+        Assert.False(viewModel.RunApprovedValidationCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task TargetSnippetPicker_AddSelectClearAndProposalPassesSelection()
+    {
+        var registry = CreateRegistry();
+        var workspace = registry.List().Single();
+        var candidate = new AedaCodeTargetSnippetCandidate(
+            "snippet-1",
+            "src/App.cs",
+            "Helper",
+            "private void Helper()",
+            3,
+            5,
+            64,
+            false,
+            "private void Helper()");
+        var service = new FakeAedaCodeModuleService
+        {
+            TargetSnippetCandidates = [candidate],
+            CreatedProposal = CreateProposal("src/App.cs", "+ docs", ["src/App.cs"])
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        await viewModel.AddContextFileAsync(new AedaCodeContextFileCandidate(
+            workspace.Id,
+            "src/App.cs",
+            "App.cs",
+            "src",
+            ".cs",
+            "C#",
+            "70 B",
+            70,
+            true,
+            false,
+            null));
+
+        Assert.Single(viewModel.TargetSnippetCandidates);
+        Assert.Contains("1 candidate method", viewModel.TargetSnippetStatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No method selected", viewModel.SelectedTargetSnippetText, StringComparison.OrdinalIgnoreCase);
+        viewModel.SelectTargetSnippet(viewModel.TargetSnippetCandidates.Single());
+        Assert.True(viewModel.HasSelectedTargetSnippet);
+        Assert.Contains("private void Helper", viewModel.SelectedTargetSnippetText, StringComparison.Ordinal);
+
+        viewModel.ProposalRequest = "Add XML docs to the selected method.";
+        await viewModel.CreateProposalAsync();
+
+        Assert.Equal("snippet-1", service.LastProposalCreationRequest?.ContextSelection?.SelectedTargetSnippet?.Id);
+        Assert.Equal("src/App.cs", service.LastProposalCreationRequest?.ContextSelection?.SelectedTargetSnippet?.RelativePath);
+
+        viewModel.ClearTargetSnippet();
+        Assert.False(viewModel.HasSelectedTargetSnippet);
+    }
+
+    [Fact]
+    public async Task TargetSnippetPicker_RemovingContextClearsSelectedSnippet()
+    {
+        var registry = CreateRegistry();
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            TargetSnippetCandidates =
+            [
+                new(
+                    "snippet-1",
+                    "src/App.cs",
+                    "Helper",
+                    "private void Helper()",
+                    3,
+                    5,
+                    64,
+                    false,
+                    "private void Helper()")
+            ]
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.AddContextFileAsync(new AedaCodeContextFileCandidate(
+            workspace.Id,
+            "src/App.cs",
+            "App.cs",
+            "src",
+            ".cs",
+            "C#",
+            "70 B",
+            70,
+            true,
+            false,
+            null));
+        viewModel.SelectTargetSnippet(viewModel.TargetSnippetCandidates.Single());
+
+        viewModel.RemoveContextFile(viewModel.SelectedContextFiles.Single());
+
+        Assert.Empty(viewModel.TargetSnippetCandidates);
+        Assert.False(viewModel.HasSelectedTargetSnippet);
+    }
+
+    [Fact]
+    public async Task CreateProposal_FailureKeepsSelectedContextForRetry()
+    {
+        var registry = CreateRegistry();
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            CreateProposalFailure = new AedaCodeProposalCreationException(
+                AedaCodeProposalCreationFailure.FromReason(
+                    AedaCodeProposalCreationFailureReason.ModelTimeout))
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.AddContextFileAsync(new AedaCodeContextFileCandidate(
+            workspace.Id,
+            "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs",
+            "AedaCodeModuleViewModel.cs",
+            "PersonalAI.Desktop.WinUI/ViewModels",
+            ".cs",
+            "C#",
+            "16 B",
+            16,
+            true,
+            false,
+            null));
+        viewModel.ProposalRequest = "Add XML docs to the selected file.";
+
+        await viewModel.CreateProposalAsync();
+
+        Assert.Single(viewModel.SelectedContextFiles);
+        Assert.Equal(
+            "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs",
+            viewModel.SelectedContextFiles.Single().RelativePath);
+        Assert.Equal(
+            ["PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs"],
+            service.LastProposalCreationRequest?.ContextSelection?.RelativePaths);
+        Assert.Equal("Add XML docs to the selected file.", viewModel.ProposalRequest);
+        Assert.Equal("model_timeout", viewModel.ProposalCreationFailure?.SafeCode);
+        Assert.False(viewModel.IsCreatingProposal);
+        Assert.Empty(viewModel.Proposals);
+    }
+
+    [Fact]
     public async Task CreateProposal_RunningStateDoesNotBlockAndCancelClearsState()
     {
         var registry = CreateRegistry();
@@ -546,7 +808,7 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Empty(viewModel.Proposals);
         Assert.Equal("unsafe_file_target", viewModel.ProposalCreationFailure?.SafeCode);
         Assert.Contains("not uniquely available", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("exact relative path", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Select the target file", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("unsafe_file_target", viewModel.ProposalCreationFailureDetailText, StringComparison.Ordinal);
         Assert.DoesNotContain("AedaCodeModuleViewModel.cs", viewModel.ProposalCreationFailureText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, service.ApplyCount);
@@ -707,6 +969,24 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
         public IReadOnlyList<AedaCodeProposalCreationProgress> ProgressToReport { get; init; } = [];
 
+        public IReadOnlyList<AedaCodeContextFileCandidate> ContextCandidates { get; init; } = [];
+
+        public IReadOnlyList<AedaCodeTargetSnippetCandidate> TargetSnippetCandidates { get; init; } =
+        [
+            new(
+                "snippet-1",
+                "src/App.cs",
+                "Helper",
+                "private void Helper()",
+                3,
+                5,
+                64,
+                false,
+                "private void Helper()")
+        ];
+
+        public AedaCodeProposalCreationRequest? LastProposalCreationRequest { get; private set; }
+
         public Task<AedaCodeSession> StartSessionAsync(WorkspaceId workspaceId, string? safeSummary = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AedaCodeSession(
                 AedaCodeSessionId.NewId(),
@@ -728,10 +1008,70 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
             Task.FromResult(new AedaCodeWorkspaceSummary(workspaceId, "Repo", true, 1, 1));
 
         public Task<CodeContextPack> ReadFilesAsync(WorkspaceId workspaceId, IReadOnlyList<string> relativePaths, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            Task.FromResult(new CodeContextPack(
+                workspaceId,
+                relativePaths.Select(path => new CodeContextFile(
+                    workspaceId,
+                    path,
+                    "class App\n{\n    private void Helper()\n    {\n        DoWork();\n    }\n}\n",
+                    "selected-hash",
+                    "utf-8",
+                    70,
+                    false,
+                    false)).ToArray(),
+                [],
+                [],
+                false));
 
         public Task<CodeContextPack> SearchAsync(CodeContextSearchRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<AedaCodeContextSearchResult> SearchContextFilesAsync(
+            AedaCodeContextSearchRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var selected = new HashSet<string>(
+                request.SelectedRelativePaths ?? [],
+                StringComparer.OrdinalIgnoreCase);
+            var candidates = (ContextCandidates.Count == 0
+                    ? [new AedaCodeContextFileCandidate(
+                        request.WorkspaceId,
+                        "src/App.cs",
+                        "App.cs",
+                        "src",
+                        ".cs",
+                        "C#",
+                        "16 B",
+                        16,
+                        true,
+                        selected.Contains("src/App.cs"),
+                        null)]
+                    : ContextCandidates)
+                .Select(candidate => candidate with
+                {
+                    IsAlreadySelected = selected.Contains(candidate.RelativePath)
+                })
+                .ToArray();
+            return Task.FromResult(new AedaCodeContextSearchResult(
+                request.WorkspaceId,
+                candidates,
+                false,
+                []));
+        }
+
+        public Task<IReadOnlyList<AedaCodeTargetSnippetCandidate>> ListTargetSnippetCandidatesAsync(
+            AedaCodeTargetSnippetRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var selected = new HashSet<string>(
+                request.SelectedRelativePaths,
+                StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult<IReadOnlyList<AedaCodeTargetSnippetCandidate>>(
+                TargetSnippetCandidates
+                    .Where(candidate => selected.Contains(candidate.RelativePath) ||
+                        selected.Contains("src/App.cs"))
+                    .ToArray());
+        }
 
         public Task<CodeChangePlan> CreatePlanAsync(CodeChangeRequest request, CodeContextPack context, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
@@ -745,6 +1085,7 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             CreateProposalFromRequestCount++;
+            LastProposalCreationRequest = request;
             Started.TrySetResult();
             foreach (var item in ProgressToReport)
             {

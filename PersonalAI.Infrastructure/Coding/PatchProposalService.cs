@@ -32,6 +32,11 @@ public sealed class PatchProposalService(
         var canonicalEdits = request.FileEdits
             .Select(edit => CaptureWorkspaceBaseline(request.WorkspaceId, edit, cancellationToken))
             .ToArray();
+        foreach (var edit in canonicalEdits)
+        {
+            PatchDestructiveChangeGuard.RejectUnsafeEdit(edit);
+        }
+
         var files = canonicalEdits
             .Select(edit => diffBuilder.BuildFileDiff(edit))
             .ToArray();

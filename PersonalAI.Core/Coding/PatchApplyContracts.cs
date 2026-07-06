@@ -44,6 +44,7 @@ public enum PatchApplyFailureReason
     HashMismatch,
     BinaryUnsupported,
     LargeFileRejected,
+    UnsafeLargeDeletion,
     DeleteNotAllowed,
     WriteFailed,
     BackupFailed,

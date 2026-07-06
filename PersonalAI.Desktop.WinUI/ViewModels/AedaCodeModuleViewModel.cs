@@ -17,6 +17,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     private const int DiffLineLimit = 900;
     private const int DiffCharacterLimit = 60_000;
     private const int ValidationOutputLimit = 3_000;
+    private const int MaxSelectedContextFiles = 10;
+    private const int MaxSelectedContextCharacters = 120_000;
     public const int MaxProposalRequestCharacters = 4_000;
     public const int MaxProposalTitleCharacters = 120;
     private readonly IAedaCodeModuleService _moduleService;
@@ -78,6 +80,12 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public ObservableCollection<AedaCodeFileItem> ProposalFiles { get; } = [];
 
+    public ObservableCollection<AedaCodeContextFileCandidate> ContextFileCandidates { get; } = [];
+
+    public ObservableCollection<AedaCodeSelectedContextFile> SelectedContextFiles { get; } = [];
+
+    public ObservableCollection<AedaCodeTargetSnippetCandidate> TargetSnippetCandidates { get; } = [];
+
     public ObservableCollection<AedaCodeApplyItem> ApplyResults { get; } = [];
 
     public ObservableCollection<AedaCodeValidationTemplateItem> ValidationTemplates { get; } = [];
@@ -134,6 +142,71 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public string ProposalRequestLengthText => $"{ProposalRequest.Length}/{MaxProposalRequestCharacters}";
 
     public string ProposalTitleLengthText => $"{ProposalTitle.Length}/{MaxProposalTitleCharacters}";
+
+    public string ContextSearchStatusText => IsSearchingContext
+        ? "Searching safe workspace files..."
+        : ContextFileCandidates.Count == 0
+            ? "No matching safe files shown."
+            : $"{ContextFileCandidates.Count} safe candidate file(s)";
+
+    public string SelectedContextSummaryText
+    {
+        get
+        {
+            if (SelectedContextFiles.Count == 0)
+            {
+                return "No files selected. AEDA will use bounded request-derived context.";
+            }
+
+            var total = SelectedContextFiles.Sum(file => file.ApproximateCharacters);
+            return $"{SelectedContextFiles.Count} file(s) selected - about {total:N0} chars";
+        }
+    }
+
+    public string SelectedContextWarningText
+    {
+        get
+        {
+            if (SelectedContextFiles.Any(file => !file.IsReadable))
+            {
+                return "One selected file is no longer available. Remove it or refresh context.";
+            }
+
+            if (SelectedContextFiles.Sum(file => file.ApproximateCharacters) > MaxSelectedContextCharacters)
+            {
+                return "Selected files exceed context budget. Remove files or choose smaller ones.";
+            }
+
+            if (SelectedContextFiles.Count > MaxSelectedContextFiles)
+            {
+                return "Too many context files selected.";
+            }
+
+            return string.Empty;
+        }
+    }
+
+    public bool HasContextFileCandidates => ContextFileCandidates.Count > 0;
+
+    public bool HasSelectedContextFiles => SelectedContextFiles.Count > 0;
+
+    public bool HasTargetSnippetCandidates => TargetSnippetCandidates.Count > 0;
+
+    public bool HasSelectedTargetSnippet => SelectedTargetSnippet is not null;
+
+    public string TargetSnippetStatusText => SelectedContextFiles.Count == 0
+        ? "Select a context file to see target snippets."
+        : TargetSnippetCandidates.Count == 0
+            ? "No private method candidates found in the selected file."
+            : SelectedTargetSnippet is null
+                ? $"{TargetSnippetCandidates.Count} candidate method(s). No method selected; AEDA will ask the model to choose and provide exact originalText."
+                : $"{TargetSnippetCandidates.Count} candidate method(s)";
+
+    public string SelectedTargetSnippetText => SelectedTargetSnippet is null
+        ? string.Empty
+        : $"Selected: {SelectedTargetSnippet.SignaturePreview} in {SelectedTargetSnippet.RelativePath}";
+
+    public bool HasSelectedContextWarning => !string.IsNullOrWhiteSpace(SelectedContextWarningText);
 
     public bool HasProposalCreationFailure => ProposalCreationFailure is not null;
 
@@ -424,6 +497,19 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     private string _proposalTitle = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContextSearchStatusText))]
+    private string _contextFileSearchQuery = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContextSearchStatusText))]
+    private bool _isSearchingContext;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedTargetSnippet))]
+    [NotifyPropertyChangedFor(nameof(SelectedTargetSnippetText))]
+    private AedaCodeTargetSnippetCandidate? _selectedTargetSnippet;
+
+    [ObservableProperty]
     private bool _isCreatingProposal;
 
     [ObservableProperty]
@@ -580,8 +666,15 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         AedaCodeWorkspaceItem? workspace,
         CancellationToken cancellationToken = default)
     {
+        var workspaceChanged = SelectedWorkspace?.WorkspaceId != workspace?.WorkspaceId;
         SelectedWorkspace = workspace;
         ClearProposalDetail();
+        if (workspaceChanged)
+        {
+            ClearSelectedContext();
+            ContextFileCandidates.Clear();
+        }
+
         if (workspace is null)
         {
             SafeStatusMessage = "Select a registered workspace.";
@@ -679,7 +772,16 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             var request = new AedaCodeProposalCreationRequest(
                 SelectedWorkspace.WorkspaceId,
                 ProposalRequest,
-                string.IsNullOrWhiteSpace(ProposalTitle) ? null : ProposalTitle);
+                string.IsNullOrWhiteSpace(ProposalTitle) ? null : ProposalTitle,
+                SelectedContextFiles.Count == 0
+                    ? null
+                    : new AedaCodeProposalContextSelection(
+                        SelectedContextFiles.Select(file => file.RelativePath).ToArray(),
+                        SelectedTargetSnippet is null
+                            ? null
+                            : new AedaCodeSelectedTargetSnippet(
+                                SelectedTargetSnippet.Id,
+                                SelectedTargetSnippet.RelativePath)));
             var progress = new Progress<AedaCodeProposalCreationProgress>(OnProposalCreationProgress);
             var result = await Task.Run(
                 () => _moduleService.CreateProposalFromRequestAsync(
@@ -730,6 +832,172 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             _proposalCreationCancellation = null;
             NotifyAll();
         }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSearchContextFiles))]
+    public async Task SearchContextFilesAsync(CancellationToken cancellationToken = default)
+    {
+        if (SelectedWorkspace is null)
+        {
+            SafeStatusMessage = "Select a registered workspace before searching context files.";
+            return;
+        }
+
+        try
+        {
+            IsSearchingContext = true;
+            ContextFileCandidates.Clear();
+            var result = await _moduleService.SearchContextFilesAsync(
+                new AedaCodeContextSearchRequest(
+                    SelectedWorkspace.WorkspaceId,
+                    ContextFileSearchQuery,
+                    SelectedContextFiles.Select(file => file.RelativePath).ToArray()),
+                cancellationToken).ConfigureAwait(false);
+            foreach (var candidate in result.Candidates)
+            {
+                ContextFileCandidates.Add(candidate);
+            }
+
+            SafeStatusMessage = result.IsTruncated
+                ? "Context file results were bounded. Narrow the search if needed."
+                : "Context file results loaded.";
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Context file search cancelled.";
+        }
+        catch (Exception exception) when (IsSafeFailure(exception))
+        {
+            SafeStatusMessage = "Could not search context files safely.";
+        }
+        finally
+        {
+            IsSearchingContext = false;
+            NotifyAll();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAddContextFile))]
+    public async Task AddContextFileAsync(
+        AedaCodeContextFileCandidate? candidate,
+        CancellationToken cancellationToken = default)
+    {
+        if (SelectedWorkspace is null || candidate is null)
+        {
+            return;
+        }
+
+        if (SelectedContextFiles.Any(file => string.Equals(
+                file.RelativePath,
+                candidate.RelativePath,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            SafeStatusMessage = "Context file is already selected.";
+            return;
+        }
+
+        if (SelectedContextFiles.Count >= MaxSelectedContextFiles)
+        {
+            SafeStatusMessage = "Selected context file limit reached.";
+            return;
+        }
+
+        try
+        {
+            var pack = await _moduleService.ReadFilesAsync(
+                SelectedWorkspace.WorkspaceId,
+                [candidate.RelativePath],
+                cancellationToken).ConfigureAwait(false);
+            var file = pack.Files.SingleOrDefault();
+            if (file is null)
+            {
+                SafeStatusMessage = "One selected file is no longer available. Remove it or refresh context.";
+                return;
+            }
+
+            SelectedContextFiles.Add(new AedaCodeSelectedContextFile(
+                file.RelativePath,
+                Path.GetFileName(file.RelativePath),
+                GetContainingFolder(file.RelativePath),
+                Path.GetExtension(file.RelativePath),
+                file.IsTruncated
+                    ? $"{FormatSize(file.FileSizeBytes)} - truncated"
+                    : FormatSize(file.FileSizeBytes),
+                file.FileSizeBytes,
+                IsReadable: true,
+                file.IsTruncated,
+                file.Content.Length,
+                file.IsTruncated ? "file_truncated" : null));
+            await RefreshTargetSnippetCandidatesAsync(cancellationToken).ConfigureAwait(false);
+            SafeStatusMessage = "Context file selected. No files changed.";
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Context file add cancelled.";
+        }
+        catch (Exception exception) when (IsSafeFailure(exception))
+        {
+            SafeStatusMessage = "One selected file is no longer available. Remove it or refresh context.";
+        }
+        finally
+        {
+            RefreshContextCandidateSelectionState();
+            NotifyAll();
+        }
+    }
+
+    [RelayCommand]
+    public void RemoveContextFile(AedaCodeSelectedContextFile? file)
+    {
+        if (file is null)
+        {
+            return;
+        }
+
+        var existing = SelectedContextFiles.FirstOrDefault(item => string.Equals(
+            item.RelativePath,
+            file.RelativePath,
+            StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            SelectedContextFiles.Remove(existing);
+            RemoveTargetSnippetsForFile(existing.RelativePath);
+            RefreshContextCandidateSelectionState();
+            SafeStatusMessage = "Context file removed.";
+            NotifyAll();
+        }
+    }
+
+    [RelayCommand]
+    public void ClearSelectedContext()
+    {
+        SelectedContextFiles.Clear();
+        TargetSnippetCandidates.Clear();
+        SelectedTargetSnippet = null;
+        RefreshContextCandidateSelectionState();
+        SafeStatusMessage = "Selected context cleared.";
+        NotifyAll();
+    }
+
+    [RelayCommand]
+    public void SelectTargetSnippet(AedaCodeTargetSnippetCandidate? candidate)
+    {
+        if (candidate is null)
+        {
+            return;
+        }
+
+        SelectedTargetSnippet = candidate;
+        SafeStatusMessage = "Target snippet selected. Proposal only; no files changed.";
+        NotifyAll();
+    }
+
+    [RelayCommand]
+    public void ClearTargetSnippet()
+    {
+        SelectedTargetSnippet = null;
+        SafeStatusMessage = "Target snippet cleared.";
+        NotifyAll();
     }
 
     [RelayCommand(CanExecute = nameof(CanCancelProposalCreation))]
@@ -1127,7 +1395,19 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         SelectedWorkspace is not null &&
         !string.IsNullOrWhiteSpace(ProposalRequest) &&
         ProposalRequest.Length <= MaxProposalRequestCharacters &&
-        ProposalTitle.Length <= MaxProposalTitleCharacters;
+        ProposalTitle.Length <= MaxProposalTitleCharacters &&
+        !HasSelectedContextWarning;
+
+    private bool CanSearchContextFiles() =>
+        !IsBusy &&
+        !IsSearchingContext &&
+        SelectedWorkspace is not null;
+
+    private bool CanAddContextFile(AedaCodeContextFileCandidate? candidate) =>
+        !IsBusy &&
+        SelectedWorkspace is not null &&
+        candidate is { IsReadable: true, IsAlreadySelected: false } &&
+        SelectedContextFiles.Count < MaxSelectedContextFiles;
 
     private bool CanCancelProposalCreation() => IsCreatingProposal;
 
@@ -1206,6 +1486,10 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     partial void OnProposalTitleChanged(string value) => NotifyCommandStates();
 
+    partial void OnContextFileSearchQueryChanged(string value) => NotifyCommandStates();
+
+    partial void OnIsSearchingContextChanged(bool value) => NotifyCommandStates();
+
     partial void OnIsCreatingProposalChanged(bool value) => NotifyCommandStates();
 
     partial void OnDashboardChanged(AedaCodeDashboardModel? value)
@@ -1229,6 +1513,64 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
         SelectedWorkspace = Workspaces.FirstOrDefault(workspace => workspace.WorkspaceId == selectedId)
             ?? Workspaces.FirstOrDefault();
+    }
+
+    private void RefreshContextCandidateSelectionState()
+    {
+        var selected = new HashSet<string>(
+            SelectedContextFiles.Select(file => file.RelativePath),
+            StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < ContextFileCandidates.Count; index++)
+        {
+            var candidate = ContextFileCandidates[index];
+            ContextFileCandidates[index] = candidate with
+            {
+                IsAlreadySelected = selected.Contains(candidate.RelativePath)
+            };
+        }
+    }
+
+    private async Task RefreshTargetSnippetCandidatesAsync(CancellationToken cancellationToken)
+    {
+        TargetSnippetCandidates.Clear();
+        SelectedTargetSnippet = null;
+        if (SelectedWorkspace is null || SelectedContextFiles.Count == 0)
+        {
+            return;
+        }
+
+        var candidates = await _moduleService.ListTargetSnippetCandidatesAsync(
+            new AedaCodeTargetSnippetRequest(
+                SelectedWorkspace.WorkspaceId,
+                SelectedContextFiles.Select(file => file.RelativePath).ToArray()),
+            cancellationToken).ConfigureAwait(false);
+        foreach (var candidate in candidates)
+        {
+            TargetSnippetCandidates.Add(candidate);
+        }
+    }
+
+    private void RemoveTargetSnippetsForFile(string relativePath)
+    {
+        for (var index = TargetSnippetCandidates.Count - 1; index >= 0; index--)
+        {
+            if (string.Equals(
+                    TargetSnippetCandidates[index].RelativePath,
+                    relativePath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                TargetSnippetCandidates.RemoveAt(index);
+            }
+        }
+
+        if (SelectedTargetSnippet is not null &&
+            string.Equals(
+                SelectedTargetSnippet.RelativePath,
+                relativePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedTargetSnippet = null;
+        }
     }
 
     private async Task LoadWorkspaceWorkflowAsync(CancellationToken cancellationToken)
@@ -1477,8 +1819,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         var files = proposal.Sources
             .Select(source => SafeRelativePath(source.RelativePath))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(6);
-        return string.Join(", ", files);
+            .ToArray();
+        var preview = string.Join(", ", files.Take(6));
+        return files.Length <= 6
+            ? $"Context: {files.Length} file(s) - {preview}"
+            : $"Context: {files.Length} file(s) - {preview}, ...";
     }
 
     private static string BuildValidationOutput(ValidationRun run)
@@ -1535,6 +1880,29 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             : trimmed.TrimStart('/');
     }
 
+    private static string GetContainingFolder(string relativePath)
+    {
+        var folder = Path.GetDirectoryName(relativePath.Replace('/', Path.DirectorySeparatorChar));
+        return string.IsNullOrWhiteSpace(folder)
+            ? "."
+            : folder.Replace('\\', '/');
+    }
+
+    private static string FormatSize(long? sizeBytes)
+    {
+        if (sizeBytes is null)
+        {
+            return "unknown size";
+        }
+
+        var size = sizeBytes.Value;
+        return size < 1024
+            ? $"{size} B"
+            : size < 1024 * 1024
+                ? $"{size / 1024d:0.#} KB"
+                : $"{size / 1024d / 1024d:0.#} MB";
+    }
+
     private static string RemoveAbsolutePaths(string value)
     {
         var withoutWindowsPaths = Regex.Replace(
@@ -1579,6 +1947,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             "code_context_empty" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.NoSafeContext),
             "model_patch_invalid" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.InvalidModelJson),
             "model_patch_path_not_in_context" or "model_patch_path_invalid" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.UnsafeFileTarget),
+            "partial_proposed_content" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.PartialProposedContent),
+            "unsafe_large_deletion" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.UnsafeLargeDeletion),
+            "invalid_file_shape" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.InvalidFileShape),
+            "target_text_not_found" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.TargetTextNotFound),
+            "ambiguous_text_replacement" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.AmbiguousTextReplacement),
             "model_patch_content_invalid" or "model_patch_file_count_invalid" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.UnsafePatch),
             "remote_workspace_context_denied" or "remote_provider_disabled" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.ProviderRejectedByPolicy),
             "provider_capability_unavailable" or "provider_chat_unavailable" => AedaCodeProposalCreationFailure.FromReason(AedaCodeProposalCreationFailureReason.ProviderUnavailable),
@@ -1644,6 +2017,16 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(ProposalCreationProgressText));
         OnPropertyChanged(nameof(ProposalRequestLengthText));
         OnPropertyChanged(nameof(ProposalTitleLengthText));
+        OnPropertyChanged(nameof(ContextSearchStatusText));
+        OnPropertyChanged(nameof(SelectedContextSummaryText));
+        OnPropertyChanged(nameof(SelectedContextWarningText));
+        OnPropertyChanged(nameof(HasContextFileCandidates));
+        OnPropertyChanged(nameof(HasSelectedContextFiles));
+        OnPropertyChanged(nameof(HasTargetSnippetCandidates));
+        OnPropertyChanged(nameof(HasSelectedTargetSnippet));
+        OnPropertyChanged(nameof(TargetSnippetStatusText));
+        OnPropertyChanged(nameof(SelectedTargetSnippetText));
+        OnPropertyChanged(nameof(HasSelectedContextWarning));
         OnPropertyChanged(nameof(HasProposalCreationFailure));
         OnPropertyChanged(nameof(ProposalCreationFailureText));
         OnPropertyChanged(nameof(ProposalCreationFailureDetailText));
@@ -1716,6 +2099,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     {
         StartSessionCommand.NotifyCanExecuteChanged();
         CreateProposalCommand.NotifyCanExecuteChanged();
+        SearchContextFilesCommand.NotifyCanExecuteChanged();
+        AddContextFileCommand.NotifyCanExecuteChanged();
         CancelProposalCreationCommand.NotifyCanExecuteChanged();
         DryRunSelectedProposalCommand.NotifyCanExecuteChanged();
         RequestApplyApprovalCommand.NotifyCanExecuteChanged();

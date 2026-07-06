@@ -14,6 +14,44 @@ namespace PersonalAI.Tests.Ui;
 public sealed class AedaShellDashboardTests
 {
     [Fact]
+    public void AedaCodeContextPicker_ItemTemplateCommandsBindToAedaCodeViewModel()
+    {
+        var xaml = File.ReadAllText(FindWorkspaceFile(
+            "PersonalAI.Desktop.WinUI",
+            "Views",
+            "MainWindow.xaml"));
+
+        Assert.Contains(
+            "Command=\"{Binding DataContext.AedaCode.AddContextFileCommand, ElementName=Root}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Command=\"{Binding DataContext.AedaCode.RemoveContextFileCommand, ElementName=Root}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Command=\"{Binding DataContext.AedaCode.SelectTargetSnippetCommand, ElementName=Root}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Command=\"{Binding ClearTargetSnippetCommand}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CommandParameter=\"{Binding}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Command=\"{Binding DataContext.AddContextFileCommand, ElementName=Root}\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Command=\"{Binding SelectTargetSnippetCommand}\"",
+            xaml,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NavigationState_DefaultsToChatAndRoutesDeterministically()
     {
         var navigation = new AedaShellNavigationState();
@@ -337,6 +375,23 @@ public sealed class AedaShellDashboardTests
                 .ToArray());
     }
 
+    private static string FindWorkspaceFile(params string[] parts)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var path = Path.Combine([directory.FullName, .. parts]);
+            if (File.Exists(path))
+            {
+                return path;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("Could not locate workspace file.", Path.Combine(parts));
+    }
+
     private sealed class FakeTaskQueryService : ITaskQueryService
     {
         public IReadOnlyList<TaskRun> Recent { get; init; } = [];
@@ -402,6 +457,16 @@ public sealed class AedaShellDashboardTests
             CodeContextSearchRequest request,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<AedaCodeContextSearchResult> SearchContextFilesAsync(
+            AedaCodeContextSearchRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AedaCodeContextSearchResult(request.WorkspaceId, [], false, []));
+
+        public Task<IReadOnlyList<AedaCodeTargetSnippetCandidate>> ListTargetSnippetCandidatesAsync(
+            AedaCodeTargetSnippetRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AedaCodeTargetSnippetCandidate>>([]);
 
         public Task<CodeChangePlan> CreatePlanAsync(
             CodeChangeRequest request,

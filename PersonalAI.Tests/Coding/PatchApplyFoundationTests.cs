@@ -80,6 +80,27 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task DryRun_RejectsOldDestructiveLargeDeletionProposal()
+    {
+        await InitializeAsync();
+        var original = string.Join(
+            "\n",
+            Enumerable.Range(0, 2_000).Select(index => $"public void M{index}() {{ }}")) + "\n";
+        Write("src/App.cs", original);
+        var proposal = await SaveProposalAsync([
+            Edit("src/App.cs", original, "/// <summary>Docs.</summary>\nprivate void Helper() {}\n")
+        ]);
+        var validator = CreateValidator();
+
+        var plan = await validator.DryRunAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.DryRunFailed, plan.Status);
+        Assert.Contains(PatchApplyFailureReason.UnsafeLargeDeletion, plan.FailureReasons);
+    }
+
+    [Fact]
     public async Task Apply_RequiresApprovalAndTreatsDenialAsControlledOutcome()
     {
         await InitializeAsync();

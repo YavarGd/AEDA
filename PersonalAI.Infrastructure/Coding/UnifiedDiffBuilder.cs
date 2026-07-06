@@ -4,6 +4,8 @@ namespace PersonalAI.Infrastructure.Coding;
 
 public sealed class UnifiedDiffBuilder : IUnifiedDiffBuilder
 {
+    private const int ContextLineCount = 3;
+
     public PatchProposalFile BuildFileDiff(
         PatchProposalFileEdit edit,
         int maxDiffCharacters = 200_000)
@@ -59,16 +61,64 @@ public sealed class UnifiedDiffBuilder : IUnifiedDiffBuilder
             return [];
         }
 
-        var hunkLines = rows.Select(row => row.Kind + row.Text).ToArray();
-        return
-        [
-            new PatchProposalHunk(
-                oldLineCount == 0 ? 0 : 1,
-                oldLineCount,
-                newLineCount == 0 ? 0 : 1,
-                newLineCount,
-                hunkLines)
-        ];
+        var ranges = new List<(int Start, int End)>();
+        var activeStart = -1;
+        var activeEnd = -1;
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (rows[index].Kind == ' ')
+            {
+                continue;
+            }
+
+            var start = Math.Max(0, index - ContextLineCount);
+            var end = Math.Min(rows.Count - 1, index + ContextLineCount);
+            if (activeStart < 0)
+            {
+                activeStart = start;
+                activeEnd = end;
+            }
+            else if (start <= activeEnd + 1)
+            {
+                activeEnd = Math.Max(activeEnd, end);
+            }
+            else
+            {
+                ranges.Add((activeStart, activeEnd));
+                activeStart = start;
+                activeEnd = end;
+            }
+        }
+
+        if (activeStart >= 0)
+        {
+            ranges.Add((activeStart, activeEnd));
+        }
+
+        return ranges
+            .Select(range => CreateHunk(rows, range.Start, range.End, oldLineCount, newLineCount))
+            .ToArray();
+    }
+
+    private static PatchProposalHunk CreateHunk(
+        IReadOnlyList<DiffRow> rows,
+        int start,
+        int end,
+        int oldLineCount,
+        int newLineCount)
+    {
+        var oldBefore = rows.Take(start).Count(row => row.Kind != '+');
+        var newBefore = rows.Take(start).Count(row => row.Kind != '-');
+        var hunkRows = rows.Skip(start).Take(end - start + 1).ToArray();
+        var oldCount = hunkRows.Count(row => row.Kind != '+');
+        var newCount = hunkRows.Count(row => row.Kind != '-');
+
+        return new PatchProposalHunk(
+            oldCount == 0 && oldLineCount == 0 ? 0 : oldBefore + 1,
+            oldCount,
+            newCount == 0 && newLineCount == 0 ? 0 : newBefore + 1,
+            newCount,
+            hunkRows.Select(row => row.Kind + row.Text).ToArray());
     }
 
     private static IReadOnlyList<DiffRow> BuildRows(

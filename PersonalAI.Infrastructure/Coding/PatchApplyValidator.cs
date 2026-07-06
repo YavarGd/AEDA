@@ -68,6 +68,12 @@ public sealed class PatchApplyValidator(
                 continue;
             }
 
+            if (PatchDestructiveChangeGuard.IsUnsafeReplacement(file))
+            {
+                failures.Add(PatchApplyFailureReason.UnsafeLargeDeletion);
+                continue;
+            }
+
             if (ContainsBinary(file.OriginalContent) || ContainsBinary(file.ProposedContent))
             {
                 failures.Add(PatchApplyFailureReason.BinaryUnsupported);

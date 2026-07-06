@@ -28,7 +28,15 @@ public interface ICodeChangePlanningService
 public sealed record CodeProposalDraftRequest(
     CodeChangeRequest ChangeRequest,
     CodeContextPack Context,
-    string? OptionalTitle = null);
+    string? OptionalTitle = null,
+    CodeProposalSelectedTargetSnippet? SelectedTargetSnippet = null);
+
+public sealed record CodeProposalSelectedTargetSnippet(
+    string Id,
+    string RelativePath,
+    string DisplayName,
+    string SignaturePreview,
+    string Text);
 
 public sealed record CodeProposalDraft(
     string Title,

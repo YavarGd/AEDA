@@ -175,6 +175,321 @@ public sealed class AedaCodeModuleServiceTests
     }
 
     [Fact]
+    public async Task Service_SearchContextFiles_ReturnsBoundedSafeRelativeCandidates()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var reader = new FakeWorkspaceReader(workspace)
+        {
+            DirectoryEntries = new Dictionary<string, IReadOnlyList<WorkspaceDirectoryEntry>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["."] =
+                [
+                    new("src", "src", WorkspaceEntryType.Directory, null, DateTimeOffset.UtcNow, false, string.Empty),
+                    new("README.md", "README.md", WorkspaceEntryType.File, 16, DateTimeOffset.UtcNow, false, ".md"),
+                    new(".env", ".env", WorkspaceEntryType.File, 16, DateTimeOffset.UtcNow, false, string.Empty),
+                    new("SecretToken.cs", "SecretToken.cs", WorkspaceEntryType.File, 16, DateTimeOffset.UtcNow, false, ".cs")
+                ],
+                ["src"] =
+                [
+                    new("App.cs", "src/App.cs", WorkspaceEntryType.File, 16, DateTimeOffset.UtcNow, false, ".cs"),
+                    new("App.xaml", "src/App.xaml", WorkspaceEntryType.File, 16, DateTimeOffset.UtcNow, false, ".xaml")
+                ]
+            }
+        };
+        var service = new AedaCodeModuleService(
+            reader,
+            new FakeCodeContextService(_workspaceId),
+            new FakePlanningService(),
+            new FakeDraftService(),
+            new FakeProposalService(CreateProposal(_workspaceId)),
+            new FakeApplyService(CreateApplyResult(_workspaceId, PatchProposalId.NewId())),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, PatchProposalId.NewId(), null)),
+            new FakeValidationCommandAllowlist());
+
+        var result = await service.SearchContextFilesAsync(new AedaCodeContextSearchRequest(
+            _workspaceId,
+            "App",
+            ["src/App.cs"],
+            MaxResults: 1));
+
+        var candidate = Assert.Single(result.Candidates);
+        Assert.Equal("src/App.cs", candidate.RelativePath);
+        Assert.True(candidate.IsReadable);
+        Assert.True(candidate.IsAlreadySelected);
+        Assert.DoesNotContain("C:\\safe", candidate.RelativePath, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(result.Candidates, item => item.RelativePath.Contains(".env", StringComparison.OrdinalIgnoreCase));
+        Assert.True(result.IsTruncated);
+    }
+
+    [Fact]
+    public async Task Service_CreatesProposalFromRequest_UsesSelectedContextWithoutRequestSearch()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var context = new FakeCodeContextService(_workspaceId);
+        var draft = new FakeDraftService();
+        var proposal = CreateProposal(_workspaceId);
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            context,
+            new FakePlanningService(),
+            draft,
+            new FakeProposalService(proposal),
+            new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id)),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null)),
+            new FakeValidationCommandAllowlist());
+
+        var result = await service.CreateProposalFromRequestAsync(
+            new AedaCodeProposalCreationRequest(
+                _workspaceId,
+                "Add XML docs to something vague.",
+                ContextSelection: new AedaCodeProposalContextSelection(
+                    ["src/Selected.cs"])));
+
+        Assert.Equal(["src/Selected.cs"], result.ContextRelativePaths);
+        Assert.Equal(["src/Selected.cs"], draft.ContextRelativePaths);
+        Assert.Equal(["src/Selected.cs"], context.LoadedRelativePaths);
+        Assert.Empty(context.SearchQueries);
+    }
+
+    [Fact]
+    public async Task Service_ListTargetSnippetCandidatesReadsSelectedCSharpFilesOnly()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            new FakeCodeContextService(_workspaceId),
+            new FakePlanningService(),
+            new FakeDraftService(),
+            new FakeProposalService(CreateProposal(_workspaceId)),
+            new FakeApplyService(CreateApplyResult(_workspaceId, PatchProposalId.NewId())),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, PatchProposalId.NewId(), null)),
+            new FakeValidationCommandAllowlist());
+
+        var candidates = await service.ListTargetSnippetCandidatesAsync(
+            new AedaCodeTargetSnippetRequest(_workspaceId, ["src/Selected.cs", "README.md"]));
+
+        var candidate = Assert.Single(candidates);
+        Assert.Equal("src/Selected.cs", candidate.RelativePath);
+        Assert.Contains("private void Helper", candidate.SignaturePreview, StringComparison.Ordinal);
+        Assert.DoesNotContain("C:\\", candidate.RelativePath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(candidate.SafePreview.Length <= 363);
+    }
+
+    [Fact]
+    public async Task Service_ListTargetSnippetCandidatesReadsLargeSelectedFileBudget()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        const string path = "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs";
+        var context = new FakeCodeContextService(_workspaceId)
+        {
+            FileContents = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [path] = "class ViewModel\n{\n" +
+                    new string(' ', 35_000) +
+                    "\n    private bool CanCreateProposal()\n    {\n        return true;\n    }\n}\n"
+            }
+        };
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            context,
+            new FakePlanningService(),
+            new FakeDraftService(),
+            new FakeProposalService(CreateProposal(_workspaceId)),
+            new FakeApplyService(CreateApplyResult(_workspaceId, PatchProposalId.NewId())),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, PatchProposalId.NewId(), null)),
+            new FakeValidationCommandAllowlist());
+
+        var candidates = await service.ListTargetSnippetCandidatesAsync(
+            new AedaCodeTargetSnippetRequest(_workspaceId, [path]));
+
+        Assert.Contains(candidates, candidate =>
+            candidate.SignaturePreview.Contains("CanCreateProposal", StringComparison.Ordinal));
+        Assert.True(context.LastMaxCharactersPerFile > 30_000);
+    }
+
+    [Fact]
+    public async Task Service_SelectedTargetSnippetIsRevalidatedAndPassedToDraft()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var context = new FakeCodeContextService(_workspaceId);
+        var draft = new FakeDraftService();
+        var proposal = CreateProposal(_workspaceId);
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            context,
+            new FakePlanningService(),
+            draft,
+            new FakeProposalService(proposal),
+            new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id)),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null)),
+            new FakeValidationCommandAllowlist());
+        var candidate = Assert.Single(await service.ListTargetSnippetCandidatesAsync(
+            new AedaCodeTargetSnippetRequest(_workspaceId, ["src/Selected.cs"])));
+
+        await service.CreateProposalFromRequestAsync(
+            new AedaCodeProposalCreationRequest(
+                _workspaceId,
+                "Add XML docs to the selected method.",
+                ContextSelection: new AedaCodeProposalContextSelection(
+                    ["src/Selected.cs"],
+                    new AedaCodeSelectedTargetSnippet(candidate.Id, candidate.RelativePath))));
+
+        Assert.NotNull(draft.SelectedTargetSnippet);
+        Assert.Equal(candidate.Id, draft.SelectedTargetSnippet?.Id);
+        Assert.Equal("src/Selected.cs", draft.SelectedTargetSnippet?.RelativePath);
+        Assert.Contains("private void Helper", draft.SelectedTargetSnippet?.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Service_SelectedTargetSnippetAfterThirtyThousandCharactersRevalidatesDuringProposalCreation()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        const string path = "PersonalAI.Desktop.WinUI/ViewModels/AedaCodeModuleViewModel.cs";
+        var content = "class ViewModel\n{\n" +
+            new string(' ', 35_000) +
+            "\n    private bool CanCreateProposal()\n    {\n        return true;\n    }\n}\n";
+        var context = new FakeCodeContextService(_workspaceId)
+        {
+            FileContents = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [path] = content
+            }
+        };
+        var draft = new FakeDraftService();
+        var proposal = CreateProposal(_workspaceId);
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            context,
+            new FakePlanningService(),
+            draft,
+            new FakeProposalService(proposal),
+            new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id)),
+            new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null)),
+            new FakeValidationCommandAllowlist());
+        var candidate = Assert.Single(await service.ListTargetSnippetCandidatesAsync(
+            new AedaCodeTargetSnippetRequest(_workspaceId, [path])));
+
+        await service.CreateProposalFromRequestAsync(
+            new AedaCodeProposalCreationRequest(
+                _workspaceId,
+                "Add XML docs to the selected method.",
+                ContextSelection: new AedaCodeProposalContextSelection(
+                    [path],
+                    new AedaCodeSelectedTargetSnippet(candidate.Id, candidate.RelativePath))));
+
+        Assert.NotNull(draft.SelectedTargetSnippet);
+        Assert.Equal(candidate.Id, draft.SelectedTargetSnippet?.Id);
+        Assert.Contains("CanCreateProposal", draft.SelectedTargetSnippet?.Text, StringComparison.Ordinal);
+        Assert.True(context.LastMaxCharactersPerFile > 30_000);
+    }
+
+    [Fact]
+    public async Task Service_StaleSelectedTargetSnippetFailsBeforeDraftPersistenceApplyOrValidation()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var proposal = CreateProposal(_workspaceId);
+        var proposals = new FakeProposalService(proposal);
+        var apply = new FakeApplyService(CreateApplyResult(_workspaceId, proposal.Id));
+        var validation = new FakeValidationRunnerService(CreateValidationRun(_workspaceId, proposal.Id, null));
+        var draft = new FakeDraftService();
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            new FakeCodeContextService(_workspaceId),
+            new FakePlanningService(),
+            draft,
+            proposals,
+            apply,
+            validation,
+            new FakeValidationCommandAllowlist());
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateProposalFromRequestAsync(
+                new AedaCodeProposalCreationRequest(
+                    _workspaceId,
+                    "Add XML docs to the selected method.",
+                    ContextSelection: new AedaCodeProposalContextSelection(
+                        ["src/Selected.cs"],
+                        new AedaCodeSelectedTargetSnippet("stale-id", "src/Selected.cs")))));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.SelectedTargetStale, failure.Failure.Reason);
+        Assert.Equal(0, draft.CreateCount);
+        Assert.Equal(0, proposals.CreateCount);
+        Assert.Equal(0, apply.ApplyCount);
+        Assert.Equal(0, validation.CreateRunCount);
+    }
+
+    [Fact]
+    public async Task Service_SelectedContextUnavailableFailsBeforeDraftPersistenceApplyOrValidation()
+    {
+        var workspace = new WorkspaceDescriptor(
+            _workspaceId,
+            "Code workspace",
+            "C:\\safe",
+            DateTimeOffset.UtcNow,
+            WorkspaceAccessPolicy.ReadOnly);
+        var proposals = new FakeProposalService(CreateProposal(_workspaceId));
+        var apply = new FakeApplyService(CreateApplyResult(_workspaceId, PatchProposalId.NewId()));
+        var validation = new FakeValidationRunnerService(CreateValidationRun(_workspaceId, PatchProposalId.NewId(), null));
+        var draft = new FakeDraftService();
+        var service = new AedaCodeModuleService(
+            new FakeWorkspaceReader(workspace),
+            new FakeCodeContextService(_workspaceId) { ReturnEmptyContext = true },
+            new FakePlanningService(),
+            draft,
+            proposals,
+            apply,
+            validation,
+            new FakeValidationCommandAllowlist());
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateProposalFromRequestAsync(new AedaCodeProposalCreationRequest(
+                _workspaceId,
+                "Add XML docs.",
+                ContextSelection: new AedaCodeProposalContextSelection(["src/Missing.cs"]))));
+
+        Assert.Equal(AedaCodeProposalCreationFailureReason.SelectedContextUnavailable, failure.Failure.Reason);
+        Assert.Equal(0, draft.CreateCount);
+        Assert.Equal(0, proposals.CreateCount);
+        Assert.Equal(0, apply.ApplyCount);
+        Assert.Equal(0, validation.CreateRunCount);
+    }
+
+    [Fact]
     public async Task Service_NoSafeContextFailsWithSpecificTimelineReasonAndNoProposal()
     {
         var workspace = new WorkspaceDescriptor(
@@ -204,7 +519,7 @@ public sealed class AedaCodeModuleServiceTests
         Assert.Equal(AedaCodeProposalCreationFailureReason.NoSafeContext, failure.Failure.Reason);
         Assert.Equal("no_safe_context", taskRuntime.FailedSafeCode);
         Assert.Equal(0, proposals.CreateCount);
-        Assert.Contains("Try selecting", failure.Failure.NextStepHint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Select one or more files", failure.Failure.NextStepHint, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -350,25 +665,59 @@ public sealed class AedaCodeModuleServiceTests
 
     private sealed class FakeWorkspaceReader(WorkspaceDescriptor workspace) : IWorkspaceReader
     {
-        public WorkspaceDescriptor GetWorkspace(WorkspaceId workspaceId) => workspace;
+        public IReadOnlyDictionary<string, IReadOnlyList<WorkspaceDirectoryEntry>>? DirectoryEntries { get; init; }
+
+        public HashSet<string> UnreadableRelativePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public WorkspaceDescriptor GetWorkspace(WorkspaceId workspaceId) =>
+            workspaceId == workspace.Id
+                ? workspace
+                : throw new WorkspaceAccessException("workspace_not_found", "Workspace was not registered.");
 
         public IReadOnlyList<WorkspaceDirectoryEntry> ListDirectory(
             WorkspaceId workspaceId,
             string relativePath,
             int maxEntries,
             bool includeHidden,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default)
+        {
+            _ = GetWorkspace(workspaceId);
+            var normalized = string.IsNullOrWhiteSpace(relativePath)
+                ? "."
+                : relativePath.Replace('\\', '/').Trim('/');
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                normalized = ".";
+            }
+
+            if (DirectoryEntries is not null)
+            {
+                return DirectoryEntries.TryGetValue(normalized, out var entries)
+                    ? entries.Take(maxEntries).ToArray()
+                    : [];
+            }
+
+            return
             [
                 new("src", "src", WorkspaceEntryType.Directory, null, DateTimeOffset.UtcNow, false, string.Empty),
                 new("README.md", "README.md", WorkspaceEntryType.File, 4, DateTimeOffset.UtcNow, false, ".md")
             ];
+        }
 
         public WorkspaceTextFile ReadTextFile(
             WorkspaceId workspaceId,
             string relativePath,
             int maxCharacters,
-            CancellationToken cancellationToken = default) =>
-            new(relativePath, "class App {}", "utf-8", 12, false, false);
+            CancellationToken cancellationToken = default)
+        {
+            _ = GetWorkspace(workspaceId);
+            if (UnreadableRelativePaths.Contains(relativePath))
+            {
+                throw new WorkspaceAccessException("file_not_found", "Workspace file was not found.");
+            }
+
+            return new(relativePath.Replace('\\', '/'), "class App {}", "utf-8", 12, false, false);
+        }
 
         public WorkspaceSearchResult SearchText(
             WorkspaceId workspaceId,
@@ -387,25 +736,47 @@ public sealed class AedaCodeModuleServiceTests
 
         public IReadOnlyList<string> SearchMatches { get; init; } = [];
 
+        public IReadOnlyDictionary<string, string> FileContents { get; init; } =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         public List<string> SearchQueries { get; } = [];
+
+        public IReadOnlyList<string> LoadedRelativePaths { get; private set; } = [];
+
+        public int LastMaxCharactersPerFile { get; private set; }
 
         public Task<CodeContextPack> LoadFilesAsync(
             WorkspaceId workspaceId,
             IReadOnlyList<string> relativePaths,
             int maxFiles = 20,
             int maxCharactersPerFile = 100_000,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(ReturnEmptyContext
+            CancellationToken cancellationToken = default)
+        {
+            LoadedRelativePaths = relativePaths.Take(maxFiles).ToArray();
+            LastMaxCharactersPerFile = maxCharactersPerFile;
+            return Task.FromResult(ReturnEmptyContext
                 ? new CodeContextPack(workspaceId, [], [], ["no_safe_context"], false)
                 : new CodeContextPack(
                     workspaceId,
-                    relativePaths
-                        .Take(maxFiles)
-                        .Select(path => new CodeContextFile(workspaceId, path, "old", "old-hash", "utf-8", 3, false, false))
+                    LoadedRelativePaths
+                        .Select(path => new CodeContextFile(
+                            workspaceId,
+                            path,
+                            FileContents.TryGetValue(path, out var content)
+                                ? content
+                                : Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                                ? "class App\n{\n    private void Helper()\n    {\n        DoWork();\n    }\n}\n"
+                                : "old",
+                            "old-hash",
+                            "utf-8",
+                            70,
+                            false,
+                            false))
                         .ToArray(),
                     [],
                     [],
                     false));
+        }
 
         public Task<CodeContextPack> SearchAsync(
             CodeContextSearchRequest request,
@@ -650,6 +1021,8 @@ public sealed class AedaCodeModuleServiceTests
 
         public IReadOnlyList<string> ContextRelativePaths { get; private set; } = [];
 
+        public CodeProposalSelectedTargetSnippet? SelectedTargetSnippet { get; private set; }
+
         public AedaCodeProposalCreationException? Failure { get; init; }
 
         public Task<CodeProposalDraft> CreateDraftAsync(
@@ -666,6 +1039,7 @@ public sealed class AedaCodeModuleServiceTests
             ContextRelativePaths = request.Context.Files
                 .Select(file => file.RelativePath)
                 .ToArray();
+            SelectedTargetSnippet = request.SelectedTargetSnippet;
             var file = request.Context.Files[0];
             return Task.FromResult(new CodeProposalDraft(
                 "Add docs",

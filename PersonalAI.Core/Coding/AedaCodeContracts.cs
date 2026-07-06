@@ -69,10 +69,71 @@ public sealed record AedaCodeProposalSummary(
     IReadOnlyList<string> RelativePaths,
     DateTimeOffset UpdatedAtUtc);
 
+public sealed record AedaCodeContextFileCandidate(
+    WorkspaceId WorkspaceId,
+    string RelativePath,
+    string FileName,
+    string ContainingFolder,
+    string Extension,
+    string Language,
+    string SizeLabel,
+    long? SizeBytes,
+    bool IsReadable,
+    bool IsAlreadySelected,
+    string? SafeReason);
+
+public sealed record AedaCodeSelectedContextFile(
+    string RelativePath,
+    string FileName,
+    string ContainingFolder,
+    string Extension,
+    string SizeLabel,
+    long? SizeBytes,
+    bool IsReadable,
+    bool IsTruncated,
+    int ApproximateCharacters,
+    string? SafeReason);
+
+public sealed record AedaCodeContextSearchRequest(
+    WorkspaceId WorkspaceId,
+    string Query,
+    IReadOnlyList<string>? SelectedRelativePaths = null,
+    int MaxResults = 50);
+
+public sealed record AedaCodeContextSearchResult(
+    WorkspaceId WorkspaceId,
+    IReadOnlyList<AedaCodeContextFileCandidate> Candidates,
+    bool IsTruncated,
+    IReadOnlyList<string> SkippedSafeReasons);
+
+public sealed record AedaCodeTargetSnippetCandidate(
+    string Id,
+    string RelativePath,
+    string DisplayName,
+    string SignaturePreview,
+    int StartLine,
+    int LineCount,
+    int ApproximateCharacters,
+    bool AlreadyHasXmlDocumentation,
+    string SafePreview);
+
+public sealed record AedaCodeTargetSnippetRequest(
+    WorkspaceId WorkspaceId,
+    IReadOnlyList<string> SelectedRelativePaths);
+
+public sealed record AedaCodeSelectedTargetSnippet(
+    string Id,
+    string RelativePath);
+
+public sealed record AedaCodeProposalContextSelection(
+    IReadOnlyList<string> RelativePaths,
+    AedaCodeSelectedTargetSnippet? SelectedTargetSnippet = null);
+
 public sealed record AedaCodeProposalCreationRequest(
     WorkspaceId WorkspaceId,
     string UserRequest,
-    string? OptionalTitle = null);
+    string? OptionalTitle = null,
+    AedaCodeProposalContextSelection? ContextSelection = null);
 
 public enum AedaCodeProposalCreationPhase
 {
@@ -110,6 +171,14 @@ public enum AedaCodeProposalCreationFailureReason
     InvalidModelJson,
     InvalidModelSchema,
     UnsafeFileTarget,
+    SelectedContextUnavailable,
+    SelectedContextTooLarge,
+    PartialProposedContent,
+    UnsafeLargeDeletion,
+    InvalidFileShape,
+    TargetTextNotFound,
+    AmbiguousTextReplacement,
+    SelectedTargetStale,
     UnsafePatch,
     ProposalValidationFailed,
     ProposalPersistenceFailed,
@@ -154,7 +223,7 @@ public sealed record AedaCodeProposalCreationFailure(
                 reason,
                 "no_safe_context",
                 "No safe context was available.",
-                "Try selecting a more specific workspace or use VS Code to send a file or selection first."),
+                "Select one or more files or make your request more specific."),
             AedaCodeProposalCreationFailureReason.ProviderUnavailable => new(
                 reason,
                 "provider_unavailable",
@@ -168,8 +237,8 @@ public sealed record AedaCodeProposalCreationFailure(
             AedaCodeProposalCreationFailureReason.ModelTimeout => new(
                 reason,
                 "model_timeout",
-                "The coding model did not finish in time.",
-                "Try a smaller, more specific request."),
+                "The coding model took too long.",
+                "No files were changed. Try a smaller selected file or a more specific request."),
             AedaCodeProposalCreationFailureReason.ModelCancelled => new(
                 reason,
                 "model_cancelled",
@@ -179,7 +248,7 @@ public sealed record AedaCodeProposalCreationFailure(
                 reason,
                 "invalid_model_json",
                 "The model response was not valid proposal JSON.",
-                "Try a smaller, more specific request."),
+                "The coding model did not return the required JSON object. No files were changed. Try a smaller method or retry."),
             AedaCodeProposalCreationFailureReason.InvalidModelSchema => new(
                 reason,
                 "invalid_model_schema",
@@ -191,7 +260,47 @@ public sealed record AedaCodeProposalCreationFailure(
                 reason,
                 "unsafe_file_target",
                 "The proposed change targeted a file that was not uniquely available in the bounded context.",
-                "Try naming the exact relative path, or make the request more specific if multiple files share that name."),
+                "Select the target file in context or use its exact relative path."),
+            AedaCodeProposalCreationFailureReason.SelectedContextUnavailable => new(
+                reason,
+                "selected_context_unavailable",
+                "One selected file is no longer available.",
+                "Remove it or refresh context, then try again."),
+            AedaCodeProposalCreationFailureReason.SelectedContextTooLarge => new(
+                reason,
+                "selected_context_too_large",
+                "Selected files exceed the context budget.",
+                "Remove files or choose smaller ones."),
+            AedaCodeProposalCreationFailureReason.PartialProposedContent => new(
+                reason,
+                "partial_proposed_content",
+                "AEDA blocked this proposal because the model returned only a small snippet instead of a safe file edit.",
+                "No files were changed. Try a more specific request or select a smaller file."),
+            AedaCodeProposalCreationFailureReason.UnsafeLargeDeletion => new(
+                reason,
+                "unsafe_large_deletion",
+                "AEDA blocked this proposal because it would delete most of an existing file.",
+                "No files were changed. Try a more specific request or select a smaller file."),
+            AedaCodeProposalCreationFailureReason.InvalidFileShape => new(
+                reason,
+                "invalid_file_shape",
+                "AEDA blocked this proposal because the generated content did not match the target file type.",
+                "No files were changed. Try again with the exact selected source file."),
+            AedaCodeProposalCreationFailureReason.TargetTextNotFound => new(
+                reason,
+                "target_text_not_found",
+                "AEDA could not find the exact text the model tried to replace.",
+                "No files were changed. Try a smaller selected file, select the exact file, or name the method you want to edit."),
+            AedaCodeProposalCreationFailureReason.AmbiguousTextReplacement => new(
+                reason,
+                "ambiguous_text_replacement",
+                "AEDA found the model's target text more than once.",
+                "No files were changed. Try naming a more specific helper method."),
+            AedaCodeProposalCreationFailureReason.SelectedTargetStale => new(
+                reason,
+                "selected_target_stale",
+                "The selected target snippet no longer matches the current file.",
+                "Refresh the selected context and choose the target snippet again."),
             AedaCodeProposalCreationFailureReason.UnsafePatch => new(
                 reason,
                 "unsafe_patch",
@@ -295,6 +404,14 @@ public interface IAedaCodeModuleService
 
     Task<CodeContextPack> SearchAsync(
         CodeContextSearchRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AedaCodeContextSearchResult> SearchContextFilesAsync(
+        AedaCodeContextSearchRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AedaCodeTargetSnippetCandidate>> ListTargetSnippetCandidatesAsync(
+        AedaCodeTargetSnippetRequest request,
         CancellationToken cancellationToken = default);
 
     Task<CodeChangePlan> CreatePlanAsync(
