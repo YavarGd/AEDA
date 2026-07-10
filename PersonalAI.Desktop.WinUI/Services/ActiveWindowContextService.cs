@@ -15,6 +15,12 @@ public sealed class ActiveWindowContextService(
     {
         var ownHandle = getOwnWindowHandle();
         _ = foregroundWindowTracker.CaptureCurrentExternalWindow(ownHandle);
+
+        if (!foregroundWindowTracker.IsLastObservedExternalWindowSafe)
+        {
+            return null;
+        }
+
         var externalWindow = foregroundWindowTracker.GetLastValidExternalWindow();
 
         if (externalWindow is null)

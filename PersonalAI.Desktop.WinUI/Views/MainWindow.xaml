@@ -2890,6 +2890,23 @@
                         </StackPanel>
                     </Expander>
 
+                    <Expander Header="AEDA Assist"
+                              Style="{ThemeResource PersonalAiSettingsExpanderStyle}"
+                              IsExpanded="False">
+                        <StackPanel Spacing="12">
+                            <CheckBox Content="Show the AEDA Assist pill"
+                                      IsChecked="{Binding AssistPillEnabled, Mode=TwoWay}" />
+                            <NumberBox Header="Response preview characters"
+                                       Minimum="200"
+                                       Maximum="4000"
+                                       SmallChange="100"
+                                       Value="{Binding AssistPillResponsePreviewCharacters, Mode=TwoWay}" />
+                            <TextBlock Text="The full response remains available in AEDA Chat."
+                                       TextWrapping="Wrap"
+                                       Style="{ThemeResource PersonalAiMetadataTextStyle}" />
+                        </StackPanel>
+                    </Expander>
+
                     <Expander Header="Privacy"
                               Style="{ThemeResource PersonalAiSettingsExpanderStyle}"
                               IsExpanded="False">

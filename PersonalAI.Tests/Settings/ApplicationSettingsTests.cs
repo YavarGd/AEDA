@@ -19,6 +19,8 @@ public sealed class ApplicationSettingsTests
         Assert.True(settings.Hotkey.Control);
         Assert.True(settings.Hotkey.Alt);
         Assert.Equal("Space", settings.Hotkey.Key);
+        Assert.True(settings.AssistPill.Enabled);
+        Assert.Equal(1_200, settings.AssistPill.ResponsePreviewCharacters);
         Assert.True(settings.MemoryRag.MemoryEnabled);
         Assert.True(settings.MemoryRag.ExplicitMemoryEnabled);
         Assert.False(settings.MemoryRag.AutomaticMemoryEnabled);
@@ -58,6 +60,31 @@ public sealed class ApplicationSettingsTests
         };
 
         Assert.True(PrivacyExclusionMatcher.IsExcluded(processName, exclusions));
+    }
+
+    [Theory]
+    [InlineData(1, 200)]
+    [InlineData(10_000, 4_000)]
+    public void AssistPillValidationClampsPreviewLength(int value, int expected)
+    {
+        var normalized = ApplicationSettingsValidator.NormalizeAssistPill(
+            new AssistPillSettings(true, value));
+
+        Assert.Equal(expected, normalized.ResponsePreviewCharacters);
+    }
+
+    [Theory]
+    [InlineData("msedge", "Account - InPrivate - Microsoft Edge")]
+    [InlineData("chrome.exe", "New Incognito Tab - Google Chrome")]
+    [InlineData("firefox", "Mozilla Firefox - Private Browsing")]
+    public void PrivacyMatcherBlocksPrivateBrowserWindows(
+        string processName,
+        string windowTitle)
+    {
+        Assert.True(PrivacyExclusionMatcher.IsSensitiveWindow(
+            processName,
+            windowTitle,
+            []));
     }
 
     [Fact]
@@ -601,6 +628,7 @@ public sealed class ApplicationSettingsTests
         Assert.Equal(ApplicationSettings.CurrentSchemaVersion, service.Current.SchemaVersion);
         Assert.True(service.Current.Appearance.CompactSidebar);
         Assert.Equal(MemoryRagSettings.Default, service.Current.MemoryRag);
+        Assert.Equal(AssistPillSettings.Default, service.Current.AssistPill);
         Assert.Contains(service.Current.Models.Assignments, assignment =>
             assignment.Category == ModelRoutingCategory.General &&
             assignment.Model == "gemma4");

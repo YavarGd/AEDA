@@ -128,6 +128,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _launchAtSignIn;
 
     [ObservableProperty]
+    private bool _assistPillEnabled;
+
+    [ObservableProperty]
+    private int _assistPillResponsePreviewCharacters;
+
+    [ObservableProperty]
     private int _maxTotalTextContextCharacters;
 
     [ObservableProperty]
@@ -210,6 +216,9 @@ public sealed partial class SettingsViewModel : ObservableObject
                 StartMinimizedToTray,
                 RememberWindowPosition,
                 LaunchAtSignIn),
+            new AssistPillSettings(
+                AssistPillEnabled,
+                AssistPillResponsePreviewCharacters),
             new ContextSettings(
                 MaxTotalTextContextCharacters,
                 MaxIndividualClipboardCharacters,
@@ -454,6 +463,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnRememberWindowPositionChanged(bool value) => QueueSave();
 
+    partial void OnAssistPillEnabledChanged(bool value) => QueueSave();
+
+    partial void OnAssistPillResponsePreviewCharactersChanged(int value) => QueueSave();
+
     partial void OnMaxTotalTextContextCharactersChanged(int value) => QueueSave();
 
     partial void OnMaxIndividualClipboardCharactersChanged(int value) => QueueSave();
@@ -515,6 +528,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             StartMinimizedToTray = settings.Window.StartMinimizedToTray;
             RememberWindowPosition = settings.Window.RememberWindowPosition;
             LaunchAtSignIn = settings.Window.LaunchAtSignIn;
+            AssistPillEnabled = settings.AssistPill.Enabled;
+            AssistPillResponsePreviewCharacters =
+                settings.AssistPill.ResponsePreviewCharacters;
             MaxTotalTextContextCharacters =
                 settings.Context.MaxTotalTextContextCharacters;
             MaxIndividualClipboardCharacters =

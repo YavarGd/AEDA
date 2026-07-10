@@ -11,6 +11,7 @@ public sealed record ApplicationSettings(
     ModelSettings Models,
     HotkeySettings Hotkey,
     WindowSettings Window,
+    AssistPillSettings AssistPill,
     ContextSettings Context,
     PrivacySettings Privacy,
     ProviderRoutingSettings ProviderRouting,
@@ -18,7 +19,7 @@ public sealed record ApplicationSettings(
     VoiceSettings Voice,
     MemoryRagSettings MemoryRag)
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     public static ApplicationSettings CreateDefault()
     {
@@ -29,6 +30,7 @@ public sealed record ApplicationSettings(
             ModelSettings.Default,
             HotkeySettings.Default,
             WindowSettings.Default,
+            AssistPillSettings.Default,
             ContextSettings.Default,
             PrivacySettings.Default,
             ProviderRoutingSettings.Default,
@@ -105,6 +107,15 @@ public sealed record WindowSettings(
         StartMinimizedToTray: false,
         RememberWindowPosition: true,
         LaunchAtSignIn: false);
+}
+
+public sealed record AssistPillSettings(
+    bool Enabled,
+    int ResponsePreviewCharacters)
+{
+    public static AssistPillSettings Default { get; } = new(
+        Enabled: true,
+        ResponsePreviewCharacters: 1_200);
 }
 
 public sealed record ContextSettings(

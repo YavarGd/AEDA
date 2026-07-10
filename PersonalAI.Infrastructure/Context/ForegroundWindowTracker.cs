@@ -16,20 +16,37 @@ public sealed class ForegroundWindowTracker(
 
     public ActiveWindowReference? LastExternalWindow => _referenceTracker.Current;
 
+    public bool IsLastObservedExternalWindowSafe { get; private set; }
+
     public ActiveWindowReference? CaptureCurrentExternalWindow(nint ownWindowHandle)
     {
         var windowHandle = NativeMethods.GetForegroundWindow();
 
-        if (!TryCreateExternalReference(windowHandle, out var reference))
+        if (windowHandle == 0 || !NativeMethods.IsWindow(windowHandle))
+        {
+            IsLastObservedExternalWindowSafe = false;
+            return _referenceTracker.Current;
+        }
+
+        var processId = NativeMethods.GetProcessId(windowHandle);
+        if (processId == _ownProcessId || windowHandle == ownWindowHandle)
         {
             return _referenceTracker.Current;
         }
 
-        return _referenceTracker.TryRemember(
+        if (!TryCreateExternalReference(windowHandle, out var reference))
+        {
+            IsLastObservedExternalWindowSafe = false;
+            return _referenceTracker.Current;
+        }
+
+        var remembered = _referenceTracker.TryRemember(
             reference,
             _ownProcessId,
             ownWindowHandle,
             NativeMethods.IsWindow(windowHandle));
+        IsLastObservedExternalWindowSafe = remembered?.WindowHandle == windowHandle;
+        return remembered;
     }
 
     public ActiveWindowReference? GetLastValidExternalWindow()
@@ -62,7 +79,7 @@ public sealed class ForegroundWindowTracker(
         var privacySettings = ApplicationSettingsValidator.NormalizePrivacy(
             _getPrivacySettings?.Invoke() ?? PrivacySettings.Default);
 
-        if (!IsUsableExternalWindow(processName, privacySettings))
+        if (!IsUsableExternalWindow(processName, windowTitle, privacySettings))
         {
             reference = null;
             return false;
@@ -101,6 +118,7 @@ public sealed class ForegroundWindowTracker(
 
     private static bool IsUsableExternalWindow(
         string? processName,
+        string? windowTitle,
         PrivacySettings privacySettings)
     {
         if (string.IsNullOrWhiteSpace(processName))
@@ -108,8 +126,9 @@ public sealed class ForegroundWindowTracker(
             return false;
         }
 
-        return !PrivacyExclusionMatcher.IsExcluded(
+        return !PrivacyExclusionMatcher.IsSensitiveWindow(
             processName,
+            windowTitle,
             privacySettings.ExcludedApplications) &&
             !processName.Equals("explorer", StringComparison.OrdinalIgnoreCase) &&
             !processName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);

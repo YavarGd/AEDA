@@ -1,6 +1,5 @@
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using Microsoft.UI.Xaml;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Ui;
@@ -16,6 +15,10 @@ public sealed class WinUiWindowPlacementService
     public const int MinimumWindowHeight = 760;
 
     private readonly string _settingsPath;
+    private readonly int _defaultWidth;
+    private readonly int _defaultHeight;
+    private readonly int _minimumWidth;
+    private readonly int _minimumHeight;
     private bool _hasRememberedPosition;
     private bool _isApplyingPosition;
     private bool _isApplyingSize;
@@ -27,18 +30,43 @@ public sealed class WinUiWindowPlacementService
         : this(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PersonalAI",
-            "winui-window-position.json"))
+            "winui-window-position.json"),
+            DefaultWindowWidth,
+            DefaultWindowHeight,
+            MinimumWindowWidth,
+            MinimumWindowHeight)
     {
     }
 
     public WinUiWindowPlacementService(string settingsPath)
+        : this(
+            settingsPath,
+            DefaultWindowWidth,
+            DefaultWindowHeight,
+            MinimumWindowWidth,
+            MinimumWindowHeight)
     {
-        _settingsPath = settingsPath;
     }
 
-    public void ConfigureWindow(Window window)
+    public WinUiWindowPlacementService(
+        string settingsPath,
+        int defaultWidth,
+        int defaultHeight,
+        int minimumWidth,
+        int minimumHeight)
     {
-        window.AppWindow.Resize(new SizeInt32(DefaultWindowWidth, DefaultWindowHeight));
+        _settingsPath = settingsPath;
+        _defaultWidth = defaultWidth;
+        _defaultHeight = defaultHeight;
+        _minimumWidth = minimumWidth;
+        _minimumHeight = minimumHeight;
+    }
+
+    public void ConfigureWindow(
+        Window window,
+        bool rememberPositionChanges = true)
+    {
+        window.AppWindow.Resize(new SizeInt32(_defaultWidth, _defaultHeight));
         window.AppWindow.Changed += (_, args) =>
         {
             if (args.DidSizeChange)
@@ -47,6 +75,7 @@ public sealed class WinUiWindowPlacementService
             }
 
             if (_isApplyingPosition ||
+                !rememberPositionChanges ||
                 !RememberWindowPosition ||
                 !args.DidPositionChange)
             {
@@ -65,8 +94,8 @@ public sealed class WinUiWindowPlacementService
         }
 
         var size = window.AppWindow.Size;
-        var width = Math.Max(size.Width, MinimumWindowWidth);
-        var height = Math.Max(size.Height, MinimumWindowHeight);
+        var width = Math.Max(size.Width, _minimumWidth);
+        var height = Math.Max(size.Height, _minimumHeight);
 
         if (width == size.Width && height == size.Height)
         {
@@ -102,36 +131,116 @@ public sealed class WinUiWindowPlacementService
         ApplyPosition(window, position);
     }
 
+    public void PlaceCentered(
+        Window window,
+        ActiveWindowReference? externalWindow)
+    {
+        var size = window.AppWindow.Size;
+        ApplyPosition(
+            window,
+            GetActivationPosition(externalWindow, size.Width, size.Height));
+    }
+
+    public void PlaceAssistPill(
+        Window window,
+        ActiveWindowReference? externalWindow)
+    {
+        var areas = GetWorkingAreas();
+        var size = window.AppWindow.Size;
+        var persisted = RememberWindowPosition
+            ? GetPreferredPosition(size.Width, size.Height, areas)
+            : null;
+        var bounds = GetActivationBounds(externalWindow);
+        var fallback = PalettePlacementCalculator.BottomRightInBounds(
+            bounds,
+            size.Width,
+            size.Height,
+            margin: 20);
+
+        ApplyPosition(
+            window,
+            persisted ?? new WindowPosition(fallback.X, fallback.Y));
+    }
+
+    public void PlaceExpandedNearRemembered(
+        Window window,
+        ActiveWindowReference? externalWindow)
+    {
+        var size = window.AppWindow.Size;
+        var areas = GetWorkingAreas();
+        var remembered = GetRememberedPosition();
+        var position = remembered is null
+            ? null
+            : WindowPositionValidator.ClampToVisibleWorkingArea(
+                remembered.Value,
+                size.Width,
+                size.Height,
+                areas);
+
+        if (position is not null)
+        {
+            ApplyPosition(window, position.Value);
+            return;
+        }
+
+        var bounds = GetActivationBounds(externalWindow);
+        var fallback = PalettePlacementCalculator.BottomRightInBounds(
+            bounds,
+            size.Width,
+            size.Height,
+            margin: 20);
+        ApplyPosition(window, new WindowPosition(fallback.X, fallback.Y));
+    }
+
     private WindowPosition? GetPreferredPosition(
         double width,
         double height,
         IReadOnlyList<RectBounds> workingAreas)
     {
         if (_hasRememberedPosition &&
-            WindowPositionValidator.IsVisibleWithinAnyWorkingArea(
+            WindowPositionValidator.ClampToVisibleWorkingArea(
                 _rememberedPosition,
                 width,
                 height,
-                workingAreas))
+                workingAreas) is { } remembered)
         {
-            return _rememberedPosition;
+            _rememberedPosition = remembered;
+            return remembered;
         }
 
         var persisted = ReadPersistedPosition();
 
         if (persisted is not null &&
-            WindowPositionValidator.IsVisibleWithinAnyWorkingArea(
+            WindowPositionValidator.ClampToVisibleWorkingArea(
                 persisted.Value,
                 width,
                 height,
-                workingAreas))
+                workingAreas) is { } corrected)
         {
-            _rememberedPosition = persisted.Value;
+            _rememberedPosition = corrected;
             _hasRememberedPosition = true;
-            return persisted;
+            return corrected;
         }
 
         return null;
+    }
+
+    private WindowPosition? GetRememberedPosition()
+    {
+        if (_hasRememberedPosition)
+        {
+            return _rememberedPosition;
+        }
+
+        var persisted = ReadPersistedPosition();
+        if (persisted is null)
+        {
+            return null;
+        }
+
+        _rememberedPosition = persisted.Value;
+        _hasRememberedPosition = true;
+        return persisted;
     }
 
     private static WindowPosition GetActivationPosition(
@@ -164,7 +273,7 @@ public sealed class WinUiWindowPlacementService
         }
     }
 
-    private void RememberPosition(Window window)
+    public void RememberPosition(Window window)
     {
         var position = new WindowPosition(
             window.AppWindow.Position.X,
@@ -194,7 +303,29 @@ public sealed class WinUiWindowPlacementService
 
     private static IReadOnlyList<RectBounds> GetWorkingAreas()
     {
-        return [GetActivationBounds(externalWindow: null)];
+        var areas = new List<RectBounds>();
+        _ = EnumDisplayMonitors(0, 0, (monitor, _, _, _) =>
+        {
+            var info = new MonitorInfo
+            {
+                cbSize = Marshal.SizeOf<MonitorInfo>()
+            };
+
+            if (GetMonitorInfo(monitor, ref info))
+            {
+                areas.Add(new RectBounds(
+                    info.rcWork.Left,
+                    info.rcWork.Top,
+                    info.rcWork.Right - info.rcWork.Left,
+                    info.rcWork.Bottom - info.rcWork.Top));
+            }
+
+            return true;
+        }, 0);
+
+        return areas.Count > 0
+            ? areas
+            : [GetActivationBounds(externalWindow: null)];
     }
 
     private static RectBounds GetActivationBounds(ActiveWindowReference? externalWindow)
@@ -238,12 +369,11 @@ public sealed class WinUiWindowPlacementService
             }
 
             var json = File.ReadAllText(_settingsPath);
-            return JsonSerializer.Deserialize<WindowPosition>(json);
+            return WindowPositionJson.Deserialize(json);
         }
         catch (Exception exception) when (
             exception is IOException ||
-            exception is UnauthorizedAccessException ||
-            exception is JsonException)
+            exception is UnauthorizedAccessException)
         {
             return null;
         }
@@ -262,7 +392,7 @@ public sealed class WinUiWindowPlacementService
 
             File.WriteAllText(
                 _settingsPath,
-                JsonSerializer.Serialize(position));
+                WindowPositionJson.Serialize(position));
         }
         catch (Exception exception) when (
             exception is IOException ||
@@ -272,6 +402,12 @@ public sealed class WinUiWindowPlacementService
     }
 
     private const uint MonitorDefaultToNearest = 0x00000002;
+
+    private delegate bool MonitorEnumProc(
+        nint monitor,
+        nint deviceContext,
+        nint monitorRect,
+        nint data);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
@@ -310,6 +446,13 @@ public sealed class WinUiWindowPlacementService
     private static extern nint MonitorFromWindow(
         nint hwnd,
         uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(
+        nint hdc,
+        nint clipRect,
+        MonitorEnumProc callback,
+        nint data);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool GetMonitorInfo(

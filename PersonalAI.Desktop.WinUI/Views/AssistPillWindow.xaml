@@ -1,0 +1,210 @@
+<Window
+    x:Class="PersonalAI.Desktop.WinUI.Views.AssistPillWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:PersonalAI.Desktop.WinUI.Controls"
+    xmlns:converters="using:PersonalAI.Desktop.WinUI.Converters">
+
+    <Grid x:Name="Root"
+          Background="Transparent"
+          KeyDown="Root_KeyDown">
+        <Grid.Resources>
+            <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        </Grid.Resources>
+
+        <Border Width="56"
+                Height="56"
+                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                BorderBrush="{ThemeResource PersonalAiStrongBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="28"
+                Visibility="{Binding IsIdle, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Button Margin="6"
+                        Padding="0"
+                        Width="44"
+                        Height="44"
+                        MinWidth="0"
+                        MinHeight="0"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalContentAlignment="Stretch"
+                        AutomationProperties.Name="Open AEDA Assist"
+                        Background="{ThemeResource PersonalAiAccentBrush}"
+                        BorderThickness="0"
+                        Click="OpenPromptButton_Click"
+                        CornerRadius="22"
+                        ToolTipService.ToolTip="Open AEDA Assist">
+                    <TextBlock HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="White"
+                               Text="A" />
+                </Button>
+                <Rectangle Height="6"
+                           VerticalAlignment="Top"
+                           Fill="Transparent"
+                           PointerPressed="IdleDragRegion_PointerPressed" />
+                <Rectangle Height="6"
+                           VerticalAlignment="Bottom"
+                           Fill="Transparent"
+                           PointerPressed="IdleDragRegion_PointerPressed" />
+                <Rectangle Width="6"
+                           HorizontalAlignment="Left"
+                           Fill="Transparent"
+                           PointerPressed="IdleDragRegion_PointerPressed" />
+                <Rectangle Width="6"
+                           HorizontalAlignment="Right"
+                           Fill="Transparent"
+                           PointerPressed="IdleDragRegion_PointerPressed" />
+            </Grid>
+        </Border>
+
+        <Border Margin="1"
+                Padding="12"
+                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                BorderBrush="{ThemeResource PersonalAiStrongBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="24"
+                Visibility="{Binding IsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid Visibility="{Binding IsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid x:Name="ExpandedDragRegion"
+                              PointerPressed="DragRegion_PointerPressed">
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource PersonalAiPrimaryTextBrush}"
+                                       Text="AEDA Assist" />
+                        </Grid>
+
+                        <Button Grid.Column="1"
+                                Margin="8,0,4,0"
+                                Click="CollapseButton_Click"
+                                AutomationProperties.Name="Collapse AEDA Assist"
+                                Content="—"
+                                ToolTipService.ToolTip="Collapse" />
+                        <Button Grid.Column="2"
+                                Click="CloseButton_Click"
+                                AutomationProperties.Name="Hide AEDA Assist"
+                                Content="×"
+                                ToolTipService.ToolTip="Hide" />
+                    </Grid>
+
+                    <Border Grid.Row="1"
+                            Margin="0,12,0,0"
+                            Padding="10"
+                            Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="{Binding HasContext, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock FontWeight="SemiBold"
+                                           Foreground="{ThemeResource PersonalAiPrimaryTextBrush}"
+                                           Text="{Binding ContextLabel}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock FontSize="11"
+                                           Foreground="{ThemeResource PersonalAiSecondaryTextBrush}"
+                                           MaxLines="2"
+                                           Text="{Binding ContextPreview}"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Margin="8,0,0,0"
+                                    Command="{Binding RemoveContextCommand}"
+                                    AutomationProperties.Name="Remove app context"
+                                    Content="Remove"
+                                    ToolTipService.ToolTip="Remove app context" />
+                        </Grid>
+                    </Border>
+
+                    <TextBox x:Name="PromptTextBox"
+                             Grid.Row="2"
+                             Margin="0,14,0,8"
+                             Padding="12,9"
+                             AcceptsReturn="True"
+                             AutomationProperties.Name="AEDA Assist prompt"
+                             KeyDown="PromptTextBox_KeyDown"
+                             MaxHeight="120"
+                             MinHeight="72"
+                             PlaceholderText="Ask AEDA…"
+                             Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             TextWrapping="Wrap" />
+
+                    <Grid Grid.Row="3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Foreground="{ThemeResource PersonalAiMutedTextBrush}"
+                                   Text="{Binding StatusText}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="1"
+                                Command="{Binding SubmitCommand}"
+                                AutomationProperties.Name="Send AEDA Assist prompt"
+                                Content="Send" />
+                    </Grid>
+
+                    <Border Grid.Row="4"
+                            Margin="0,10,0,0"
+                            Padding="12"
+                            Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
+                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Visibility="{Binding HasResponse, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <controls:ChatMarkdownPresenter
+                                AutomationProperties.LiveSetting="Polite"
+                                Content="{Binding RenderedResponse}" />
+                        </ScrollViewer>
+                    </Border>
+
+                    <StackPanel Grid.Row="5"
+                                Margin="0,10,0,0"
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Command="{Binding CancelCommand}"
+                                AutomationProperties.Name="Stop AEDA Assist response"
+                                Content="Stop"
+                                Visibility="{Binding IsStreaming, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button Command="{Binding CopyResponseCommand}"
+                                AutomationProperties.Name="Copy AEDA Assist response"
+                                Content="Copy"
+                                Visibility="{Binding HasResponse, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button Command="{Binding OpenInAedaCommand}"
+                                AutomationProperties.Name="Open response in AEDA"
+                                Content="Open in AEDA"
+                                Visibility="{Binding HasResponse, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

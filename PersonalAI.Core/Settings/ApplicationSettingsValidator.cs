@@ -21,6 +21,7 @@ public static class ApplicationSettingsValidator
             Models = NormalizeModels(value.Models ?? defaults.Models, normalizedVision),
             Hotkey = HotkeySettingsValidator.Normalize(value.Hotkey ?? defaults.Hotkey),
             Window = value.Window ?? defaults.Window,
+            AssistPill = NormalizeAssistPill(value.AssistPill ?? defaults.AssistPill),
             Context = NormalizeContext(value.Context ?? defaults.Context),
             Privacy = NormalizePrivacy(value.Privacy ?? defaults.Privacy),
             ProviderRouting = NormalizeProviderRouting(
@@ -28,6 +29,17 @@ public static class ApplicationSettingsValidator
             Vision = normalizedVision,
             Voice = NormalizeVoice(value.Voice ?? defaults.Voice),
             MemoryRag = NormalizeMemoryRag(value.MemoryRag ?? defaults.MemoryRag)
+        };
+    }
+
+    public static AssistPillSettings NormalizeAssistPill(AssistPillSettings settings)
+    {
+        return settings with
+        {
+            ResponsePreviewCharacters = Clamp(
+                settings.ResponsePreviewCharacters,
+                200,
+                4_000)
         };
     }
 

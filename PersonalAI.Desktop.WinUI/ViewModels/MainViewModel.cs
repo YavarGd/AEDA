@@ -1420,25 +1420,29 @@ public sealed partial class MainViewModel : ObservableObject
         await ReloadConversationListAsync(_activeConversation.Id);
     }
 
-    private void AddAttachedContext(AttachedContextItem item, string successMessage)
+    public bool TryAttachContext(AttachedContextItem item) =>
+        AddAttachedContext(item, "Application context attached.");
+
+    private bool AddAttachedContext(AttachedContextItem item, string successMessage)
     {
         if (AttachedContexts.Count >=
             _settingsService.Current.Context.MaxAttachedContextItems)
         {
             SetContextStatus(
                 $"Remove an attached context before adding another. Limit: {_settingsService.Current.Context.MaxAttachedContextItems}.");
-            return;
+            return false;
         }
 
         if (!_attachedContextCollection.Add(item))
         {
             SetContextStatus("That context is already attached.");
-            return;
+            return false;
         }
 
         AttachedContexts.Add(item);
         NotifyAttachedContextsChanged();
         SetContextStatus(successMessage);
+        return true;
     }
 
     private void ReplaceAttachedContext(

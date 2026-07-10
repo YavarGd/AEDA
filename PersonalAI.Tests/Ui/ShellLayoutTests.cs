@@ -125,6 +125,7 @@ public sealed class ShellLayoutTests
         Assert.Contains("Models", headers);
         Assert.Contains("Appearance", headers);
         Assert.Contains("Integrations", headers);
+        Assert.Contains("AEDA Assist", headers);
         Assert.Contains("Privacy", headers);
         Assert.Contains("Developer", headers);
         Assert.DoesNotContain("Advanced model routing", headers);
@@ -360,6 +361,50 @@ public sealed class ShellLayoutTests
                 AttributeValue(button, "Visibility")?.Contains(
                     "IsCapabilityBlocked",
                     StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void AssistPill_KeepsContextExplicitAndPromptMultilineAccessible()
+    {
+        var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
+        var prompt = document.Descendants().Single(element =>
+            element.Name.LocalName == "TextBox" &&
+            AttributeValue(element, "Name") == "PromptTextBox");
+        var buttons = document.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToArray();
+
+        Assert.Equal("True", AttributeValue(prompt, "AcceptsReturn"));
+        Assert.Contains(buttons, button =>
+            AttributeValue(button, "AutomationProperties.Name") == "Open AEDA Assist" &&
+            AttributeValue(button, "ToolTipService.ToolTip") == "Open AEDA Assist");
+        Assert.Contains(buttons, button =>
+            AttributeValue(button, "AutomationProperties.Name") == "Remove app context" &&
+            AttributeValue(button, "Command") == "{Binding RemoveContextCommand}");
+        Assert.Contains(document.Descendants(), element =>
+            element.Name.LocalName == "ChatMarkdownPresenter" &&
+            AttributeValue(element, "Content") == "{Binding RenderedResponse}");
+    }
+
+    [Fact]
+    public void AssistPill_IdleSurfaceIsOneCircularLauncher()
+    {
+        var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
+        var launcher = document.Descendants().Single(element =>
+            element.Name.LocalName == "Button" &&
+            AttributeValue(element, "AutomationProperties.Name") == "Open AEDA Assist");
+        var surface = launcher.Ancestors().Single(element =>
+            element.Name.LocalName == "Border" &&
+            AttributeValue(element, "Width") == "56");
+
+        Assert.Equal("56", AttributeValue(surface, "Width"));
+        Assert.Equal("56", AttributeValue(surface, "Height"));
+        Assert.Equal("28", AttributeValue(surface, "CornerRadius"));
+        Assert.Equal("0", AttributeValue(launcher, "MinWidth"));
+        Assert.Equal("0", AttributeValue(launcher, "MinHeight"));
+        Assert.DoesNotContain(
+            document.Descendants(),
+            element => element.Name.LocalName == "MenuFlyoutItem");
     }
 
     private static XElement FindButtonByAccessibleName(string accessibleName)

@@ -31,6 +31,8 @@ public partial class App : Application
 {
     private Window? _window;
     private MainWindow? _mainWindow;
+    private AssistPillWindow? _assistPillWindow;
+    private AssistPillViewModel? _assistPillViewModel;
     private MainViewModel? _viewModel;
     private IApplicationSettingsService? _settingsService;
     private IStartupRegistrationService? _startupRegistrationService;
@@ -39,6 +41,7 @@ public partial class App : Application
     private WinUiGlobalHotKeyService? _hotKeyService;
     private WinUiWindowActivationService? _activationService;
     private WinUiWindowPlacementService? _placementService;
+    private WinUiWindowPlacementService? _assistPillPlacementService;
     private ForegroundWindowTracker? _foregroundWindowTracker;
     private ExternalForegroundWindowMonitor? _foregroundMonitor;
     private PersonalAiPipeServer? _pipeServer;
@@ -46,6 +49,8 @@ public partial class App : Application
     private TaskTimelineViewModel? _taskTimeline;
     private bool _isExiting;
     private bool _isWindowVisible;
+    private bool _assistPillReady;
+    private bool _shellResourcesDisposed;
 
     public App()
     {
@@ -312,7 +317,11 @@ public partial class App : Application
             _startupRegistrationService,
             ApplyHotkeyAsync,
             ApplyRuntimeSettings,
-            () => _placementService?.ResetRememberedPosition(),
+            () =>
+            {
+                _placementService?.ResetRememberedPosition();
+                _assistPillPlacementService?.ResetRememberedPosition();
+            },
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
                 Task.FromResult<IReadOnlyList<string>>([]),
             workspaceManagement);
@@ -321,6 +330,7 @@ public partial class App : Application
             _settingsService,
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
                 Task.FromResult<IReadOnlyList<string>>([]));
+        var clipboardWriter = new WinUiClipboardWriter();
         var viewModel = new MainViewModel(
             conversationSession,
             clipboardContextService,
@@ -343,7 +353,7 @@ public partial class App : Application
             aedaResearchViewModel,
             _taskTimeline,
             workspaceRegistry,
-            new WinUiClipboardWriter(),
+            clipboardWriter,
             cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
                 Task.FromResult<IReadOnlyList<string>>([]));
         _viewModel = viewModel;
@@ -355,6 +365,26 @@ public partial class App : Application
         _activationService = new WinUiWindowActivationService(_window);
         _placementService = new WinUiWindowPlacementService();
         _placementService.ConfigureWindow(_window);
+        _assistPillPlacementService = new WinUiWindowPlacementService(
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "PersonalAI",
+                "assist-pill-position-v2.json"),
+            AssistPillWindow.IdleWidth,
+            AssistPillWindow.IdleHeight,
+            AssistPillWindow.IdleWidth,
+            AssistPillWindow.IdleHeight);
+        _assistPillViewModel = new AssistPillViewModel(
+            new AssistPillHost(
+                viewModel,
+                activeWindowContextService,
+                clipboardWriter,
+                () => ShowPersonalAi(repositionIfHidden: true)),
+            _settingsService.Current.AssistPill);
+        _assistPillWindow = new AssistPillWindow(
+            _assistPillViewModel,
+            _assistPillPlacementService,
+            _foregroundWindowTracker);
         ApplyRuntimeSettings(_settingsService.Current);
         _window.AppWindow.Closing += MainWindow_Closing;
 
@@ -365,18 +395,17 @@ public partial class App : Application
         StartForegroundTracking();
         StartTrayIcon();
         RegisterHotKey();
+        StartBackgroundExperience();
+    }
 
-        if (_settingsService.Current.Window.StartMinimizedToTray)
-        {
-            _isWindowVisible = false;
-            _viewModel.SetEditorConnectionState(
-                _viewModel.IsEditorConnected,
-                "PersonalAI is running in the system tray.");
-        }
-        else
-        {
-            ShowPersonalAi(repositionIfHidden: true);
-        }
+    private void StartBackgroundExperience()
+    {
+        _assistPillReady = true;
+        _assistPillWindow?.ShowIdle();
+        _isWindowVisible = false;
+        _viewModel?.SetEditorConnectionState(
+            _viewModel.IsEditorConnected,
+            "AEDA is running in the background.");
     }
 
     private void StartTrayIcon()
@@ -410,7 +439,14 @@ public partial class App : Application
         {
             _ = _foregroundWindowTracker?.CaptureCurrentExternalWindow(
                 GetWindowHandle());
-            ShowPersonalAi(repositionIfHidden: true);
+            if (_settingsService?.Current.AssistPill.Enabled == true)
+            {
+                _ = ToggleAssistPillAsync();
+            }
+            else
+            {
+                ShowPersonalAi(repositionIfHidden: true);
+            }
         };
 
         if (!_hotKeyService.Register())
@@ -418,6 +454,21 @@ public partial class App : Application
             _viewModel?.SetEditorConnectionState(
                 _viewModel.IsEditorConnected,
                 $"{HotkeySettingsValidator.Format(settings.Hotkey)} is unavailable; another app may own it.");
+        }
+    }
+
+    private async Task ToggleAssistPillAsync()
+    {
+        try
+        {
+            if (_assistPillWindow is not null)
+            {
+                await _assistPillWindow.ToggleAsync();
+            }
+        }
+        catch
+        {
+            _assistPillWindow?.ShowIdle();
         }
     }
 
@@ -451,14 +502,28 @@ public partial class App : Application
 
     private void ApplyRuntimeSettings(ApplicationSettings settings)
     {
+        var pillWasEnabled = _assistPillViewModel?.IsEnabled == true;
         if (_placementService is not null)
         {
             _placementService.RememberWindowPosition =
                 settings.Window.RememberWindowPosition;
         }
 
+        if (_assistPillPlacementService is not null)
+        {
+            _assistPillPlacementService.RememberWindowPosition =
+                settings.Window.RememberWindowPosition;
+        }
+
         _viewModel?.ApplySettings(settings);
+        _assistPillViewModel?.ApplySettings(settings.AssistPill);
+        if (_assistPillReady && !pillWasEnabled && settings.AssistPill.Enabled)
+        {
+            _assistPillWindow?.ShowIdle();
+        }
+
         _mainWindow?.ApplyTheme(MapTheme(settings.Appearance.Theme));
+        _assistPillWindow?.ApplyTheme(MapTheme(settings.Appearance.Theme));
     }
 
     private void StartForegroundTracking()
@@ -581,8 +646,23 @@ public partial class App : Application
 
     private void DisposeShellResources()
     {
+        if (_shellResourcesDisposed)
+        {
+            return;
+        }
+
+        _shellResourcesDisposed = true;
+        if (_shellResourcesDisposed)
+        {
+            return;
+        }
+
+        _shellResourcesDisposed = true;
         _pipeServer?.Dispose();
         _pipeServer = null;
+        _assistPillWindow?.Close();
+        _assistPillWindow = null;
+        _assistPillViewModel = null;
         _foregroundMonitor?.Dispose();
         _foregroundMonitor = null;
         _hotKeyService?.Dispose();

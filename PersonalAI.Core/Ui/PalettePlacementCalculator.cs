@@ -25,6 +25,18 @@ public static class PalettePlacementCalculator
         return Clamp(bounds, new PointPosition(left, top), width, height);
     }
 
+    public static PointPosition BottomRightInBounds(
+        RectBounds bounds,
+        double width,
+        double height,
+        double margin)
+    {
+        var left = bounds.Left + bounds.Width - width - margin;
+        var top = bounds.Top + bounds.Height - height - margin;
+
+        return Clamp(bounds, new PointPosition(left, top), width, height);
+    }
+
     private static PointPosition Clamp(
         RectBounds bounds,
         PointPosition position,
