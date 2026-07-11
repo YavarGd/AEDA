@@ -1,11 +1,13 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Ui;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Infrastructure.Context;
@@ -15,17 +17,17 @@ namespace PersonalAI.Desktop.WinUI.Views;
 
 public sealed partial class AssistPillWindow : Window
 {
-    public const int IdleWidth = 56;
-    public const int IdleHeight = 56;
-    private const int ContextWidth = 500;
-    private const int ContextHeight = 380;
-    private const int SpotlightWidth = 640;
-    private const int SpotlightHeight = 340;
+    public const int IdleWidth = 64;
+    public const int IdleHeight = 64;
+    public const int ResponseResizeIntervalMilliseconds = 150;
+    private const int SpotlightWidth = 520;
+    private const int SpotlightHeight = 144;
 
     private readonly AssistPillViewModel _viewModel;
     private readonly WinUiWindowPlacementService _placementService;
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly nint _windowHandle;
+    private readonly DispatcherQueueTimer _responseResizeTimer;
     private nint _focusReturnWindow;
     private int _isTransitioning;
 
@@ -39,6 +41,14 @@ public sealed partial class AssistPillWindow : Window
         _foregroundWindowTracker = foregroundWindowTracker;
         InitializeComponent();
         Root.DataContext = _viewModel;
+        _responseResizeTimer = Root.DispatcherQueue.CreateTimer();
+        _responseResizeTimer.Interval = TimeSpan.FromMilliseconds(
+            ResponseResizeIntervalMilliseconds);
+        _responseResizeTimer.Tick += (_, _) =>
+        {
+            _responseResizeTimer.Stop();
+            ApplyResponseSize();
+        };
         _windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
         if (MicaController.IsSupported())
@@ -87,7 +97,7 @@ public sealed partial class AssistPillWindow : Window
         {
             if (_viewModel.IsExpanded)
             {
-                ActivatePrompt();
+                ActivateSurface();
             }
 
             return;
@@ -97,7 +107,7 @@ public sealed partial class AssistPillWindow : Window
         {
             if (_viewModel.IsExpanded)
             {
-                ActivatePrompt();
+                ActivateSurface();
                 return;
             }
 
@@ -129,14 +139,17 @@ public sealed partial class AssistPillWindow : Window
             return;
         }
 
-        ActivatePrompt();
+        ActivateSurface();
     }
 
-    private void ActivatePrompt()
+    private void ActivateSurface()
     {
         AppWindow.Show(activateWindow: true);
-        PromptTextBox.Focus(FocusState.Programmatic);
-        PromptTextBox.SelectionStart = PromptTextBox.Text.Length;
+        if (_viewModel.IsFallbackInput)
+        {
+            PromptTextBox.Focus(FocusState.Programmatic);
+            PromptTextBox.SelectionStart = PromptTextBox.Text.Length;
+        }
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -145,7 +158,14 @@ public sealed partial class AssistPillWindow : Window
         {
             ApplyState(
                 reposition: _viewModel.State is AssistPillState.IdlePill or
-                    AssistPillState.ContextPrompt or AssistPillState.SpotlightPrompt);
+                    AssistPillState.SpotlightPrompt ||
+                    _viewModel.IsResponseSurface);
+        }
+        else if (e.PropertyName == nameof(AssistPillViewModel.Response) &&
+            _viewModel.IsResponseSurface &&
+            !_responseResizeTimer.IsRunning)
+        {
+            _responseResizeTimer.Start();
         }
     }
 
@@ -159,9 +179,9 @@ public sealed partial class AssistPillWindow : Window
 
         var size = _viewModel.IsIdle
             ? new SizeInt32(IdleWidth, IdleHeight)
-            : _viewModel.HasContext
-                ? new SizeInt32(ContextWidth, ContextHeight)
-                : new SizeInt32(SpotlightWidth, SpotlightHeight);
+            : _viewModel.IsFallbackInput
+                ? new SizeInt32(SpotlightWidth, SpotlightHeight)
+                : GetResponseSize();
         AppWindow.Resize(size);
         SetNoActivate(_viewModel.IsIdle);
 
@@ -175,14 +195,35 @@ public sealed partial class AssistPillWindow : Window
         {
             _placementService.PlaceAssistPill(this, externalWindow);
         }
-        else if (!_viewModel.HasContext)
+        else
         {
             _placementService.PlaceCentered(this, externalWindow);
         }
-        else
+    }
+
+    private SizeInt32 GetResponseSize()
+    {
+        var externalWindow = _foregroundWindowTracker.GetLastValidExternalWindow();
+        var area = _placementService.GetActivationWorkingArea(externalWindow);
+        var scale = Root.XamlRoot?.RasterizationScale ?? 1;
+        var layout = AssistResponseSizingPolicy.Calculate(
+            _viewModel.Response.Length,
+            area,
+            scale);
+        return new SizeInt32(layout.Width, layout.Height);
+    }
+
+    private void ApplyResponseSize()
+    {
+        if (!_viewModel.IsResponseSurface)
         {
-            _placementService.PlaceExpandedNearRemembered(this, externalWindow);
+            return;
         }
+
+        AppWindow.Resize(GetResponseSize());
+        _placementService.PlaceCentered(
+            this,
+            _foregroundWindowTracker.GetLastValidExternalWindow());
     }
 
     private async void OpenPromptButton_Click(object sender, RoutedEventArgs e)

@@ -666,6 +666,14 @@ public sealed partial class MainViewModel : ObservableObject
         await LoadConversationAsync(conversation);
     }
 
+    public async Task OpenConversationAsync(Guid conversationId)
+    {
+        OpenChat();
+        await ReloadConversationListAsync(conversationId);
+        await SelectConversationAsync(Conversations.FirstOrDefault(item =>
+            item.Id == conversationId));
+    }
+
     private void CreateNewDraftConversation()
     {
         _activeConversation = null;

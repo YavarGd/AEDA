@@ -79,12 +79,17 @@ public partial class App : Application
         await _settingsService.InitializeAsync();
         var providerFactory = new ProviderFactory(secretStore: new DpapiSecretStore());
         var providerCatalog = providerFactory.CreateCatalog(_settingsService.Current);
-        var selectedProviderId = new PersonalAI.Core.Providers.ProviderId(
-            _settingsService.Current.ProviderRouting.SelectedChatProvider);
-        providerCatalog.ChatProviders.TryGetValue(
-            selectedProviderId,
-            out var selectedChatProvider);
-        var modelCatalog = selectedChatProvider as PersonalAI.Core.Chat.IChatModelCatalog;
+        async Task<IReadOnlyList<string>> ListCurrentModelsAsync(
+            CancellationToken cancellationToken)
+        {
+            var catalog = providerFactory.CreateCatalog(_settingsService.Current);
+            var providerId = new PersonalAI.Core.Providers.ProviderId(
+                _settingsService.Current.ProviderRouting.SelectedChatProvider);
+            return catalog.ChatProviders.TryGetValue(providerId, out var provider) &&
+                provider is PersonalAI.Core.Chat.IChatModelCatalog modelCatalog
+                    ? await modelCatalog.ListModelsAsync(cancellationToken)
+                    : [];
+        }
         _startupRegistrationService = new WindowsStartupRegistrationService();
         var chatSession = new ChatSessionService(providerFactory, _settingsService);
         var activeContextProvider =
@@ -322,14 +327,12 @@ public partial class App : Application
                 _placementService?.ResetRememberedPosition();
                 _assistPillPlacementService?.ResetRememberedPosition();
             },
-            cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
-                Task.FromResult<IReadOnlyList<string>>([]),
+            ListCurrentModelsAsync,
             workspaceManagement);
         var editorCodeResponder = new EditorCodeChatResponder(
             chatSession,
             _settingsService,
-            cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
-                Task.FromResult<IReadOnlyList<string>>([]));
+            ListCurrentModelsAsync);
         var clipboardWriter = new WinUiClipboardWriter();
         var viewModel = new MainViewModel(
             conversationSession,
@@ -354,8 +357,7 @@ public partial class App : Application
             _taskTimeline,
             workspaceRegistry,
             clipboardWriter,
-            cancellationToken => modelCatalog?.ListModelsAsync(cancellationToken) ??
-                Task.FromResult<IReadOnlyList<string>>([]));
+            ListCurrentModelsAsync);
         _viewModel = viewModel;
         await viewModel.InitializeAsync();
         _ = settingsViewModel.RefreshModelsAsync();
@@ -376,10 +378,22 @@ public partial class App : Application
             AssistPillWindow.IdleHeight);
         _assistPillViewModel = new AssistPillViewModel(
             new AssistPillHost(
-                viewModel,
+                conversationSession,
+                _settingsService,
+                new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
+                ListCurrentModelsAsync,
                 activeWindowContextService,
+                () => viewModel.AttachedContexts.LastOrDefault(context =>
+                    AssistContextPolicy.IsMeaningful(context, DateTimeOffset.UtcNow)),
                 clipboardWriter,
-                () => ShowPersonalAi(repositionIfHidden: true)),
+                async conversationId =>
+                {
+                    ShowPersonalAi(repositionIfHidden: true);
+                    if (conversationId is { } id)
+                    {
+                        await viewModel.OpenConversationAsync(id);
+                    }
+                }),
             _settingsService.Current.AssistPill);
         _assistPillWindow = new AssistPillWindow(
             _assistPillViewModel,
@@ -646,12 +660,6 @@ public partial class App : Application
 
     private void DisposeShellResources()
     {
-        if (_shellResourcesDisposed)
-        {
-            return;
-        }
-
-        _shellResourcesDisposed = true;
         if (_shellResourcesDisposed)
         {
             return;

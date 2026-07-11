@@ -1,4 +1,3 @@
-using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
 using PersonalAI.Desktop.WinUI.Models;
@@ -12,9 +11,7 @@ public sealed class AssistPillViewModelTests
     [Theory]
     [InlineData(true, AssistPillState.IdlePill)]
     [InlineData(false, AssistPillState.Hidden)]
-    public void StartsAccordingToEnabledSetting(
-        bool enabled,
-        AssistPillState expected)
+    public void StartsAccordingToEnabledSetting(bool enabled, AssistPillState expected)
     {
         var viewModel = CreateViewModel(new FakeHost(), enabled);
 
@@ -22,296 +19,283 @@ public sealed class AssistPillViewModelTests
     }
 
     [Fact]
-    public async Task OpenPrompt_UsesContextualModeForSafeBoundedContext()
-    {
-        var host = new FakeHost { Context = Context(new string('p', 500)) };
-        var viewModel = CreateViewModel(host);
-
-        await viewModel.OpenPromptAsync();
-
-        Assert.Equal(AssistPillState.ContextPrompt, viewModel.State);
-        Assert.True(viewModel.HasContext);
-        Assert.True(viewModel.ContextPreview.Length <= 180);
-        Assert.Equal(1, host.CaptureCalls);
-    }
-
-    [Fact]
-    public async Task OpenPrompt_UsesPrivacySpotlightWhenContextIsBlocked()
-    {
-        var viewModel = CreateViewModel(new FakeHost { Context = null });
-
-        await viewModel.OpenPromptAsync();
-
-        Assert.Equal(AssistPillState.SpotlightPrompt, viewModel.State);
-        Assert.False(viewModel.HasContext);
-        Assert.Contains("Privacy", viewModel.StatusText);
-    }
-
-    [Fact]
-    public async Task RepeatedOpenWhileCapturing_IsIgnoredAndDoesNotDuplicateWork()
-    {
-        var host = new FakeHost { WaitForCapture = true };
-        var viewModel = CreateViewModel(host);
-
-        var firstOpen = viewModel.OpenPromptAsync();
-        await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        var repeatedOpen = await viewModel.OpenPromptAsync();
-
-        Assert.False(repeatedOpen);
-        Assert.Equal(1, host.CaptureCalls);
-        host.ReleaseCapture();
-        Assert.True(await firstOpen);
-        Assert.Equal(AssistPillState.SpotlightPrompt, viewModel.State);
-    }
-
-    [Fact]
-    public async Task OpenGuard_ReleasesAfterCaptureFailure()
+    public async Task MeaningfulContext_StartsDirectGenerationWithoutFallback()
     {
         var host = new FakeHost
         {
-            CaptureFailure = new InvalidOperationException("capture failed")
+            Context = Context(selectedCharacters: 42),
+            Chunks = ["First ", "answer"]
         };
         var viewModel = CreateViewModel(host);
 
         Assert.True(await viewModel.OpenPromptAsync());
-        viewModel.Collapse();
-        Assert.True(await viewModel.OpenPromptAsync());
+        await viewModel.WaitForGenerationAsync();
 
-        Assert.Equal(2, host.CaptureCalls);
-        Assert.Equal(AssistPillState.SpotlightPrompt, viewModel.State);
-    }
-
-    [Fact]
-    public async Task CompletedAndFailedStates_CanCollapseAndReopen()
-    {
-        var host = new FakeHost();
-        var viewModel = CreateViewModel(host);
-        await viewModel.OpenPromptAsync();
-        viewModel.Prompt = "First";
-        await viewModel.SubmitAsync();
-
-        viewModel.Collapse();
-        Assert.Equal(AssistPillState.IdlePill, viewModel.State);
-        Assert.True(await viewModel.OpenPromptAsync());
-
-        Assert.Equal(AssistPillState.SpotlightPrompt, viewModel.State);
-        Assert.Equal(2, host.CaptureCalls);
-    }
-
-    [Fact]
-    public async Task ContextCanBeRemovedBeforeSend()
-    {
-        var host = new FakeHost { Context = Context("Safe preview") };
-        var viewModel = CreateViewModel(host);
-        await viewModel.OpenPromptAsync();
-
-        viewModel.RemoveContext();
-        viewModel.Prompt = "Explain this";
-        await viewModel.SubmitAsync();
-
+        Assert.Equal(AssistPillViewModel.AutomaticContextPrompt, host.GeneratedPrompt);
+        Assert.Same(host.Context, host.GeneratedContext);
+        Assert.False(viewModel.IsFallbackInput);
         Assert.Equal(AssistPillState.Completed, viewModel.State);
-        Assert.Null(host.GeneratedContext);
+        Assert.Equal("First answer", viewModel.Response);
     }
 
     [Fact]
-    public async Task EmptyPromptCannotSend()
+    public async Task MetadataOnlyContext_UsesCompactFallbackAndDoesNotGenerate()
     {
-        var host = new FakeHost();
+        var host = new FakeHost { Context = Context(selectedCharacters: 0) };
         var viewModel = CreateViewModel(host);
+
         await viewModel.OpenPromptAsync();
 
-        viewModel.Prompt = "   ";
-        await viewModel.SubmitAsync();
-
-        Assert.False(viewModel.CanSubmit);
+        Assert.True(viewModel.IsFallbackInput);
         Assert.Equal(0, host.GenerateCalls);
     }
 
     [Fact]
-    public async Task StreamingEnablesStopAndCancellationIsControlled()
-    {
-        var host = new FakeHost { WaitForCancellation = true };
-        var viewModel = CreateViewModel(host);
-        await viewModel.OpenPromptAsync();
-        viewModel.Prompt = "Long request";
-
-        var submit = viewModel.SubmitAsync();
-        await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-
-        Assert.Equal(AssistPillState.StreamingResponse, viewModel.State);
-        Assert.True(viewModel.CanCancel);
-        viewModel.Cancel();
-        await submit;
-
-        Assert.Equal(AssistPillState.Cancelled, viewModel.State);
-        Assert.Equal("Cancelled", viewModel.StatusText);
-    }
-
-    [Fact]
-    public async Task FailureDoesNotExposeRawException()
+    public async Task StaleContext_UsesFallback()
     {
         var host = new FakeHost
         {
-            Failure = new InvalidOperationException("raw provider secret")
+            Context = Context(20) with { CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-3) }
         };
         var viewModel = CreateViewModel(host);
+
         await viewModel.OpenPromptAsync();
-        viewModel.Prompt = "Fail safely";
+
+        Assert.True(viewModel.IsFallbackInput);
+        Assert.Equal(0, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task NoContext_FallbackSubmissionHidesInputAndStreams()
+    {
+        var host = new FakeHost { Chunks = ["Visible answer"] };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Help me reason about this";
+
+        var generation = viewModel.SubmitAsync();
+        Assert.False(viewModel.IsFallbackInput);
+        await generation;
+
+        Assert.Equal("Help me reason about this", host.GeneratedPrompt);
+        Assert.Equal(AssistPillState.Completed, viewModel.State);
+    }
+
+    [Fact]
+    public async Task RepeatedOpenWhileCapturing_DoesNotDuplicateSubmission()
+    {
+        var host = new FakeHost
+        {
+            Context = Context(10),
+            WaitForCapture = true,
+            Chunks = ["Done"]
+        };
+        var viewModel = CreateViewModel(host);
+
+        var first = viewModel.OpenPromptAsync();
+        await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(await viewModel.OpenPromptAsync());
+        host.ReleaseCapture();
+        Assert.True(await first);
+        await viewModel.WaitForGenerationAsync();
+
+        Assert.Equal(1, host.CaptureCalls);
+        Assert.Equal(1, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task SuccessfulEmptyStream_ProducesControlledFailure()
+    {
+        var viewModel = CreateViewModel(new FakeHost());
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
 
         Assert.Equal(AssistPillState.Failed, viewModel.State);
-        Assert.DoesNotContain("raw provider secret", viewModel.StatusText);
+        Assert.Equal("The provider returned no visible answer.", viewModel.StatusText);
     }
 
     [Fact]
-    public async Task ResponsePreviewIsBoundedAndHidesReasoning()
+    public async Task FullyFilteredStream_ProducesControlledFailureAndCannotCopyReasoning()
     {
-        var host = new FakeHost
-        {
-            Responses = ["<think>private reasoning</think>" + new string('a', 500)]
-        };
-        var viewModel = CreateViewModel(host, previewCharacters: 200);
+        var host = new FakeHost { Chunks = ["<think>private reasoning</think>"] };
+        var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.Prompt = "Summarize";
+        viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
         await viewModel.CopyResponseAsync();
 
-        Assert.Equal(AssistPillState.Completed, viewModel.State);
-        Assert.True(viewModel.Response.Length <= 200);
-        Assert.DoesNotContain("private reasoning", viewModel.Response);
-        Assert.DoesNotContain("private reasoning", host.CopiedText);
-        Assert.True(host.CopiedText.Length > viewModel.Response.Length);
+        Assert.Equal(AssistPillState.Failed, viewModel.State);
+        Assert.Empty(viewModel.Response);
+        Assert.Empty(host.CopiedText);
     }
 
     [Fact]
-    public async Task OpenInAedaPreservesExplicitPromptAndContext()
+    public async Task StreamFailureAfterPartialAnswer_LeavesSafePartialContentRecoverable()
     {
-        var context = Context("Safe selection");
-        var host = new FakeHost { Context = context };
+        var host = new FakeHost
+        {
+            Chunks = ["Safe partial"],
+            Failure = new InvalidOperationException("provider secret")
+        };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.Prompt = "Continue this work";
+        viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
-        viewModel.OpenInAeda();
 
-        Assert.Equal("Continue this work", host.GeneratedPrompt);
-        Assert.Same(context, host.GeneratedContext);
-        Assert.Equal(1, host.OpenInAedaCalls);
+        Assert.Equal(AssistPillState.Failed, viewModel.State);
+        Assert.Equal("Safe partial", viewModel.Response);
+        Assert.DoesNotContain("provider secret", viewModel.StatusText);
+        viewModel.Collapse();
+        Assert.Equal(AssistPillState.IdlePill, viewModel.State);
+    }
+
+    [Fact]
+    public async Task ProviderFailureUsesSafeMessage()
+    {
+        var host = new FakeHost
+        {
+            Result = new AssistGenerationResult(
+                ChatStatus.Failed,
+                "The configured chat provider is unavailable.")
+        };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Answer";
+
+        await viewModel.SubmitAsync();
+
+        Assert.Equal(AssistPillState.Failed, viewModel.State);
+        Assert.Equal("The configured chat provider is unavailable.", viewModel.StatusText);
+    }
+
+    [Fact]
+    public async Task CancellationIsScopedAndNextInvocationCanSucceed()
+    {
+        var host = new FakeHost { WaitForCancellation = true };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Long answer";
+        var generation = viewModel.SubmitAsync();
+        await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(viewModel.IsStreaming);
+        Assert.False(viewModel.IsFallbackInput);
+        viewModel.Cancel();
+        await generation;
+
+        Assert.Equal(AssistPillState.Cancelled, viewModel.State);
+        Assert.True(host.GenerationWasCancelled);
+        host.WaitForCancellation = false;
+        host.Chunks = ["Next answer"];
+        viewModel.Collapse();
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Try again";
+        await viewModel.SubmitAsync();
+
+        Assert.Equal(AssistPillState.Completed, viewModel.State);
+        Assert.Equal(2, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task RapidFallbackSubmissions_StartOneGeneration()
+    {
+        var host = new FakeHost { WaitForCancellation = true };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "One request";
+
+        var first = viewModel.SubmitAsync();
+        await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await viewModel.SubmitAsync();
+        viewModel.Cancel();
+        await first;
+
+        Assert.Equal(1, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task CopyAndOpenUseSafeResponseAndUnderlyingConversation()
+    {
+        var host = new FakeHost
+        {
+            Chunks = ["<analysis>hidden</analysis>Visible"]
+        };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Answer";
+        await viewModel.SubmitAsync();
+
+        await viewModel.CopyResponseAsync();
+        await viewModel.OpenInAedaAsync();
+
+        Assert.Equal("Visible", host.CopiedText);
+        Assert.Equal(1, host.OpenCalls);
         Assert.Equal(AssistPillState.Hidden, viewModel.State);
     }
 
     [Fact]
-    public async Task GenerationNeverTriggersAutomaticModuleHandoff()
+    public void MeaningfulContextPolicy_RejectsClipboardAndFutureContext()
     {
-        var host = new FakeHost();
-        var viewModel = CreateViewModel(host);
-        await viewModel.OpenPromptAsync();
-        viewModel.Prompt = "Verify and refactor this code";
+        var now = DateTimeOffset.UtcNow;
+        var selected = Context(5);
 
-        await viewModel.SubmitAsync();
-
-        Assert.Equal(0, host.OpenInAedaCalls);
-    }
-
-    [Fact]
-    public async Task ContextPresentationDoesNotExposePayloadPathOrScreenshot()
-    {
-        var host = new FakeHost
-        {
-            Context = Context(
-                "Safe preview",
-                providerPayload: "password=hunter2",
-                metadata: new Dictionary<string, string>
-                {
-                    ["executablePath"] = @"C:\secret\app.exe",
-                    ["screenshot"] = "base64-secret"
-                })
-        };
-        var viewModel = CreateViewModel(host);
-
-        await viewModel.OpenPromptAsync();
-
-        var visible = viewModel.ContextLabel + viewModel.ContextPreview;
-        Assert.DoesNotContain("hunter2", visible);
-        Assert.DoesNotContain("secret\\app", visible);
-        Assert.DoesNotContain("base64", visible);
-    }
-
-    [Fact]
-    public void IdleDoesNotCaptureContextAutomatically()
-    {
-        var host = new FakeHost();
-        var viewModel = CreateViewModel(host);
-
-        viewModel.ShowIdle();
-
-        Assert.Equal(0, host.CaptureCalls);
+        Assert.True(AssistContextPolicy.IsMeaningful(selected, now));
+        Assert.False(AssistContextPolicy.IsMeaningful(
+            selected with { Type = AttachedContextType.Clipboard },
+            now));
+        Assert.False(AssistContextPolicy.IsMeaningful(
+            selected with { CreatedAtUtc = now.AddMinutes(2) },
+            now));
     }
 
     private static AssistPillViewModel CreateViewModel(
         FakeHost host,
-        bool enabled = true,
-        int previewCharacters = 1_200) =>
-        new(host, new AssistPillSettings(enabled, previewCharacters));
+        bool enabled = true) =>
+        new(host, new AssistPillSettings(enabled, 1_200));
 
-    private static AttachedContextItem Context(
-        string preview,
-        string providerPayload = "safe provider payload",
-        IReadOnlyDictionary<string, string>? metadata = null) =>
+    private static AttachedContextItem Context(int selectedCharacters) =>
         new(
             Guid.NewGuid(),
             AttachedContextType.ApplicationWindow,
             "Editor",
             "Document",
-            preview,
-            providerPayload,
+            "Editor Document",
+            "Attached active-window context",
             Images: [],
             ThumbnailDataUri: null,
-            metadata ?? new Dictionary<string, string>(),
+            new Dictionary<string, string>
+            {
+                ["selectedTextCharacters"] = selectedCharacters.ToString()
+            },
             DateTimeOffset.UtcNow,
             Guid.NewGuid().ToString("N"));
 
     private sealed class FakeHost : IAssistPillHost
     {
-        private readonly TaskCompletionSource<ChatStatus> _cancelled =
+        private readonly TaskCompletionSource _captureReleased =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public bool IsGenerating { get; set; }
 
         public AttachedContextItem? Context { get; init; }
-
-        public IReadOnlyList<string> Responses { get; init; } = ["Done"];
-
+        public IReadOnlyList<string> Chunks { get; set; } = [];
         public Exception? Failure { get; init; }
-
-        public Exception? CaptureFailure { get; init; }
-
-        public bool WaitForCancellation { get; init; }
-
+        public AssistGenerationResult Result { get; init; } =
+            new(ChatStatus.Completed);
         public bool WaitForCapture { get; init; }
-
+        public bool WaitForCancellation { get; set; }
+        public bool GenerationWasCancelled { get; private set; }
         public int CaptureCalls { get; private set; }
-
         public int GenerateCalls { get; private set; }
-
-        public int OpenInAedaCalls { get; private set; }
-
+        public int OpenCalls { get; private set; }
         public string? GeneratedPrompt { get; private set; }
-
         public AttachedContextItem? GeneratedContext { get; private set; }
-
         public string CopiedText { get; private set; } = string.Empty;
-
-        public TaskCompletionSource GenerationStarted { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
         public TaskCompletionSource CaptureStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        private TaskCompletionSource CaptureReleased { get; } =
+        public TaskCompletionSource GenerationStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task<AttachedContextItem?> CaptureContextAsync(
@@ -321,49 +305,49 @@ public sealed class AssistPillViewModelTests
             CaptureStarted.TrySetResult();
             if (WaitForCapture)
             {
-                await CaptureReleased.Task.WaitAsync(cancellationToken);
-            }
-
-            if (CaptureFailure is not null)
-            {
-                throw CaptureFailure;
+                await _captureReleased.Task.WaitAsync(cancellationToken);
             }
 
             return Context;
         }
 
-        public void ReleaseCapture() => CaptureReleased.TrySetResult();
-
-        public async Task<ChatStatus> GenerateAsync(
+        public async Task<AssistGenerationResult> GenerateAsync(
             string prompt,
             AttachedContextItem? context,
-            Action<string> reportResponse,
+            Action<string> reportChunk,
             CancellationToken cancellationToken)
         {
             GenerateCalls++;
             GeneratedPrompt = prompt;
             GeneratedContext = context;
             GenerationStarted.TrySetResult();
+            foreach (var chunk in Chunks)
+            {
+                reportChunk(chunk);
+            }
 
             if (Failure is not null)
             {
                 throw Failure;
             }
 
-            foreach (var response in Responses)
+            if (WaitForCancellation)
             {
-                reportResponse(response);
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    GenerationWasCancelled = true;
+                    throw;
+                }
             }
 
-            return WaitForCancellation
-                ? await _cancelled.Task
-                : ChatStatus.Completed;
+            return Result;
         }
 
-        public void CancelGeneration()
-        {
-            _cancelled.TrySetResult(ChatStatus.Cancelled);
-        }
+        public void ReleaseCapture() => _captureReleased.TrySetResult();
 
         public Task CopyTextAsync(string text, CancellationToken cancellationToken)
         {
@@ -371,9 +355,10 @@ public sealed class AssistPillViewModelTests
             return Task.CompletedTask;
         }
 
-        public void OpenInAeda()
+        public Task OpenInAedaAsync()
         {
-            OpenInAedaCalls++;
+            OpenCalls++;
+            return Task.CompletedTask;
         }
     }
 }

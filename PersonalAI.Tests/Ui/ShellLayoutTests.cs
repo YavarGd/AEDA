@@ -364,7 +364,7 @@ public sealed class ShellLayoutTests
     }
 
     [Fact]
-    public void AssistPill_KeepsContextExplicitAndPromptMultilineAccessible()
+    public void AssistPill_UsesCompactFallbackAndNoPromptPageDuringStreaming()
     {
         var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
         var prompt = document.Descendants().Single(element =>
@@ -374,16 +374,26 @@ public sealed class ShellLayoutTests
             .Where(element => element.Name.LocalName == "Button")
             .ToArray();
 
-        Assert.Equal("True", AttributeValue(prompt, "AcceptsReturn"));
+        Assert.Equal("False", AttributeValue(prompt, "AcceptsReturn"));
+        Assert.Contains(
+            prompt.Ancestors(),
+            element => AttributeValue(element, "Visibility")?.Contains(
+                "IsFallbackInput",
+                StringComparison.Ordinal) == true);
         Assert.Contains(buttons, button =>
             AttributeValue(button, "AutomationProperties.Name") == "Open AEDA Assist" &&
             AttributeValue(button, "ToolTipService.ToolTip") == "Open AEDA Assist");
         Assert.Contains(buttons, button =>
-            AttributeValue(button, "AutomationProperties.Name") == "Remove app context" &&
-            AttributeValue(button, "Command") == "{Binding RemoveContextCommand}");
+            AttributeValue(button, "AutomationProperties.Name") == "Submit AEDA Assist request" &&
+            AttributeValue(button, "Command") == "{Binding SubmitCommand}" &&
+            AttributeValue(button, "Content") is null);
+        Assert.DoesNotContain(
+            buttons,
+            button => AttributeValue(button, "Content") == "Send");
         Assert.Contains(document.Descendants(), element =>
-            element.Name.LocalName == "ChatMarkdownPresenter" &&
-            AttributeValue(element, "Content") == "{Binding RenderedResponse}");
+            element.Name.LocalName == "TextBlock" &&
+            AttributeValue(element, "Text") == "{Binding Response}" &&
+            AttributeValue(element, "TextWrapping") == "Wrap");
     }
 
     [Fact]
@@ -395,11 +405,11 @@ public sealed class ShellLayoutTests
             AttributeValue(element, "AutomationProperties.Name") == "Open AEDA Assist");
         var surface = launcher.Ancestors().Single(element =>
             element.Name.LocalName == "Border" &&
-            AttributeValue(element, "Width") == "56");
+            AttributeValue(element, "Width") == "64");
 
-        Assert.Equal("56", AttributeValue(surface, "Width"));
-        Assert.Equal("56", AttributeValue(surface, "Height"));
-        Assert.Equal("28", AttributeValue(surface, "CornerRadius"));
+        Assert.Equal("64", AttributeValue(surface, "Width"));
+        Assert.Equal("64", AttributeValue(surface, "Height"));
+        Assert.Equal("32", AttributeValue(surface, "CornerRadius"));
         Assert.Equal("0", AttributeValue(launcher, "MinWidth"));
         Assert.Equal("0", AttributeValue(launcher, "MinHeight"));
         Assert.DoesNotContain(

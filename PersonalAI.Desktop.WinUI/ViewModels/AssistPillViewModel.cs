@@ -1,8 +1,7 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PersonalAI.Core.Chat.Rendering;
-using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
 using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;
@@ -11,12 +10,16 @@ namespace PersonalAI.Desktop.WinUI.ViewModels;
 
 public sealed partial class AssistPillViewModel : ObservableObject
 {
-    private const int ContextLabelLimit = 120;
-    private const int ContextPreviewLimit = 180;
+    public const string AutomaticContextPrompt =
+        "Explain the selected content clearly and concisely.";
+
     private readonly IAssistPillHost _host;
-    private AttachedContextItem? _context;
+    private readonly StringBuilder _rawResponse = new();
     private AssistPillSettings _settings;
     private string _safeFullResponse = string.Empty;
+    private CancellationTokenSource? _generationCancellation;
+    private Task? _generationTask;
+    private PersonalAI.Core.Context.AttachedContextItem? _context;
     private int _isOpening;
 
     public AssistPillViewModel(
@@ -40,12 +43,6 @@ public sealed partial class AssistPillViewModel : ObservableObject
     private string _response = string.Empty;
 
     [ObservableProperty]
-    private string _contextLabel = "No context included";
-
-    [ObservableProperty]
-    private string _contextPreview = string.Empty;
-
-    [ObservableProperty]
     private string _statusText = "Ready";
 
     public bool IsEnabled => _settings.Enabled;
@@ -54,23 +51,23 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
     public bool IsExpanded => State is not AssistPillState.Hidden and not AssistPillState.IdlePill;
 
-    public bool HasContext => _context is not null;
+    public bool IsFallbackInput => State == AssistPillState.SpotlightPrompt;
+
+    public bool IsResponseSurface => State is AssistPillState.StreamingResponse or
+        AssistPillState.Completed or AssistPillState.Cancelled or AssistPillState.Failed;
 
     public bool IsStreaming => State == AssistPillState.StreamingResponse;
 
     public bool HasResponse => !string.IsNullOrWhiteSpace(Response);
 
-    public bool CanSubmit => IsEnabled && IsExpanded && !IsStreaming &&
+    public bool CanSubmit => IsEnabled && IsFallbackInput &&
         !string.IsNullOrWhiteSpace(Prompt);
 
     public bool CanCancel => IsStreaming;
 
     public bool CanCopy => HasResponse;
 
-    public bool CanRemoveContext => HasContext && !IsStreaming;
-
-    public RenderedChatContent RenderedResponse =>
-        ChatMarkdownRenderer.Shared.Render(Response);
+    public bool CanShowResponseActions => HasResponse && !IsStreaming;
 
     public void ApplySettings(AssistPillSettings settings)
     {
@@ -80,11 +77,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
         if (!_settings.Enabled)
         {
-            if (IsStreaming)
-            {
-                _host.CancelGeneration();
-            }
-
+            Cancel();
             State = AssistPillState.Hidden;
         }
         else if (State == AssistPillState.Hidden)
@@ -110,7 +103,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
         try
         {
-            StatusText = "Capturing available context";
+            StatusText = "Checking available context";
             try
             {
                 _context = await _host.CaptureContextAsync(cancellationToken);
@@ -120,32 +113,25 @@ public sealed partial class AssistPillViewModel : ObservableObject
                 _context = null;
             }
 
-            UpdateContextPresentation();
-            State = _context is null
-                ? AssistPillState.SpotlightPrompt
-                : AssistPillState.ContextPrompt;
-            StatusText = _context is null
-                ? "No context included · Privacy protected"
-                : "Context included";
+            if (AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
+            {
+                Prompt = AutomaticContextPrompt;
+                _ = StartGenerationAsync(AutomaticContextPrompt);
+            }
+            else
+            {
+                _context = null;
+                Prompt = string.Empty;
+                State = AssistPillState.SpotlightPrompt;
+                StatusText = "Ask AEDA";
+            }
+
             return true;
         }
         finally
         {
             Interlocked.Exchange(ref _isOpening, 0);
         }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRemoveContext))]
-    public void RemoveContext()
-    {
-        _context = null;
-        UpdateContextPresentation();
-        if (State == AssistPillState.ContextPrompt)
-        {
-            State = AssistPillState.SpotlightPrompt;
-        }
-
-        StatusText = "Context removed";
     }
 
     [RelayCommand(CanExecute = nameof(CanSubmit))]
@@ -157,52 +143,11 @@ public sealed partial class AssistPillViewModel : ObservableObject
             return;
         }
 
-        if (_host.IsGenerating)
-        {
-            Fail("AEDA Chat is already generating. Open AEDA to continue there.");
-            return;
-        }
-
-        SetResponse(string.Empty);
-        StatusText = "Generating response";
-        State = AssistPillState.StreamingResponse;
-
-        try
-        {
-            var status = await _host.GenerateAsync(
-                prompt,
-                _context,
-                SetResponse,
-                CancellationToken.None);
-            State = status switch
-            {
-                ChatStatus.Completed => AssistPillState.Completed,
-                ChatStatus.Cancelled => AssistPillState.Cancelled,
-                _ => AssistPillState.Failed
-            };
-            StatusText = status switch
-            {
-                ChatStatus.Completed => "Completed",
-                ChatStatus.Cancelled => "Cancelled",
-                _ => "The response could not be completed."
-            };
-        }
-        catch (OperationCanceledException)
-        {
-            State = AssistPillState.Cancelled;
-            StatusText = "Cancelled";
-        }
-        catch
-        {
-            Fail("The response could not be completed.");
-        }
+        await StartGenerationAsync(prompt);
     }
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
-    public void Cancel()
-    {
-        _host.CancelGeneration();
-    }
+    public void Cancel() => _generationCancellation?.Cancel();
 
     [RelayCommand(CanExecute = nameof(CanCopy))]
     public async Task CopyResponseAsync()
@@ -224,13 +169,11 @@ public sealed partial class AssistPillViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void OpenInAeda()
+    public async Task OpenInAedaAsync()
     {
-        _host.OpenInAeda();
+        await _host.OpenInAedaAsync();
         State = AssistPillState.Hidden;
     }
-
-    public void OpenAeda() => _host.OpenInAeda();
 
     public void Collapse()
     {
@@ -254,6 +197,8 @@ public sealed partial class AssistPillViewModel : ObservableObject
         State = AssistPillState.Hidden;
     }
 
+    public Task WaitForGenerationAsync() => _generationTask ?? Task.CompletedTask;
+
     partial void OnPromptChanged(string value)
     {
         OnPropertyChanged(nameof(CanSubmit));
@@ -264,7 +209,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasResponse));
         OnPropertyChanged(nameof(CanCopy));
-        OnPropertyChanged(nameof(RenderedResponse));
+        OnPropertyChanged(nameof(CanShowResponseActions));
         CopyResponseCommand.NotifyCanExecuteChanged();
     }
 
@@ -272,34 +217,93 @@ public sealed partial class AssistPillViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsExpanded));
+        OnPropertyChanged(nameof(IsFallbackInput));
+        OnPropertyChanged(nameof(IsResponseSurface));
         OnPropertyChanged(nameof(IsStreaming));
         OnPropertyChanged(nameof(CanSubmit));
         OnPropertyChanged(nameof(CanCancel));
-        OnPropertyChanged(nameof(CanRemoveContext));
+        OnPropertyChanged(nameof(CanShowResponseActions));
         SubmitCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
-        RemoveContextCommand.NotifyCanExecuteChanged();
     }
 
-    private void UpdateContextPresentation()
+    private Task StartGenerationAsync(string prompt)
     {
-        ContextLabel = _context is null
-            ? "No context included"
-            : Bound($"{_context.SourceName} · {_context.DisplayTitle}", ContextLabelLimit);
-        ContextPreview = _context is null
-            ? string.Empty
-            : Bound(_context.Preview, ContextPreviewLimit);
-        OnPropertyChanged(nameof(HasContext));
-        OnPropertyChanged(nameof(CanRemoveContext));
-        RemoveContextCommand.NotifyCanExecuteChanged();
+        if (_generationTask is { IsCompleted: false })
+        {
+            return _generationTask;
+        }
+
+        _rawResponse.Clear();
+        SetResponse(string.Empty);
+        StatusText = "Generating";
+        State = AssistPillState.StreamingResponse;
+        var cancellation = new CancellationTokenSource();
+        _generationCancellation = cancellation;
+        _generationTask = RunGenerationAsync(prompt, cancellation);
+        return _generationTask;
+    }
+
+    private async Task RunGenerationAsync(
+        string prompt,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            var result = await _host.GenerateAsync(
+                prompt,
+                _context,
+                AppendResponseChunk,
+                cancellation.Token);
+            if (result.Status == ChatStatus.Cancelled)
+            {
+                State = AssistPillState.Cancelled;
+                StatusText = "Cancelled";
+            }
+            else if (result.Status == ChatStatus.Failed)
+            {
+                Fail(result.SafeErrorMessage ?? "The response could not be completed.");
+            }
+            else if (string.IsNullOrWhiteSpace(_safeFullResponse))
+            {
+                Fail("The provider returned no visible answer.");
+            }
+            else
+            {
+                State = AssistPillState.Completed;
+                StatusText = "Completed";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            State = AssistPillState.Cancelled;
+            StatusText = "Cancelled";
+        }
+        catch
+        {
+            Fail("The response could not be completed.");
+        }
+        finally
+        {
+            if (ReferenceEquals(_generationCancellation, cancellation))
+            {
+                _generationCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void AppendResponseChunk(string chunk)
+    {
+        _rawResponse.Append(chunk);
+        SetResponse(RemoveHiddenReasoning(_rawResponse.ToString()));
     }
 
     private void SetResponse(string fullResponse)
     {
-        _safeFullResponse = RemoveHiddenReasoning(fullResponse);
-        Response = Bound(
-            _safeFullResponse,
-            _settings.ResponsePreviewCharacters);
+        _safeFullResponse = fullResponse;
+        Response = Bound(fullResponse, _settings.ResponsePreviewCharacters);
     }
 
     private static string RemoveHiddenReasoning(string value) =>

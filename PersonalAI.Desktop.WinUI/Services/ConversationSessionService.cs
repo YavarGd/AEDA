@@ -8,6 +8,7 @@ using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Workspace;
 using PersonalAI.Core.Workspaces;
+using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.ViewModels;
 
 namespace PersonalAI.Desktop.WinUI.Services;
@@ -113,6 +114,168 @@ public sealed class ConversationSessionService
             DateTimeOffset.UtcNow);
 
         return _conversationRepository.AddMessageAsync(message, cancellationToken);
+    }
+
+    public async Task<ConversationTurnResult> GenerateNewConversationTurnAsync(
+        string prompt,
+        string model,
+        IReadOnlyList<ChatMessage> requestMessages,
+        Action<string> reportChunk,
+        CancellationToken cancellationToken)
+    {
+        Conversation? conversation = null;
+        TaskId? taskId = null;
+        var response = new System.Text.StringBuilder();
+
+        try
+        {
+            conversation = await CreateConversationAsync(
+                prompt,
+                model,
+                CancellationToken.None);
+            taskId = await StartChatTaskAsync(
+                conversation.Id,
+                prompt,
+                model,
+                CancellationToken.None);
+            await AddMessageAsync(
+                conversation.Id,
+                ChatRole.User,
+                prompt,
+                CancellationToken.None);
+
+            await foreach (var chunk in StreamWithWorkspaceToolsAsync(
+                               conversation.Id,
+                               taskId.Value,
+                               model,
+                               requestMessages,
+                               cancellationToken))
+            {
+                if (string.IsNullOrEmpty(chunk.Content))
+                {
+                    continue;
+                }
+
+                response.Append(chunk.Content);
+                reportChunk(chunk.Content);
+            }
+
+            if (!string.IsNullOrWhiteSpace(response.ToString()))
+            {
+                await AddMessageAsync(
+                    conversation.Id,
+                    ChatRole.Assistant,
+                    response.ToString(),
+                    CancellationToken.None);
+            }
+
+            conversation = await UpdateConversationAsync(
+                conversation,
+                ConversationStatus.Completed,
+                model,
+                CancellationToken.None);
+            await CompleteChatTaskAsync(
+                taskId.Value,
+                response.ToString(),
+                CancellationToken.None);
+            return new ConversationTurnResult(
+                conversation.Id,
+                ChatStatus.Completed);
+        }
+        catch (OperationCanceledException)
+        {
+            await PersistInterruptedTurnAsync(
+                conversation,
+                taskId,
+                response.ToString(),
+                model,
+                ConversationStatus.Cancelled,
+                cancelled: true);
+            return new ConversationTurnResult(
+                conversation?.Id,
+                ChatStatus.Cancelled);
+        }
+        catch (Exception exception)
+        {
+            SafeDebugDiagnostics.WriteLine(
+                $"Chat turn failed: {exception.GetType().Name}.");
+            await PersistInterruptedTurnAsync(
+                conversation,
+                taskId,
+                response.ToString(),
+                model,
+                ConversationStatus.Error,
+                cancelled: false);
+            return new ConversationTurnResult(
+                conversation?.Id,
+                ChatStatus.Failed);
+        }
+    }
+
+    private async Task PersistInterruptedTurnAsync(
+        Conversation? conversation,
+        TaskId? taskId,
+        string partialResponse,
+        string model,
+        ConversationStatus status,
+        bool cancelled)
+    {
+        if (conversation is not null && !string.IsNullOrWhiteSpace(partialResponse))
+        {
+            try
+            {
+                await AddMessageAsync(
+                    conversation.Id,
+                    ChatRole.Assistant,
+                    partialResponse,
+                    CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                SafeDebugDiagnostics.WriteLine(
+                    $"Chat turn message persistence failed: {exception.GetType().Name}.");
+            }
+        }
+
+        if (conversation is not null)
+        {
+            try
+            {
+                await UpdateConversationAsync(
+                    conversation,
+                    status,
+                    model,
+                    CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                SafeDebugDiagnostics.WriteLine(
+                    $"Chat turn status persistence failed: {exception.GetType().Name}.");
+            }
+        }
+
+        if (taskId is { } id)
+        {
+            try
+            {
+                if (cancelled)
+                {
+                    await CancelChatTaskAsync(id, CancellationToken.None);
+                }
+                else
+                {
+                    await FailChatTaskAsync(
+                        id,
+                        "assistant_response_failed",
+                        CancellationToken.None);
+                }
+            }
+            catch (Exception exception)
+            {
+                SafeDebugDiagnostics.WriteLine(
+                    $"Chat turn task persistence failed: {exception.GetType().Name}.");
+            }
+        }
     }
 
     public async Task<Conversation> UpdateConversationAsync(
@@ -1159,3 +1322,7 @@ public sealed class ConversationSessionService
             new("workspace.text.search");
     }
 }
+
+public sealed record ConversationTurnResult(
+    Guid? ConversationId,
+    ChatStatus Status);

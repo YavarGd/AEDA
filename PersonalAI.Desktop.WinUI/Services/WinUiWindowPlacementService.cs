@@ -141,6 +141,10 @@ public sealed class WinUiWindowPlacementService
             GetActivationPosition(externalWindow, size.Width, size.Height));
     }
 
+    public RectBounds GetActivationWorkingArea(
+        ActiveWindowReference? externalWindow) =>
+        GetActivationBounds(externalWindow);
+
     public void PlaceAssistPill(
         Window window,
         ActiveWindowReference? externalWindow)
@@ -160,36 +164,6 @@ public sealed class WinUiWindowPlacementService
         ApplyPosition(
             window,
             persisted ?? new WindowPosition(fallback.X, fallback.Y));
-    }
-
-    public void PlaceExpandedNearRemembered(
-        Window window,
-        ActiveWindowReference? externalWindow)
-    {
-        var size = window.AppWindow.Size;
-        var areas = GetWorkingAreas();
-        var remembered = GetRememberedPosition();
-        var position = remembered is null
-            ? null
-            : WindowPositionValidator.ClampToVisibleWorkingArea(
-                remembered.Value,
-                size.Width,
-                size.Height,
-                areas);
-
-        if (position is not null)
-        {
-            ApplyPosition(window, position.Value);
-            return;
-        }
-
-        var bounds = GetActivationBounds(externalWindow);
-        var fallback = PalettePlacementCalculator.BottomRightInBounds(
-            bounds,
-            size.Width,
-            size.Height,
-            margin: 20);
-        ApplyPosition(window, new WindowPosition(fallback.X, fallback.Y));
     }
 
     private WindowPosition? GetPreferredPosition(
@@ -223,24 +197,6 @@ public sealed class WinUiWindowPlacementService
         }
 
         return null;
-    }
-
-    private WindowPosition? GetRememberedPosition()
-    {
-        if (_hasRememberedPosition)
-        {
-            return _rememberedPosition;
-        }
-
-        var persisted = ReadPersistedPosition();
-        if (persisted is null)
-        {
-            return null;
-        }
-
-        _rememberedPosition = persisted.Value;
-        _hasRememberedPosition = true;
-        return persisted;
     }
 
     private static WindowPosition GetActivationPosition(

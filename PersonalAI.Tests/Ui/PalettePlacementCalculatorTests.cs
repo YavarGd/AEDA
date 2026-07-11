@@ -1,4 +1,5 @@
 using PersonalAI.Core.Ui;
+using PersonalAI.Desktop.WinUI.Views;
 
 namespace PersonalAI.Tests.Ui;
 
@@ -65,6 +66,57 @@ public sealed class PalettePlacementCalculatorTests
 
         Assert.Equal(100, position.X);
         Assert.Equal(50, position.Y);
+    }
+
+    [Fact]
+    public void AssistResponseSizing_EmptyResponseUsesCompactMinimum()
+    {
+        var layout = AssistResponseSizingPolicy.Calculate(
+            0,
+            new RectBounds(0, 0, 1920, 1040),
+            1);
+
+        Assert.Equal(560, layout.Width);
+        Assert.Equal(180, layout.Height);
+        Assert.False(layout.RequiresScrolling);
+    }
+
+    [Fact]
+    public void AssistResponseSizing_GrowsAndCapsLongResponses()
+    {
+        var area = new RectBounds(0, 0, 1920, 1040);
+        var shortResponse = AssistResponseSizingPolicy.Calculate(100, area, 1);
+        var longerResponse = AssistResponseSizingPolicy.Calculate(1_000, area, 1);
+        var maximum = AssistResponseSizingPolicy.Calculate(100_000, area, 1);
+
+        Assert.True(shortResponse.Height > 180);
+        Assert.True(longerResponse.Height > shortResponse.Height);
+        Assert.Equal(480, maximum.Height);
+        Assert.True(maximum.RequiresScrolling);
+    }
+
+    [Fact]
+    public void AssistResponseSizing_RespectsWorkAreaAndDisplayScale()
+    {
+        var scaled = AssistResponseSizingPolicy.Calculate(
+            0,
+            new RectBounds(0, 0, 2560, 1440),
+            2);
+        var constrained = AssistResponseSizingPolicy.Calculate(
+            100_000,
+            new RectBounds(0, 0, 400, 300),
+            1);
+
+        Assert.Equal(1_120, scaled.Width);
+        Assert.Equal(360, scaled.Height);
+        Assert.True(constrained.Width <= 360);
+        Assert.True(constrained.Height <= 260);
+    }
+
+    [Fact]
+    public void AssistResponseSizing_IsBatchedInsteadOfPerToken()
+    {
+        Assert.Equal(150, AssistPillWindow.ResponseResizeIntervalMilliseconds);
     }
 
     [Fact]

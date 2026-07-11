@@ -63,6 +63,11 @@ public static class AttachedContextFactory
         AddMetadata(metadata, "processId", context.ProcessId?.ToString(
             System.Globalization.CultureInfo.InvariantCulture));
         AddMetadata(metadata, "executablePath", context.ExecutablePath);
+        AddMetadata(
+            metadata,
+            "selectedTextCharacters",
+            context.CapturedSelectedText?.Length.ToString(
+                System.Globalization.CultureInfo.InvariantCulture));
 
         return new AttachedContextItem(
             Guid.NewGuid(),
@@ -100,6 +105,11 @@ public static class AttachedContextFactory
         AddMetadata(metadata, "language", context?.LanguageId);
         AddMetadata(metadata, "workspace", context?.WorkspaceFolderName);
         AddMetadata(metadata, "relativePath", context?.RelativeWorkspacePath);
+        AddMetadata(
+            metadata,
+            "selectedTextCharacters",
+            context?.SelectedText?.Length.ToString(
+                System.Globalization.CultureInfo.InvariantCulture));
 
         return new AttachedContextItem(
             Guid.NewGuid(),

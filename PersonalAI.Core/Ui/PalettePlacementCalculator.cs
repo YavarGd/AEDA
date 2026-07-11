@@ -51,3 +51,44 @@ public static class PalettePlacementCalculator
         return new PointPosition(left, top);
     }
 }
+
+public sealed record AssistResponseLayout(
+    int Width,
+    int Height,
+    bool RequiresScrolling);
+
+public static class AssistResponseSizingPolicy
+{
+    public static AssistResponseLayout Calculate(
+        int visibleCharacters,
+        RectBounds workingArea,
+        double rasterizationScale)
+    {
+        var scale = double.IsFinite(rasterizationScale)
+            ? Math.Clamp(rasterizationScale, 0.5, 4)
+            : 1;
+        var width = Math.Max(
+            1,
+            Math.Min(
+                (int)Math.Round(560 * scale),
+                (int)Math.Round(workingArea.Width - (40 * scale))));
+        var minimumHeight = (int)Math.Round(180 * scale);
+        var uncappedHeight = minimumHeight +
+            (int)Math.Ceiling(Math.Max(0, visibleCharacters) / 72d) *
+            (int)Math.Round(18 * scale);
+        var maximumHeight = Math.Max(
+            1,
+            Math.Min(
+                (int)Math.Round(480 * scale),
+                (int)Math.Round(workingArea.Height - (40 * scale))));
+        var height = Math.Clamp(
+            uncappedHeight,
+            Math.Min(minimumHeight, maximumHeight),
+            maximumHeight);
+
+        return new AssistResponseLayout(
+            width,
+            height,
+            uncappedHeight > maximumHeight);
+    }
+}

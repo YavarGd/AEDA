@@ -1,115 +1,147 @@
-using System.Collections.Specialized;
-using System.ComponentModel;
+using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
+using PersonalAI.Core.Settings;
 using PersonalAI.Desktop.WinUI.Models;
-using PersonalAI.Desktop.WinUI.ViewModels;
 
 namespace PersonalAI.Desktop.WinUI.Services;
 
 public interface IAssistPillHost
 {
-    bool IsGenerating { get; }
-
     Task<AttachedContextItem?> CaptureContextAsync(CancellationToken cancellationToken);
 
-    Task<ChatStatus> GenerateAsync(
+    Task<AssistGenerationResult> GenerateAsync(
         string prompt,
         AttachedContextItem? context,
-        Action<string> reportResponse,
+        Action<string> reportChunk,
         CancellationToken cancellationToken);
-
-    void CancelGeneration();
 
     Task CopyTextAsync(string text, CancellationToken cancellationToken);
 
-    void OpenInAeda();
+    Task OpenInAedaAsync();
 }
 
+public sealed record AssistGenerationResult(
+    ChatStatus Status,
+    string? SafeErrorMessage = null);
+
 public sealed class AssistPillHost(
-    MainViewModel mainViewModel,
+    ConversationSessionService conversationSession,
+    IApplicationSettingsService settingsService,
+    IChatModelRouter modelRouter,
+    Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync,
     ActiveWindowContextService contextService,
+    Func<AttachedContextItem?> getExplicitContext,
     IClipboardWriter clipboardWriter,
-    Action showMainWindow) : IAssistPillHost
+    Func<Guid?, Task> openConversationAsync) : IAssistPillHost
 {
-    public bool IsGenerating => mainViewModel.IsGenerating;
+    private Guid? _conversationId;
 
-    public Task<AttachedContextItem?> CaptureContextAsync(
-        CancellationToken cancellationToken) =>
-        contextService.CaptureAsync(cancellationToken);
-
-    public async Task<ChatStatus> GenerateAsync(
-        string prompt,
-        AttachedContextItem? context,
-        Action<string> reportResponse,
+    public async Task<AttachedContextItem?> CaptureContextAsync(
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        await mainViewModel.NewChatAsync();
-
-        if (context is not null && !mainViewModel.TryAttachContext(context))
-        {
-            throw new InvalidOperationException("assist_context_attach_failed");
-        }
-
-        ChatMessageViewModel? assistant = null;
-        PropertyChangedEventHandler messageChanged = (_, args) =>
-        {
-            if (args.PropertyName == nameof(ChatMessageViewModel.Content) &&
-                assistant is not null)
-            {
-                reportResponse(assistant.Content);
-            }
-        };
-        NotifyCollectionChangedEventHandler messagesChanged = (_, args) =>
-        {
-            var next = args.NewItems?
-                .OfType<ChatMessageViewModel>()
-                .LastOrDefault(message => message.IsAssistantMessage);
-            if (next is null)
-            {
-                return;
-            }
-
-            if (assistant is not null)
-            {
-                assistant.PropertyChanged -= messageChanged;
-            }
-
-            assistant = next;
-            assistant.PropertyChanged += messageChanged;
-            reportResponse(assistant.Content);
-        };
-
-        mainViewModel.Messages.CollectionChanged += messagesChanged;
-        try
-        {
-            mainViewModel.Prompt = prompt;
-            await mainViewModel.SendMessageAsync();
-            if (assistant is not null)
-            {
-                reportResponse(assistant.Content);
-            }
-
-            return mainViewModel.Status;
-        }
-        finally
-        {
-            mainViewModel.Messages.CollectionChanged -= messagesChanged;
-            if (assistant is not null)
-            {
-                assistant.PropertyChanged -= messageChanged;
-            }
-        }
+        var captured = await contextService.CaptureAsync(cancellationToken);
+        return AssistContextPolicy.IsMeaningful(captured, DateTimeOffset.UtcNow)
+            ? captured
+            : getExplicitContext();
     }
 
-    public void CancelGeneration() => mainViewModel.CancelGeneration();
+    public async Task<AssistGenerationResult> GenerateAsync(
+        string prompt,
+        AttachedContextItem? context,
+        Action<string> reportChunk,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> models;
+        try
+        {
+            models = await listModelsAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return new AssistGenerationResult(
+                ChatStatus.Failed,
+                "The configured chat provider is unavailable.");
+        }
+
+        if (models.Count == 0)
+        {
+            return new AssistGenerationResult(
+                ChatStatus.Failed,
+                "No chat model is available. Check AEDA settings.");
+        }
+
+        var settings = settingsService.Current;
+        IReadOnlyList<AttachedContextItem> contexts =
+            context is null ? [] : [context];
+        var decision = await modelRouter.SelectModelAsync(
+            new ModelRoutingRequest(
+                prompt,
+                contexts
+                    .Select(item => new AttachedContextSignal(
+                        item.Type.ToString(),
+                        item.Images.Count > 0))
+                    .ToArray(),
+                models,
+                settings.Models.Assignments),
+            cancellationToken);
+        if (decision.IsCapabilityBlocked ||
+            !models.Contains(decision.SelectedModel, StringComparer.OrdinalIgnoreCase))
+        {
+            return new AssistGenerationResult(
+                ChatStatus.Failed,
+                "The selected chat model is unavailable.");
+        }
+
+        var routedPrompt = string.IsNullOrWhiteSpace(decision.RoutedPrompt)
+            ? prompt
+            : decision.RoutedPrompt.Trim();
+        var messages = AttachedContextPromptComposer.Compose(
+            [],
+            routedPrompt,
+            contexts,
+            settings.Context.MaxIndividualClipboardCharacters,
+            settings.Context.MaxTotalTextContextCharacters);
+        var result = await conversationSession.GenerateNewConversationTurnAsync(
+            routedPrompt,
+            decision.SelectedModel,
+            messages,
+            reportChunk,
+            cancellationToken);
+        _conversationId = result.ConversationId;
+
+        return result.Status == ChatStatus.Failed
+            ? new AssistGenerationResult(
+                ChatStatus.Failed,
+                "The response could not be completed. Check the provider connection.")
+            : new AssistGenerationResult(result.Status);
+    }
 
     public Task CopyTextAsync(string text, CancellationToken cancellationToken) =>
         clipboardWriter.CopyTextAsync(text, cancellationToken);
 
-    public void OpenInAeda()
+    public Task OpenInAedaAsync() => openConversationAsync(_conversationId);
+}
+
+public static class AssistContextPolicy
+{
+    public static bool IsMeaningful(
+        AttachedContextItem? context,
+        DateTimeOffset now)
     {
-        mainViewModel.OpenChat();
-        showMainWindow();
+        if (context is null ||
+            context.Type is not (AttachedContextType.ApplicationWindow or
+                AttachedContextType.VsCodeEditor) ||
+            context.CreatedAtUtc < now.AddMinutes(-2) ||
+            context.CreatedAtUtc > now.AddMinutes(1) ||
+            !context.Metadata.TryGetValue("selectedTextCharacters", out var value))
+        {
+            return false;
+        }
+
+        return int.TryParse(value, out var characters) && characters > 0;
     }
 }
