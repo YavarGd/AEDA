@@ -57,7 +57,9 @@
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="#75748C" />
             <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="#C9C4FF" />
 
-            <SolidColorBrush x:Key="AedaAssistGlassBrush" Color="#E61B1A27" />
+            <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="#D91B1A27" />
+            <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="#E81B1A27" />
+            <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="#F21B1A27" />
             <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#665E55A0" />
             <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="#F5F3FF" />
             <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="#AAA6C5" />
@@ -141,7 +143,9 @@
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="#9B9A95" />
             <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="#453592" />
 
-            <SolidColorBrush x:Key="AedaAssistGlassBrush" Color="#E6FCFBFF" />
+            <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="#D9FCFBFF" />
+            <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="#E8FCFBFF" />
+            <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="#F2FCFBFF" />
             <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#665746C2" />
             <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="#18171D" />
             <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="#696775" />
@@ -208,7 +212,9 @@
             <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="AedaAssistGlassBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
@@ -402,6 +408,55 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{ThemeResource AedaAssistForegroundBrush}" />
+    </Style>
+
+    <Style x:Key="AedaAssistLauncherButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{ThemeResource PersonalAiAccentBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="26" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid Background="{TemplateBinding Background}"
+                          CornerRadius="{TemplateBinding CornerRadius}">
+                        <Border x:Name="InteractionVeil"
+                                Background="{ThemeResource AedaAssistForegroundBrush}"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Opacity="0" />
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="InteractionVeil"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.06" Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="InteractionVeil"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.1" Duration="0" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="InteractionVeil"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.25" Duration="0" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="PersonalAiPrimaryIconButtonStyle" TargetType="Button" BasedOn="{StaticResource PersonalAiIconButtonStyle}">

@@ -136,6 +136,53 @@ public sealed class PalettePlacementCalculatorTests
         Assert.Equal(150, AssistPillWindow.ResponseResizeIntervalMilliseconds);
     }
 
+    [Theory]
+    [InlineData(1.0, 64)]
+    [InlineData(1.25, 80)]
+    [InlineData(1.5, 96)]
+    [InlineData(2.0, 128)]
+    public void AssistCircle_ScalesLogicalSizeToPhysicalPixels(
+        double scale,
+        int expected)
+    {
+        Assert.Equal(expected, AssistResponseSizingPolicy.ScalePixels(64, scale));
+    }
+
+    [Theory]
+    [InlineData(1000, 1.0)]
+    [InlineData(1250, 1.25)]
+    [InlineData(1500, 1.5)]
+    [InlineData(2000, 2.0)]
+    public void AssistResponseMeasuredSizing_IsSafeFrom100To200Percent(
+        int expectedWidth,
+        double scale)
+    {
+        var layout = AssistResponseSizingPolicy.CalculateMeasured(
+            900,
+            new RectBounds(0, 0, expectedWidth + 100, 1_200),
+            scale);
+
+        Assert.True(layout.Width <= expectedWidth + 100);
+        Assert.True(layout.Height <= 1_200 - (40 * scale));
+        Assert.True(layout.Width > 0);
+        Assert.True(layout.Height > 0);
+    }
+
+    [Theory]
+    [InlineData(100, 100, true)]
+    [InlineData(100, 70, true)]
+    [InlineData(100, 60, false)]
+    [InlineData(900, 100, false)]
+    public void AssistScrollFollow_OnlyFollowsNearBottom(
+        double scrollableHeight,
+        double verticalOffset,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            AssistScrollFollowPolicy.IsNearBottom(scrollableHeight, verticalOffset));
+    }
+
     [Fact]
     public void IsVisibleWithinAnyWorkingArea_RejectsOffscreenPosition()
     {

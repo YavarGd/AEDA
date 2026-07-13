@@ -6,12 +6,14 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Ui;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Infrastructure.Context;
 using Windows.Graphics;
+using Windows.UI.ViewManagement;
 
 namespace PersonalAI.Desktop.WinUI.Views;
 
@@ -29,8 +31,12 @@ public sealed partial class AssistPillWindow : Window
     private readonly nint _windowHandle;
     private readonly DispatcherQueueTimer _responseResizeTimer;
     private readonly SystemBackdrop? _expandedBackdrop;
+    private readonly UISettings _uiSettings = new();
+    private CancellationTokenSource? _openingCancellation;
+    private Storyboard? _launcherReleaseStoryboard;
     private nint _focusReturnWindow;
     private int _isTransitioning;
+    private bool _followLatest = true;
 
     public AssistPillWindow(
         AssistPillViewModel viewModel,
@@ -49,6 +55,7 @@ public sealed partial class AssistPillWindow : Window
         {
             _responseResizeTimer.Stop();
             ApplyResponseSize();
+            FollowLatestIfNeeded();
         };
         _windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
@@ -96,11 +103,7 @@ public sealed partial class AssistPillWindow : Window
     {
         if (Interlocked.CompareExchange(ref _isTransitioning, 1, 0) != 0)
         {
-            if (_viewModel.IsExpanded)
-            {
-                ActivateSurface();
-            }
-
+            _openingCancellation?.Cancel();
             return;
         }
 
@@ -108,7 +111,20 @@ public sealed partial class AssistPillWindow : Window
         {
             if (_viewModel.IsExpanded)
             {
-                ActivateSurface();
+                if (_viewModel.IsDetectingContext)
+                {
+                    _openingCancellation?.Cancel();
+                }
+                else if (_viewModel.IsStreaming)
+                {
+                    _viewModel.Cancel();
+                }
+                else
+                {
+                    _viewModel.Collapse();
+                    RestoreFocus();
+                }
+
                 return;
             }
 
@@ -134,22 +150,40 @@ public sealed partial class AssistPillWindow : Window
     private async Task OpenPromptAsync()
     {
         CaptureFocusReturnWindow();
-        var opened = await _viewModel.OpenPromptAsync();
-        if (!opened || !_viewModel.IsEnabled)
+        using var cancellation = new CancellationTokenSource();
+        _openingCancellation = cancellation;
+        try
         {
-            return;
-        }
+            var opening = _viewModel.OpenPromptAsync(cancellation.Token);
+            ActivateSurface();
+            var opened = await opening;
+            if (!opened || !_viewModel.IsEnabled)
+            {
+                return;
+            }
 
-        ActivateSurface();
+            ActivateSurface();
+        }
+        finally
+        {
+            if (ReferenceEquals(_openingCancellation, cancellation))
+            {
+                _openingCancellation = null;
+            }
+        }
     }
 
     private void ActivateSurface()
     {
         AppWindow.Show(activateWindow: true);
+        _ = SetForegroundWindow(_windowHandle);
         if (_viewModel.IsFallbackInput)
         {
-            PromptTextBox.Focus(FocusState.Programmatic);
-            PromptTextBox.SelectionStart = PromptTextBox.Text.Length;
+            _ = Root.DispatcherQueue.TryEnqueue(() =>
+            {
+                PromptTextBox.Focus(FocusState.Programmatic);
+                PromptTextBox.SelectionStart = PromptTextBox.Text.Length;
+            });
         }
     }
 
@@ -157,6 +191,12 @@ public sealed partial class AssistPillWindow : Window
     {
         if (e.PropertyName == nameof(AssistPillViewModel.State))
         {
+            if (_viewModel.State is AssistPillState.DetectingContext or
+                AssistPillState.StreamingResponse)
+            {
+                _followLatest = true;
+            }
+
             ApplyState(
                 reposition: _viewModel.State is AssistPillState.IdlePill or
                     AssistPillState.SpotlightPrompt ||
@@ -178,10 +218,15 @@ public sealed partial class AssistPillWindow : Window
             return;
         }
 
+        var scale = GetRasterizationScale();
         var size = _viewModel.IsIdle
-            ? new SizeInt32(IdleWidth, IdleHeight)
+            ? new SizeInt32(
+                AssistResponseSizingPolicy.ScalePixels(IdleWidth, scale),
+                AssistResponseSizingPolicy.ScalePixels(IdleHeight, scale))
             : _viewModel.IsFallbackInput
-                ? new SizeInt32(SpotlightWidth, SpotlightHeight)
+                ? new SizeInt32(
+                    AssistResponseSizingPolicy.ScalePixels(SpotlightWidth, scale),
+                    AssistResponseSizingPolicy.ScalePixels(SpotlightHeight, scale))
                 : GetResponseSize();
         AppWindow.Resize(size);
         ApplyWindowShape();
@@ -207,7 +252,7 @@ public sealed partial class AssistPillWindow : Window
     {
         var externalWindow = _foregroundWindowTracker.GetLastValidExternalWindow();
         var area = _placementService.GetActivationWorkingArea(externalWindow);
-        var scale = Root.XamlRoot?.RasterizationScale ?? 1;
+        var scale = GetRasterizationScale();
         var availableWidth = Math.Max(1, (area.Width / scale) - 40);
         ResponseCard.Measure(new Windows.Foundation.Size(
             Math.Min(560, availableWidth),
@@ -218,6 +263,9 @@ public sealed partial class AssistPillWindow : Window
             scale);
         return new SizeInt32(layout.Width, layout.Height);
     }
+
+    private double GetRasterizationScale() =>
+        Root.XamlRoot?.RasterizationScale ?? Math.Max(1, GetDpiForWindow(_windowHandle) / 96d);
 
     private void ApplyResponseSize()
     {
@@ -232,9 +280,73 @@ public sealed partial class AssistPillWindow : Window
             _foregroundWindowTracker.GetLastValidExternalWindow());
     }
 
+    private void ResponseScrollViewer_ViewChanged(
+        object sender,
+        Microsoft.UI.Xaml.Controls.ScrollViewerViewChangedEventArgs e)
+    {
+        _followLatest = AssistScrollFollowPolicy.IsNearBottom(
+            ResponseScrollViewer.ScrollableHeight,
+            ResponseScrollViewer.VerticalOffset);
+    }
+
+    private void FollowLatestIfNeeded()
+    {
+        if (!_followLatest || !_viewModel.IsResponseSurface || _viewModel.IsDetectingContext)
+        {
+            return;
+        }
+
+        _ = Root.DispatcherQueue.TryEnqueue(() =>
+            ResponseScrollViewer.ChangeView(
+                null,
+                ResponseScrollViewer.ScrollableHeight,
+                null,
+                disableAnimation: true));
+    }
+
     private async void OpenPromptButton_Click(object sender, RoutedEventArgs e)
     {
         await ToggleAsync();
+    }
+
+    private void LauncherButton_PointerPressed(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        _launcherReleaseStoryboard?.Stop();
+        if (!_uiSettings.AnimationsEnabled)
+        {
+            return;
+        }
+
+        LauncherScale.ScaleX = 0.97;
+        LauncherScale.ScaleY = 0.97;
+    }
+
+    private void LauncherButton_PointerReleased(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        _launcherReleaseStoryboard?.Stop();
+        if (!_uiSettings.AnimationsEnabled)
+        {
+            LauncherScale.ScaleX = 1;
+            LauncherScale.ScaleY = 1;
+            return;
+        }
+
+        var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        var duration = new Duration(TimeSpan.FromMilliseconds(120));
+        var scaleX = new DoubleAnimation { To = 1, Duration = duration, EasingFunction = easing };
+        var scaleY = new DoubleAnimation { To = 1, Duration = duration, EasingFunction = easing };
+        Storyboard.SetTarget(scaleX, LauncherScale);
+        Storyboard.SetTarget(scaleY, LauncherScale);
+        Storyboard.SetTargetProperty(scaleX, nameof(ScaleTransform.ScaleX));
+        Storyboard.SetTargetProperty(scaleY, nameof(ScaleTransform.ScaleY));
+        _launcherReleaseStoryboard = new Storyboard();
+        _launcherReleaseStoryboard.Children.Add(scaleX);
+        _launcherReleaseStoryboard.Children.Add(scaleY);
+        _launcherReleaseStoryboard.Begin();
     }
 
     private void CollapseButton_Click(object sender, RoutedEventArgs e)
@@ -280,6 +392,10 @@ public sealed partial class AssistPillWindow : Window
         if (_viewModel.IsStreaming)
         {
             _viewModel.Cancel();
+        }
+        else if (_viewModel.IsDetectingContext)
+        {
+            _openingCancellation?.Cancel();
         }
         else if (_viewModel.IsExpanded)
         {
@@ -352,7 +468,8 @@ public sealed partial class AssistPillWindow : Window
             return;
         }
 
-        var region = CreateEllipticRgn(0, 0, IdleWidth, IdleHeight);
+        var size = AppWindow.Size;
+        var region = CreateEllipticRgn(0, 0, size.Width, size.Height);
         if (region != 0 && SetWindowRgn(_windowHandle, region, true) == 0)
         {
             _ = DeleteObject(region);
@@ -433,6 +550,9 @@ public sealed partial class AssistPillWindow : Window
 
     [DllImport("user32.dll")]
     private static extern int SetWindowRgn(nint hWnd, nint hRgn, bool redraw);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(nint hWnd);
 
     [DllImport("gdi32.dll")]
     private static extern nint CreateEllipticRgn(int left, int top, int right, int bottom);

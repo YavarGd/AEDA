@@ -113,6 +113,8 @@ public sealed class AssistPillViewModelTests
 
         var first = viewModel.OpenPromptAsync();
         await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(AssistPillState.DetectingContext, viewModel.State);
+        Assert.True(viewModel.IsResponseSurface);
         Assert.False(await viewModel.OpenPromptAsync());
         host.ReleaseCapture();
         Assert.True(await first);
@@ -120,6 +122,22 @@ public sealed class AssistPillViewModelTests
 
         Assert.Equal(1, host.CaptureCalls);
         Assert.Equal(1, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task CancellingContextDetectionRestoresIdleWithoutFallback()
+    {
+        var host = new FakeHost { WaitForCapture = true };
+        var viewModel = CreateViewModel(host);
+        using var cancellation = new CancellationTokenSource();
+
+        var opening = viewModel.OpenPromptAsync(cancellation.Token);
+        await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        Assert.False(await opening);
+        Assert.Equal(AssistPillState.IdlePill, viewModel.State);
+        Assert.Equal(0, host.GenerateCalls);
     }
 
     [Fact]

@@ -11,15 +11,17 @@
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </Grid.Resources>
 
-        <Border Width="64"
+        <Border x:Name="IdleSurface"
+                Width="64"
                 Height="64"
-                Background="{ThemeResource AedaAssistGlassBrush}"
+                Background="{ThemeResource AedaAssistIdleBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="32"
                 Visibility="{Binding IsIdle, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid>
-                <Button Margin="6"
+                <Button x:Name="LauncherButton"
+                        Margin="6"
                         Padding="0"
                         Width="52"
                         Height="52"
@@ -28,11 +30,18 @@
                         HorizontalContentAlignment="Stretch"
                         VerticalContentAlignment="Stretch"
                         AutomationProperties.Name="Open AEDA Assist"
-                        Background="{ThemeResource PersonalAiAccentBrush}"
-                        BorderThickness="0"
                         Click="OpenPromptButton_Click"
-                        CornerRadius="26"
+                        PointerCanceled="LauncherButton_PointerReleased"
+                        PointerCaptureLost="LauncherButton_PointerReleased"
+                        PointerExited="LauncherButton_PointerReleased"
+                        PointerPressed="LauncherButton_PointerPressed"
+                        PointerReleased="LauncherButton_PointerReleased"
+                        RenderTransformOrigin="0.5,0.5"
+                        Style="{StaticResource AedaAssistLauncherButtonStyle}"
                         ToolTipService.ToolTip="Open AEDA Assist">
+                    <Button.RenderTransform>
+                        <ScaleTransform x:Name="LauncherScale" ScaleX="1" ScaleY="1" />
+                    </Button.RenderTransform>
                     <TextBlock HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                FontSize="21"
@@ -51,9 +60,10 @@
             </Grid>
         </Border>
 
-        <Border Margin="1"
+        <Border x:Name="SpotlightSurface"
+                Margin="1"
                 Padding="8"
-                Background="{ThemeResource AedaAssistGlassBrush}"
+                Background="{ThemeResource AedaAssistSpotlightBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="{StaticResource AedaAssistCornerRadius}"
@@ -85,7 +95,7 @@
         <Border x:Name="ResponseCard"
                 Margin="1"
                 Padding="14"
-                Background="{ThemeResource AedaAssistGlassBrush}"
+                Background="{ThemeResource AedaAssistResponseBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="{StaticResource AedaAssistCornerRadius}"
@@ -132,15 +142,19 @@
                     </Grid>
                     <Button Grid.Column="2"
                             Margin="0,0,4,0"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
                             Click="CollapseButton_Click"
                             AutomationProperties.Name="Collapse AEDA Assist"
-                            Content="—"
-                            ToolTipService.ToolTip="Collapse" />
+                            ToolTipService.ToolTip="Collapse">
+                        <FontIcon FontSize="12" Glyph="&#xE70D;" />
+                    </Button>
                     <Button Grid.Column="3"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
                             Click="CloseButton_Click"
                             AutomationProperties.Name="Hide AEDA Assist"
-                            Content="×"
-                            ToolTipService.ToolTip="Hide" />
+                            ToolTipService.ToolTip="Hide">
+                        <FontIcon FontSize="12" Glyph="&#xE8BB;" />
+                    </Button>
                 </Grid>
 
                 <Grid Grid.Row="1"
@@ -150,19 +164,27 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <TextBlock AutomationProperties.LiveSetting="Polite"
+                               FontFamily="Segoe UI Variable Text"
+                               FontSize="12"
                                Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
                                Text="{Binding StatusText}"
                                TextTrimming="CharacterEllipsis" />
-                    <ScrollViewer Grid.Row="1"
+                    <ScrollViewer x:Name="ResponseScrollViewer"
+                                  Grid.Row="1"
                                   Margin="0,8,0,0"
                                   HorizontalScrollBarVisibility="Disabled"
                                   HorizontalScrollMode="Disabled"
                                   VerticalScrollBarVisibility="Auto"
-                                  VerticalScrollMode="Auto">
+                                  VerticalScrollMode="Auto"
+                                  ViewChanged="ResponseScrollViewer_ViewChanged">
                         <TextBlock x:Name="ResponsePresenter"
-                                   AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.Name="AEDA Assist response"
+                                   FontFamily="Segoe UI Variable Text"
+                                   FontSize="15"
                                    Foreground="{ThemeResource AedaAssistForegroundBrush}"
                                    IsTextSelectionEnabled="True"
+                                   LineHeight="22"
+                                   LineStackingStrategy="BlockLineHeight"
                                    Text="{Binding Response}"
                                    TextWrapping="Wrap" />
                     </ScrollViewer>
@@ -170,6 +192,7 @@
 
                 <StackPanel Grid.Row="2"
                             HorizontalAlignment="Right"
+                            MinHeight="32"
                             Orientation="Horizontal"
                             Spacing="8">
                     <Button Command="{Binding CancelCommand}"

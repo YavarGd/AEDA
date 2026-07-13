@@ -4,6 +4,7 @@ public enum AssistPillState
 {
     Hidden,
     IdlePill,
+    DetectingContext,
     SpotlightPrompt,
     StreamingResponse,
     Completed,

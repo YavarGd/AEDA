@@ -432,7 +432,7 @@ public sealed class ShellLayoutTests
 
         var source = LoadProjectText("Views", "AssistPillWindow.xaml.cs");
         Assert.Contains("SystemBackdrop = _viewModel.IsIdle ? null", source);
-        Assert.Contains("CreateEllipticRgn(0, 0, IdleWidth, IdleHeight)", source);
+        Assert.Contains("CreateEllipticRgn(0, 0, size.Width, size.Height)", source);
     }
 
     [Fact]
@@ -448,7 +448,7 @@ public sealed class ShellLayoutTests
 
         Assert.Equal("True", AttributeValue(response, "IsTextSelectionEnabled"));
         Assert.Equal("Wrap", AttributeValue(response, "TextWrapping"));
-        Assert.Equal("{ThemeResource AedaAssistGlassBrush}", AttributeValue(card, "Background"));
+        Assert.Equal("{ThemeResource AedaAssistResponseBrush}", AttributeValue(card, "Background"));
         Assert.Contains(response.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
         Assert.DoesNotContain(response.Ancestors(), element => element.Name.LocalName == "TextBox");
         Assert.DoesNotContain(
@@ -459,7 +459,9 @@ public sealed class ShellLayoutTests
         var theme = LoadThemeResources();
         foreach (var key in new[]
         {
-            "AedaAssistGlassBrush",
+            "AedaAssistIdleBrush",
+            "AedaAssistSpotlightBrush",
+            "AedaAssistResponseBrush",
             "AedaAssistBorderBrush",
             "AedaAssistForegroundBrush",
             "AedaAssistSecondaryForegroundBrush"
@@ -467,6 +469,76 @@ public sealed class ShellLayoutTests
         {
             Assert.Equal(3, theme.Descendants().Count(element =>
                 AttributeValue(element, "Key") == key));
+        }
+    }
+
+    [Fact]
+    public void AssistPill_MotionScrollAndActionsStayBoundedAndAccessible()
+    {
+        var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
+        var source = LoadProjectText("Views", "AssistPillWindow.xaml.cs");
+        var scrollViewers = document.Descendants()
+            .Where(element => element.Name.LocalName == "ScrollViewer")
+            .ToArray();
+        var response = document.Descendants().Single(element =>
+            AttributeValue(element, "Name") == "ResponsePresenter");
+        var actionRow = document.Descendants().Single(element =>
+            element.Name.LocalName == "StackPanel" &&
+            AttributeValue(element, "MinHeight") == "32");
+
+        Assert.Single(scrollViewers);
+        Assert.Equal("ResponseScrollViewer_ViewChanged", AttributeValue(scrollViewers[0], "ViewChanged"));
+        Assert.Null(AttributeValue(response, "AutomationProperties.LiveSetting"));
+        Assert.Equal("15", AttributeValue(response, "FontSize"));
+        Assert.Equal("22", AttributeValue(response, "LineHeight"));
+        Assert.NotNull(actionRow);
+        Assert.Contains("LauncherScale.ScaleX = 0.97", source);
+        Assert.Contains("TimeSpan.FromMilliseconds(120)", source);
+        Assert.Contains("EasingMode.EaseOut", source);
+        Assert.Contains("AnimationsEnabled", source);
+        Assert.Contains("disableAnimation: true", source);
+        Assert.Contains("_launcherReleaseStoryboard?.Stop()", source);
+        Assert.Contains("_openingCancellation?.Cancel()", source);
+        Assert.Contains("SetForegroundWindow(_windowHandle)", source);
+        Assert.Contains("PromptTextBox.Focus(FocusState.Programmatic)", source);
+        Assert.Equal(
+            1,
+            source.Split("new Storyboard()", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("ScaleX = 0;", source);
+        Assert.DoesNotContain("AedaAssistGlassBrush", document.ToString());
+        Assert.DoesNotContain("PersonalAiElevatedSurfaceBrush", document.ToString());
+        Assert.DoesNotContain("PersonalAiSubtleSurfaceBrush", document.ToString());
+    }
+
+    [Fact]
+    public void AssistPill_MaterialsHaveHierarchyAndHighContrastFallback()
+    {
+        var theme = LoadThemeResources();
+        var dictionaries = theme.Descendants()
+            .Where(element => element.Name.LocalName == "ResourceDictionary" &&
+                AttributeValue(element, "Key") is "Default" or "Light" or "HighContrast")
+            .ToArray();
+
+        foreach (var dictionary in dictionaries)
+        {
+            var brushes = dictionary.Elements()
+                .Where(element => AttributeValue(element, "Key") is
+                    "AedaAssistIdleBrush" or
+                    "AedaAssistSpotlightBrush" or
+                    "AedaAssistResponseBrush")
+                .ToArray();
+            Assert.Equal(3, brushes.Length);
+
+            if (AttributeValue(dictionary, "Key") != "HighContrast")
+            {
+                Assert.Equal(3, brushes.Select(element => AttributeValue(element, "Color")).Distinct().Count());
+            }
+            else
+            {
+                Assert.All(brushes, brush => Assert.Equal(
+                    "{ThemeResource SystemColorWindowColor}",
+                    AttributeValue(brush, "Color")));
+            }
         }
     }
 

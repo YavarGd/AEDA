@@ -59,6 +59,14 @@ public sealed record AssistResponseLayout(
 
 public static class AssistResponseSizingPolicy
 {
+    public static int ScalePixels(int logicalPixels, double rasterizationScale)
+    {
+        var scale = double.IsFinite(rasterizationScale)
+            ? Math.Clamp(rasterizationScale, 0.5, 4)
+            : 1;
+        return Math.Max(1, (int)Math.Round(logicalPixels * scale));
+    }
+
     public static AssistResponseLayout CalculateMeasured(
         double desiredHeight,
         RectBounds workingArea,
@@ -116,4 +124,14 @@ public static class AssistResponseSizingPolicy
             height,
             uncappedHeight > maximumHeight);
     }
+}
+
+public static class AssistScrollFollowPolicy
+{
+    public const double NearBottomThreshold = 32;
+
+    public static bool IsNearBottom(double scrollableHeight, double verticalOffset) =>
+        double.IsFinite(scrollableHeight) &&
+        double.IsFinite(verticalOffset) &&
+        scrollableHeight - verticalOffset <= NearBottomThreshold;
 }

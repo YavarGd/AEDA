@@ -54,7 +54,10 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
     public bool IsFallbackInput => State == AssistPillState.SpotlightPrompt;
 
-    public bool IsResponseSurface => State is AssistPillState.StreamingResponse or
+    public bool IsDetectingContext => State == AssistPillState.DetectingContext;
+
+    public bool IsResponseSurface => State is AssistPillState.DetectingContext or
+        AssistPillState.StreamingResponse or
         AssistPillState.Completed or AssistPillState.Cancelled or AssistPillState.Failed;
 
     public bool IsStreaming => State == AssistPillState.StreamingResponse;
@@ -107,10 +110,16 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
         try
         {
+            State = AssistPillState.DetectingContext;
             StatusText = "Checking available context";
             try
             {
                 _context = await _host.CaptureContextAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                ShowIdle();
+                return false;
             }
             catch
             {
@@ -254,6 +263,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(IsFallbackInput));
+        OnPropertyChanged(nameof(IsDetectingContext));
         OnPropertyChanged(nameof(IsResponseSurface));
         OnPropertyChanged(nameof(IsStreaming));
         OnPropertyChanged(nameof(CanSubmit));
