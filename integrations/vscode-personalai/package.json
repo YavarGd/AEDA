@@ -12,6 +12,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:personalai.askAboutSelection",
     "onCommand:personalai.explainSelection",
     "onCommand:personalai.findProblemsInSelection",

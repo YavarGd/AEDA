@@ -39,6 +39,25 @@ public sealed class AssistPillViewModelTests
     }
 
     [Fact]
+    public async Task MeaningfulContext_ShowsSelectionFeedbackWhileStreaming()
+    {
+        var host = new FakeHost
+        {
+            Context = Context(42),
+            WaitForCancellation = true
+        };
+        var viewModel = CreateViewModel(host);
+
+        await viewModel.OpenPromptAsync();
+        await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(AssistPillState.StreamingResponse, viewModel.State);
+        Assert.Equal("Using selected text", viewModel.StatusText);
+        viewModel.Cancel();
+        await viewModel.WaitForGenerationAsync();
+    }
+
+    [Fact]
     public async Task MetadataOnlyContext_UsesCompactFallbackAndDoesNotGenerate()
     {
         var host = new FakeHost { Context = Context(selectedCharacters: 0) };
@@ -173,6 +192,51 @@ public sealed class AssistPillViewModelTests
     }
 
     [Fact]
+    public async Task Retry_RechecksProviderAndContinuesThePendingRequest()
+    {
+        var host = new FakeHost
+        {
+            Result = new AssistGenerationResult(ChatStatus.Failed, "Ollama is not running.")
+        };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Answer";
+        await viewModel.SubmitAsync();
+
+        Assert.True(viewModel.CanRetry);
+        host.Result = new AssistGenerationResult(ChatStatus.Completed);
+        host.Chunks = ["Recovered"];
+        await viewModel.RetryAsync();
+
+        Assert.Equal(2, host.GenerateCalls);
+        Assert.Equal(AssistPillState.Completed, viewModel.State);
+        Assert.Equal("Recovered", viewModel.Response);
+    }
+
+    [Fact]
+    public async Task Retry_DoesNotReuseStaleSelectedText()
+    {
+        var host = new FakeHost
+        {
+            Context = Context(20),
+            Result = new AssistGenerationResult(ChatStatus.Failed, "Ollama is not running.")
+        };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        await viewModel.WaitForGenerationAsync();
+        host.Context = Context(20) with
+        {
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-3)
+        };
+
+        await viewModel.RetryAsync();
+
+        Assert.Equal(1, host.GenerateCalls);
+        Assert.True(viewModel.IsFallbackInput);
+        Assert.Equal("Selection is no longer available", viewModel.StatusText);
+    }
+
+    [Fact]
     public async Task CancellationIsScopedAndNextInvocationCanSucceed()
     {
         var host = new FakeHost { WaitForCancellation = true };
@@ -252,6 +316,36 @@ public sealed class AssistPillViewModelTests
             now));
     }
 
+    [Theory]
+    [InlineData("Code", "Program.cs - repo - Visual Studio Code", true)]
+    [InlineData("Code - Insiders", "Program.cs - repo - Visual Studio Code", true)]
+    [InlineData("Code", "Other.cs - elsewhere - Visual Studio Code", false)]
+    [InlineData("notepad", "Program.cs", false)]
+    public void VsCodeContext_MustMatchForegroundEditor(
+        string processName,
+        string title,
+        bool expected)
+    {
+        var context = Context(5) with
+        {
+            Type = AttachedContextType.VsCodeEditor,
+            Metadata = new Dictionary<string, string>
+            {
+                ["selectedTextCharacters"] = "5",
+                ["fileName"] = "Program.cs",
+                ["workspace"] = "repo"
+            }
+        };
+        var foreground = new ActiveWindowReference(
+            1,
+            2,
+            processName,
+            title,
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(expected, AssistContextPolicy.MatchesForeground(context, foreground));
+    }
+
     private static AssistPillViewModel CreateViewModel(
         FakeHost host,
         bool enabled = true) =>
@@ -279,10 +373,10 @@ public sealed class AssistPillViewModelTests
         private readonly TaskCompletionSource _captureReleased =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public AttachedContextItem? Context { get; init; }
+        public AttachedContextItem? Context { get; set; }
         public IReadOnlyList<string> Chunks { get; set; } = [];
         public Exception? Failure { get; init; }
-        public AssistGenerationResult Result { get; init; } =
+        public AssistGenerationResult Result { get; set; } =
             new(ChatStatus.Completed);
         public bool WaitForCapture { get; init; }
         public bool WaitForCancellation { get; set; }

@@ -32,6 +32,21 @@ public sealed class ProviderRoutingIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task OllamaHealth_UsesHttpEndpointAndReportsUnavailable()
+    {
+        var handler = new StubHttpHandler((_, _) =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        var catalog = new ProviderFactory(
+            () => new HttpClient(handler),
+            new InMemorySecretStore()).CreateCatalog(ApplicationSettings.CreateDefault());
+
+        var health = await catalog.Registry.GetHealthAsync(ProviderId.Ollama);
+
+        Assert.Equal(ProviderStatus.Unavailable, health.Status);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
     public void ProviderFactory_MaterializesLocalOpenAICompatibleGateway()
     {
         var settings = CreateSettings(

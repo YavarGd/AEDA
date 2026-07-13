@@ -1,6 +1,7 @@
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
+using PersonalAI.Core.Providers;
 using PersonalAI.Desktop.WinUI.Models;
 
 namespace PersonalAI.Desktop.WinUI.Services;
@@ -28,6 +29,7 @@ public sealed class AssistPillHost(
     ConversationSessionService conversationSession,
     IApplicationSettingsService settingsService,
     IChatModelRouter modelRouter,
+    Func<CancellationToken, Task<ProviderHealth>> checkProviderHealthAsync,
     Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync,
     ActiveWindowContextService contextService,
     Func<AttachedContextItem?> getExplicitContext,
@@ -39,10 +41,16 @@ public sealed class AssistPillHost(
     public async Task<AttachedContextItem?> CaptureContextAsync(
         CancellationToken cancellationToken)
     {
+        var explicitContext = getExplicitContext();
+        if (AssistContextPolicy.IsMeaningful(explicitContext, DateTimeOffset.UtcNow))
+        {
+            return explicitContext;
+        }
+
         var captured = await contextService.CaptureAsync(cancellationToken);
         return AssistContextPolicy.IsMeaningful(captured, DateTimeOffset.UtcNow)
             ? captured
-            : getExplicitContext();
+            : null;
     }
 
     public async Task<AssistGenerationResult> GenerateAsync(
@@ -51,6 +59,35 @@ public sealed class AssistPillHost(
         Action<string> reportChunk,
         CancellationToken cancellationToken)
     {
+        var settings = settingsService.Current;
+        var selectedProvider = settings.ProviderRouting.ProviderProfiles
+            .LastOrDefault(profile => profile.Id.Equals(
+                settings.ProviderRouting.SelectedChatProvider,
+                StringComparison.OrdinalIgnoreCase));
+        var unavailableMessage = selectedProvider?.Kind == ProviderKind.Ollama
+            ? "Ollama is not running."
+            : "The configured chat provider is unavailable.";
+        ProviderHealth health;
+        try
+        {
+            health = await checkProviderHealthAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            health = new ProviderHealth(ProviderStatus.Unavailable);
+        }
+
+        if (health.Status != ProviderStatus.Available)
+        {
+            return new AssistGenerationResult(
+                ChatStatus.Failed,
+                unavailableMessage);
+        }
+
         IReadOnlyList<string> models;
         try
         {
@@ -64,7 +101,7 @@ public sealed class AssistPillHost(
         {
             return new AssistGenerationResult(
                 ChatStatus.Failed,
-                "The configured chat provider is unavailable.");
+                unavailableMessage);
         }
 
         if (models.Count == 0)
@@ -74,7 +111,6 @@ public sealed class AssistPillHost(
                 "No chat model is available. Check AEDA settings.");
         }
 
-        var settings = settingsService.Current;
         IReadOnlyList<AttachedContextItem> contexts =
             context is null ? [] : [context];
         var decision = await modelRouter.SelectModelAsync(
@@ -143,5 +179,37 @@ public static class AssistContextPolicy
         }
 
         return int.TryParse(value, out var characters) && characters > 0;
+    }
+
+    public static bool MatchesForeground(
+        AttachedContextItem context,
+        ActiveWindowReference? foreground)
+    {
+        if (context.Type != AttachedContextType.VsCodeEditor || foreground is null)
+        {
+            return false;
+        }
+
+        var processName = PrivacyExclusionMatcher.NormalizeProcessName(
+            foreground.ProcessName);
+        if (!processName.Equals("Code", StringComparison.OrdinalIgnoreCase) &&
+            !processName.StartsWith("Code - ", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(foreground.WindowTitle))
+        {
+            return true;
+        }
+
+        var candidates = new[]
+        {
+            context.Metadata.GetValueOrDefault("fileName"),
+            context.Metadata.GetValueOrDefault("workspace")
+        }.Where(value => !string.IsNullOrWhiteSpace(value));
+
+        return !candidates.Any() || candidates.Any(value =>
+            foreground.WindowTitle.Contains(value!, StringComparison.OrdinalIgnoreCase));
     }
 }

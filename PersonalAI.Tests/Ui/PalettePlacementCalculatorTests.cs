@@ -114,6 +114,23 @@ public sealed class PalettePlacementCalculatorTests
     }
 
     [Fact]
+    public void AssistResponseMeasuredSizing_GrowsThenScrollsAtMaximum()
+    {
+        var area = new RectBounds(0, 0, 1_920, 700);
+
+        var empty = AssistResponseSizingPolicy.CalculateMeasured(100, area, 1);
+        var medium = AssistResponseSizingPolicy.CalculateMeasured(320, area, 1);
+        var longResponse = AssistResponseSizingPolicy.CalculateMeasured(900, area, 1);
+
+        Assert.Equal(180, empty.Height);
+        Assert.Equal(320, medium.Height);
+        Assert.Equal(480, longResponse.Height);
+        Assert.False(empty.RequiresScrolling);
+        Assert.True(longResponse.RequiresScrolling);
+        Assert.Equal(empty.Width, longResponse.Width);
+    }
+
+    [Fact]
     public void AssistResponseSizing_IsBatchedInsteadOfPerToken()
     {
         Assert.Equal(150, AssistPillWindow.ResponseResizeIntervalMilliseconds);

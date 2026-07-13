@@ -37,3 +37,21 @@ test("serializeEnvelope rejects oversized messages", () => {
 
   assert.throws(() => serializeEnvelope(envelope), /2 MB/);
 });
+
+test("selection context updates use the production pipe contract", () => {
+  const serialized = serializeEnvelope({
+    protocolVersion,
+    requestId: "request-2",
+    source: "vscode",
+    command: "updateSelectionContext",
+    context: {
+      selectedText: "selected text",
+      isDirty: false,
+      diagnostics: [],
+      timestampUtc: new Date(0).toISOString()
+    }
+  });
+
+  assert.equal(JSON.parse(serialized).command, "updateSelectionContext");
+  assert.equal(JSON.parse(serialized).context.selectedText, "selected text");
+});

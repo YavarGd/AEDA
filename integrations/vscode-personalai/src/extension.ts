@@ -18,6 +18,15 @@ import {
 } from "./timeoutOptions";
 
 export function activate(context: vscode.ExtensionContext): void {
+  let publishTimer: NodeJS.Timeout | undefined;
+  const scheduleSelectionPublish = (): void => {
+    if (publishTimer) {
+      clearTimeout(publishTimer);
+    }
+
+    publishTimer = setTimeout(() => void publishSelectionContext(), 150);
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "personalai.askAboutSelection",
@@ -40,8 +49,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "personalai.openPersonalAI",
       () => sendOpenCommand()
-    )
+    ),
+    vscode.window.onDidChangeTextEditorSelection(scheduleSelectionPublish),
+    vscode.window.onDidChangeActiveTextEditor(scheduleSelectionPublish),
+    { dispose: () => publishTimer && clearTimeout(publishTimer) }
   );
+
+  scheduleSelectionPublish();
 }
 
 export function deactivate(): void {
@@ -103,6 +117,34 @@ async function sendOpenCommand(): Promise<void> {
     pipeName,
     envelope,
     getQuickTimeoutOptions(configuration));
+}
+
+async function publishSelectionContext(): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration("personalai");
+  const collected = await collectEditorContext(
+    configuration.get<number>("maxSelectedTextCharacters", 100000),
+    false);
+
+  if (!collected) {
+    return;
+  }
+
+  const envelope: EditorContextEnvelope = {
+    protocolVersion,
+    requestId: createRequestId(),
+    source: "vscode",
+    command: "updateSelectionContext",
+    context: collected.context
+  };
+
+  try {
+    await sendEnvelope(
+      configuration.get<string>("pipeName", defaultPipeName),
+      envelope,
+      getQuickTimeoutOptions(configuration));
+  } catch {
+    // AEDA is optional; the launcher falls back to its compact input when offline.
+  }
 }
 
 async function sendToPersonalAi(

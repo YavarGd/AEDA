@@ -14,12 +14,15 @@ export interface CollectedContextResult {
 }
 
 export async function collectEditorContext(
-  maxSelectedTextCharacters: number
+  maxSelectedTextCharacters: number,
+  promptForEmptySelection = true
 ): Promise<CollectedContextResult | undefined> {
   const editor = vscode.window.activeTextEditor;
 
   if (!editor) {
-    vscode.window.showWarningMessage("Open an editor before sending context to PersonalAI.");
+    if (promptForEmptySelection) {
+      vscode.window.showWarningMessage("Open an editor before sending context to PersonalAI.");
+    }
     return undefined;
   }
 
@@ -28,7 +31,7 @@ export async function collectEditorContext(
   let selection = editor.selection;
   let selectedText = document.getText(selection);
 
-  if (!selectedText) {
+  if (!selectedText && promptForEmptySelection) {
     const choice = await chooseEmptySelectionBehavior();
 
     if (choice === "cancel") {
@@ -43,17 +46,21 @@ export async function collectEditorContext(
   }
 
   if (selectedText.length > maxSelectedTextCharacters) {
-    const choice = await vscode.window.showWarningMessage(
-      `The selected text has ${selectedText.length} characters. PersonalAI is configured to send at most ${maxSelectedTextCharacters}.`,
-      "Truncate",
-      "Cancel"
-    );
+    if (!promptForEmptySelection) {
+      selectedText = selectedText.slice(0, maxSelectedTextCharacters);
+    } else {
+      const choice = await vscode.window.showWarningMessage(
+        `The selected text has ${selectedText.length} characters. PersonalAI is configured to send at most ${maxSelectedTextCharacters}.`,
+        "Truncate",
+        "Cancel"
+      );
 
-    if (choice !== "Truncate") {
-      return undefined;
+      if (choice !== "Truncate") {
+        return undefined;
+      }
+
+      selectedText = selectedText.slice(0, maxSelectedTextCharacters);
     }
-
-    selectedText = selectedText.slice(0, maxSelectedTextCharacters);
   }
 
   const diagnostics = vscode.languages

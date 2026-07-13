@@ -24,6 +24,7 @@ public sealed class AssistConversationSessionTests
             session,
             new FakeSettingsService(),
             new DeterministicChatModelRouter(),
+            _ => Task.FromResult(PersonalAI.Core.Providers.ProviderHealth.Available),
             _ => Task.FromResult<IReadOnlyList<string>>(["test-model"]),
             contextService: null!,
             getExplicitContext: () => null,
@@ -46,6 +47,35 @@ public sealed class AssistConversationSessionTests
         Assert.Equal("test-model", provider.LastRequest?.Model);
         Assert.Equal("Routed answer", streamed);
         Assert.Equal(Assert.Single(repository.Conversations).Id, openedConversation);
+    }
+
+    [Fact]
+    public async Task ProductionHost_ChecksHealthBeforeModelsAndReturnsOllamaRecovery()
+    {
+        var provider = new FakeProvider();
+        var host = new AssistPillHost(
+            new ConversationSessionService(
+                new FakeConversationRepository(),
+                new ChatSessionService(provider)),
+            new FakeSettingsService(),
+            new DeterministicChatModelRouter(),
+            _ => Task.FromResult(new PersonalAI.Core.Providers.ProviderHealth(
+                PersonalAI.Core.Providers.ProviderStatus.Unavailable)),
+            _ => throw new InvalidOperationException("models must not be queried"),
+            contextService: null!,
+            getExplicitContext: () => null,
+            clipboardWriter: new FakeClipboardWriter(),
+            openConversationAsync: _ => Task.CompletedTask);
+
+        var result = await host.GenerateAsync(
+            "Explain this",
+            context: null,
+            _ => { },
+            CancellationToken.None);
+
+        Assert.Equal(ChatStatus.Failed, result.Status);
+        Assert.Equal("Ollama is not running.", result.SafeErrorMessage);
+        Assert.Null(provider.LastRequest);
     }
 
     [Fact]

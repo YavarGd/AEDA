@@ -44,6 +44,30 @@ public sealed class EditorCodeChatResponderTests
     }
 
     [Fact]
+    public async Task SelectionUpdate_AttachesContextWithoutStartingEditorChat()
+    {
+        var attachCalls = 0;
+        var responderCalls = 0;
+        var handler = new EditorContextMessageHandler(
+            _ => attachCalls++,
+            () => { },
+            (_, _) =>
+            {
+                responderCalls++;
+                return Task.FromResult(EditorContextHandlerResult.Success("unexpected"));
+            });
+
+        var result = await handler.HandleAsync(CreateEnvelope(
+            EditorContextCommands.UpdateSelectionContext,
+            userPrompt: null));
+
+        Assert.True(result.Ok);
+        Assert.Equal("context updated", result.Message);
+        Assert.Equal(1, attachCalls);
+        Assert.Equal(0, responderCalls);
+    }
+
+    [Fact]
     public async Task ExplainCommand_DelegatesToChatProviderWithoutTools()
     {
         var provider = new FakeChatProvider([new ChatChunk("explained", true)]);

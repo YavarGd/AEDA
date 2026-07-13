@@ -21,13 +21,14 @@ public sealed partial class AssistPillWindow : Window
     public const int IdleHeight = 64;
     public const int ResponseResizeIntervalMilliseconds = 150;
     private const int SpotlightWidth = 520;
-    private const int SpotlightHeight = 144;
+    private const int SpotlightHeight = 64;
 
     private readonly AssistPillViewModel _viewModel;
     private readonly WinUiWindowPlacementService _placementService;
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly nint _windowHandle;
     private readonly DispatcherQueueTimer _responseResizeTimer;
+    private readonly SystemBackdrop? _expandedBackdrop;
     private nint _focusReturnWindow;
     private int _isTransitioning;
 
@@ -53,11 +54,11 @@ public sealed partial class AssistPillWindow : Window
 
         if (MicaController.IsSupported())
         {
-            SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+            _expandedBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
         }
         else if (DesktopAcrylicController.IsSupported())
         {
-            SystemBackdrop = new DesktopAcrylicBackdrop();
+            _expandedBackdrop = new DesktopAcrylicBackdrop();
         }
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
@@ -183,6 +184,7 @@ public sealed partial class AssistPillWindow : Window
                 ? new SizeInt32(SpotlightWidth, SpotlightHeight)
                 : GetResponseSize();
         AppWindow.Resize(size);
+        ApplyWindowShape();
         SetNoActivate(_viewModel.IsIdle);
 
         if (!reposition)
@@ -206,8 +208,12 @@ public sealed partial class AssistPillWindow : Window
         var externalWindow = _foregroundWindowTracker.GetLastValidExternalWindow();
         var area = _placementService.GetActivationWorkingArea(externalWindow);
         var scale = Root.XamlRoot?.RasterizationScale ?? 1;
-        var layout = AssistResponseSizingPolicy.Calculate(
-            _viewModel.Response.Length,
+        var availableWidth = Math.Max(1, (area.Width / scale) - 40);
+        ResponseCard.Measure(new Windows.Foundation.Size(
+            Math.Min(560, availableWidth),
+            double.PositiveInfinity));
+        var layout = AssistResponseSizingPolicy.CalculateMeasured(
+            ResponseCard.DesiredSize.Height,
             area,
             scale);
         return new SizeInt32(layout.Width, layout.Height);
@@ -337,6 +343,22 @@ public sealed partial class AssistPillWindow : Window
             sizeof(int));
     }
 
+    private void ApplyWindowShape()
+    {
+        SystemBackdrop = _viewModel.IsIdle ? null : _expandedBackdrop;
+        if (!_viewModel.IsIdle)
+        {
+            _ = SetWindowRgn(_windowHandle, 0, true);
+            return;
+        }
+
+        var region = CreateEllipticRgn(0, 0, IdleWidth, IdleHeight);
+        if (region != 0 && SetWindowRgn(_windowHandle, region, true) == 0)
+        {
+            _ = DeleteObject(region);
+        }
+    }
+
     private void ConfigurePopupStyle()
     {
         const int styleIndex = -16;
@@ -408,6 +430,15 @@ public sealed partial class AssistPillWindow : Window
         int width,
         int height,
         uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowRgn(nint hWnd, nint hRgn, bool redraw);
+
+    [DllImport("gdi32.dll")]
+    private static extern nint CreateEllipticRgn(int left, int top, int right, int bottom);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(nint handle);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(

@@ -13,8 +13,8 @@
 
         <Border Width="64"
                 Height="64"
-                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                BorderBrush="{ThemeResource PersonalAiStrongBorderBrush}"
+                Background="{ThemeResource AedaAssistGlassBrush}"
+                BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="32"
                 Visibility="{Binding IsIdle, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -52,13 +52,46 @@
         </Border>
 
         <Border Margin="1"
-                Padding="14"
-                Opacity="0.96"
-                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                BorderBrush="{ThemeResource PersonalAiStrongBorderBrush}"
+                Padding="8"
+                Background="{ThemeResource AedaAssistGlassBrush}"
+                BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="20"
-                Visibility="{Binding IsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+                CornerRadius="{StaticResource AedaAssistCornerRadius}"
+                Shadow="{StaticResource AedaAssistShadow}"
+                Translation="0,0,8"
+                Visibility="{Binding IsFallbackInput, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <TextBox x:Name="PromptTextBox"
+                         MinHeight="44"
+                         Padding="12,9,52,9"
+                         AcceptsReturn="False"
+                         AutomationProperties.Name="AEDA Assist prompt"
+                         KeyDown="PromptTextBox_KeyDown"
+                         PlaceholderText="Ask AEDA…"
+                         Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Width="42"
+                        Height="42"
+                        MinWidth="0"
+                        Margin="0,1,1,1"
+                        HorizontalAlignment="Right"
+                        Command="{Binding SubmitCommand}"
+                        AutomationProperties.Name="Submit AEDA Assist request"
+                        ToolTipService.ToolTip="Submit">
+                    <FontIcon Glyph="&#xE74A;" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <Border x:Name="ResponseCard"
+                Margin="1"
+                Padding="14"
+                Background="{ThemeResource AedaAssistGlassBrush}"
+                BorderBrush="{ThemeResource AedaAssistBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource AedaAssistCornerRadius}"
+                Shadow="{StaticResource AedaAssistShadow}"
+                Translation="0,0,8"
+                Visibility="{Binding IsResponseSurface, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid RowSpacing="10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -89,7 +122,7 @@
                         <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
                             <TextBlock FontSize="14"
                                        FontWeight="SemiBold"
-                                       Foreground="{ThemeResource PersonalAiPrimaryTextBrush}"
+                                       Foreground="{ThemeResource AedaAssistForegroundBrush}"
                                        Text="AEDA Assist" />
                             <ProgressRing Width="14"
                                           Height="14"
@@ -111,56 +144,28 @@
                 </Grid>
 
                 <Grid Grid.Row="1"
-                      Visibility="{Binding IsFallbackInput, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="PromptTextBox"
-                             MinHeight="44"
-                             Padding="12,9"
-                             AcceptsReturn="False"
-                             AutomationProperties.Name="AEDA Assist prompt"
-                             KeyDown="PromptTextBox_KeyDown"
-                             PlaceholderText="Ask AEDA…"
-                             Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Grid.Column="1"
-                            Width="42"
-                            Height="42"
-                            MinWidth="0"
-                            Margin="8,0,0,0"
-                            Command="{Binding SubmitCommand}"
-                            AutomationProperties.Name="Submit AEDA Assist request"
-                            ToolTipService.ToolTip="Submit">
-                        <FontIcon Glyph="&#xE74A;" />
-                    </Button>
-                </Grid>
-
-                <Grid Grid.Row="1"
                       Visibility="{Binding IsResponseSurface, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <TextBlock AutomationProperties.LiveSetting="Polite"
-                               Foreground="{ThemeResource PersonalAiMutedTextBrush}"
+                               Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
                                Text="{Binding StatusText}"
                                TextTrimming="CharacterEllipsis" />
-                    <Border Grid.Row="1"
-                            Margin="0,6,0,0"
-                            Padding="12"
-                            Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
-                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12">
-                        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                                      VerticalScrollBarVisibility="Auto">
-                            <TextBlock AutomationProperties.LiveSetting="Polite"
-                                       Foreground="{ThemeResource PersonalAiPrimaryTextBrush}"
-                                       Text="{Binding Response}"
-                                       TextWrapping="Wrap" />
-                        </ScrollViewer>
-                    </Border>
+                    <ScrollViewer Grid.Row="1"
+                                  Margin="0,8,0,0"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  HorizontalScrollMode="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  VerticalScrollMode="Auto">
+                        <TextBlock x:Name="ResponsePresenter"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   Foreground="{ThemeResource AedaAssistForegroundBrush}"
+                                   IsTextSelectionEnabled="True"
+                                   Text="{Binding Response}"
+                                   TextWrapping="Wrap" />
+                    </ScrollViewer>
                 </Grid>
 
                 <StackPanel Grid.Row="2"
@@ -168,14 +173,22 @@
                             Orientation="Horizontal"
                             Spacing="8">
                     <Button Command="{Binding CancelCommand}"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
                             AutomationProperties.Name="Stop AEDA Assist response"
                             Content="Stop"
                             Visibility="{Binding IsStreaming, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Command="{Binding RetryCommand}"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
+                            AutomationProperties.Name="Retry AEDA Assist request"
+                            Content="Retry"
+                            Visibility="{Binding CanRetry, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Command="{Binding CopyResponseCommand}"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
                             AutomationProperties.Name="Copy AEDA Assist response"
                             Content="Copy"
                             Visibility="{Binding CanShowResponseActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Command="{Binding OpenInAedaCommand}"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
                             AutomationProperties.Name="Open response in AEDA"
                             Content="Open in AEDA"
                             Visibility="{Binding CanShowResponseActions, Converter={StaticResource BooleanToVisibilityConverter}}" />

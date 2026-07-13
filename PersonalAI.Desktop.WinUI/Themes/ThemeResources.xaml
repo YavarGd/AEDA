@@ -57,6 +57,11 @@
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="#75748C" />
             <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="#C9C4FF" />
 
+            <SolidColorBrush x:Key="AedaAssistGlassBrush" Color="#E61B1A27" />
+            <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#665E55A0" />
+            <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="#F5F3FF" />
+            <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="#AAA6C5" />
+
             <!-- Chat role surfaces -->
             <SolidColorBrush x:Key="PersonalAiUserBubbleBrush" Color="#2D2A52" />
             <SolidColorBrush x:Key="PersonalAiAssistantBubbleBrush" Color="#1F1F2A" />
@@ -136,6 +141,11 @@
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="#9B9A95" />
             <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="#453592" />
 
+            <SolidColorBrush x:Key="AedaAssistGlassBrush" Color="#E6FCFBFF" />
+            <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#665746C2" />
+            <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="#18171D" />
+            <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="#696775" />
+
             <SolidColorBrush x:Key="PersonalAiUserBubbleBrush" Color="#EEF0FF" />
             <SolidColorBrush x:Key="PersonalAiAssistantBubbleBrush" Color="#F4F4F2" />
 
@@ -198,6 +208,10 @@
             <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="AedaAssistGlassBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="PersonalAiUserBubbleBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="PersonalAiAssistantBubbleBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="PersonalAiDangerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -247,6 +261,8 @@
     <CornerRadius x:Key="IconContainerCornerRadius">10</CornerRadius>
 
     <x:Double x:Key="IconButtonSize">36</x:Double>
+    <CornerRadius x:Key="AedaAssistCornerRadius">20</CornerRadius>
+    <ThemeShadow x:Key="AedaAssistShadow" />
 
     <Thickness x:Key="PagePadding">24,20,24,20</Thickness>
     <Thickness x:Key="CardPadding">18,16,18,16</Thickness>
@@ -377,6 +393,15 @@
         <Setter Property="Width" Value="28" />
         <Setter Property="Height" Value="28" />
         <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+    <Style x:Key="AedaAssistActionButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{ThemeResource AedaAssistForegroundBrush}" />
     </Style>
 
     <Style x:Key="PersonalAiPrimaryIconButtonStyle" TargetType="Button" BasedOn="{StaticResource PersonalAiIconButtonStyle}">

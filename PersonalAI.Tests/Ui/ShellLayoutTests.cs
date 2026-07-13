@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Desktop.WinUI.Views;
 
 namespace PersonalAI.Tests.Ui;
 
@@ -380,6 +381,15 @@ public sealed class ShellLayoutTests
             element => AttributeValue(element, "Visibility")?.Contains(
                 "IsFallbackInput",
                 StringComparison.Ordinal) == true);
+        var fallback = prompt.Ancestors().Single(element =>
+            element.Name.LocalName == "Border" &&
+            AttributeValue(element, "Visibility")?.Contains(
+                "IsFallbackInput",
+                StringComparison.Ordinal) == true);
+        Assert.Equal("8", AttributeValue(fallback, "Padding"));
+        Assert.DoesNotContain(
+            fallback.Descendants(),
+            element => AttributeValue(element, "Text") == "AEDA Assist");
         Assert.Contains(buttons, button =>
             AttributeValue(button, "AutomationProperties.Name") == "Open AEDA Assist" &&
             AttributeValue(button, "ToolTipService.ToolTip") == "Open AEDA Assist");
@@ -415,6 +425,62 @@ public sealed class ShellLayoutTests
         Assert.DoesNotContain(
             document.Descendants(),
             element => element.Name.LocalName == "MenuFlyoutItem");
+        var root = document.Descendants().Single(element =>
+            element.Name.LocalName == "Grid" && AttributeValue(element, "Name") == "Root");
+        Assert.Equal("Transparent", AttributeValue(root, "Background"));
+        Assert.Equal(AssistPillWindow.IdleWidth, AssistPillWindow.IdleHeight);
+
+        var source = LoadProjectText("Views", "AssistPillWindow.xaml.cs");
+        Assert.Contains("SystemBackdrop = _viewModel.IsIdle ? null", source);
+        Assert.Contains("CreateEllipticRgn(0, 0, IdleWidth, IdleHeight)", source);
+    }
+
+    [Fact]
+    public void AssistPill_ResponseUsesUnifiedReadOnlyGlassDocumentSurface()
+    {
+        var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
+        var response = document.Descendants().Single(element =>
+            element.Name.LocalName == "TextBlock" &&
+            AttributeValue(element, "Name") == "ResponsePresenter");
+        var card = response.Ancestors().Single(element =>
+            element.Name.LocalName == "Border" &&
+            AttributeValue(element, "Name") == "ResponseCard");
+
+        Assert.Equal("True", AttributeValue(response, "IsTextSelectionEnabled"));
+        Assert.Equal("Wrap", AttributeValue(response, "TextWrapping"));
+        Assert.Equal("{ThemeResource AedaAssistGlassBrush}", AttributeValue(card, "Background"));
+        Assert.Contains(response.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
+        Assert.DoesNotContain(response.Ancestors(), element => element.Name.LocalName == "TextBox");
+        Assert.DoesNotContain(
+            document.Descendants(),
+            element => AttributeValue(element, "Text") == "{Binding Response}" &&
+                element.Name.LocalName == "TextBox");
+
+        var theme = LoadThemeResources();
+        foreach (var key in new[]
+        {
+            "AedaAssistGlassBrush",
+            "AedaAssistBorderBrush",
+            "AedaAssistForegroundBrush",
+            "AedaAssistSecondaryForegroundBrush"
+        })
+        {
+            Assert.Equal(3, theme.Descendants().Count(element =>
+                AttributeValue(element, "Key") == key));
+        }
+    }
+
+    [Fact]
+    public void UiaSelectionCaptureHasNoClipboardOrKeystrokePath()
+    {
+        var source = LoadProjectText("Services", "WindowsUiaSelectedTextProvider.cs");
+
+        Assert.Contains("AutomationElement.FocusedElement", source);
+        Assert.Contains("Current.IsPassword", source);
+        Assert.Contains("TextPattern.Pattern", source);
+        Assert.DoesNotContain("Clipboard", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SendKeys", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Ctrl+C", source, StringComparison.OrdinalIgnoreCase);
     }
 
     private static XElement FindButtonByAccessibleName(string accessibleName)
@@ -455,6 +521,24 @@ public sealed class ShellLayoutTests
 
         throw new FileNotFoundException(
             $"Could not locate {Path.Combine(segments)}.");
+    }
+
+    private static string LoadProjectText(params string[] segments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(
+                [directory.FullName, "PersonalAI.Desktop.WinUI", .. segments]);
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not locate {Path.Combine(segments)}.");
     }
 
     private static string? AttributeValue(XElement element, string localName)

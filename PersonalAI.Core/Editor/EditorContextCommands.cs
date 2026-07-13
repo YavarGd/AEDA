@@ -5,5 +5,6 @@ public static class EditorContextCommands
     public const string AskAboutSelection = "askAboutSelection";
     public const string ExplainSelection = "explainSelection";
     public const string FindProblemsInSelection = "findProblemsInSelection";
+    public const string UpdateSelectionContext = "updateSelectionContext";
     public const string OpenPersonalAi = "openPersonalAi";
 }

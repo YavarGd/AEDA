@@ -21,6 +21,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
     private Task? _generationTask;
     private PersonalAI.Core.Context.AttachedContextItem? _context;
     private int _isOpening;
+    private string? _lastPrompt;
 
     public AssistPillViewModel(
         IAssistPillHost host,
@@ -68,6 +69,9 @@ public sealed partial class AssistPillViewModel : ObservableObject
     public bool CanCopy => HasResponse;
 
     public bool CanShowResponseActions => HasResponse && !IsStreaming;
+
+    public bool CanRetry => State == AssistPillState.Failed &&
+        !string.IsNullOrWhiteSpace(_lastPrompt);
 
     public void ApplySettings(AssistPillSettings settings)
     {
@@ -149,6 +153,38 @@ public sealed partial class AssistPillViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCancel))]
     public void Cancel() => _generationCancellation?.Cancel();
 
+    [RelayCommand(CanExecute = nameof(CanRetry))]
+    public async Task RetryAsync()
+    {
+        if (!CanRetry)
+        {
+            return;
+        }
+
+        if (_context is not null)
+        {
+            try
+            {
+                _context = await _host.CaptureContextAsync(CancellationToken.None);
+            }
+            catch
+            {
+                _context = null;
+            }
+
+            if (!AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
+            {
+                _context = null;
+                Prompt = string.Empty;
+                State = AssistPillState.SpotlightPrompt;
+                StatusText = "Selection is no longer available";
+                return;
+            }
+        }
+
+        await StartGenerationAsync(_lastPrompt!);
+    }
+
     [RelayCommand(CanExecute = nameof(CanCopy))]
     public async Task CopyResponseAsync()
     {
@@ -223,8 +259,10 @@ public sealed partial class AssistPillViewModel : ObservableObject
         OnPropertyChanged(nameof(CanSubmit));
         OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(CanShowResponseActions));
+        OnPropertyChanged(nameof(CanRetry));
         SubmitCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
+        RetryCommand.NotifyCanExecuteChanged();
     }
 
     private Task StartGenerationAsync(string prompt)
@@ -236,7 +274,8 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
         _rawResponse.Clear();
         SetResponse(string.Empty);
-        StatusText = "Generating";
+        _lastPrompt = prompt;
+        StatusText = _context is null ? "Generating" : "Using selected text";
         State = AssistPillState.StreamingResponse;
         var cancellation = new CancellationTokenSource();
         _generationCancellation = cancellation;

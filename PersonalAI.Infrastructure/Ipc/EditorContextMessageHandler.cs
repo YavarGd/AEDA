@@ -21,6 +21,13 @@ public sealed class EditorContextMessageHandler(
 
         attachContext(envelope);
 
+        if (envelope.Command.Equals(
+                EditorContextCommands.UpdateSelectionContext,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return EditorContextHandlerResult.Success("context updated");
+        }
+
         if (handleEditorCommand is null)
         {
             return EditorContextHandlerResult.Success("ok");

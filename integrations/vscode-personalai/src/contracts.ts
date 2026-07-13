@@ -10,6 +10,7 @@ export type CommandType =
   | "askAboutSelection"
   | "explainSelection"
   | "findProblemsInSelection"
+  | "updateSelectionContext"
   | "openPersonalAi";
 
 export interface TextRange {

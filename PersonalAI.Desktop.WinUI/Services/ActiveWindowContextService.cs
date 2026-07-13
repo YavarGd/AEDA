@@ -8,7 +8,9 @@ public sealed class ActiveWindowContextService(
     IActiveContextProvider activeContextProvider,
     ForegroundWindowTracker foregroundWindowTracker,
     Func<nint> getOwnWindowHandle,
-    Func<PrivacySettings>? getPrivacySettings = null)
+    Func<PrivacySettings>? getPrivacySettings = null,
+    ISelectedTextContextProvider? selectedTextProvider = null,
+    Func<int>? getSelectionCharacterLimit = null)
 {
     public async Task<AttachedContextItem?> CaptureAsync(
         CancellationToken cancellationToken = default)
@@ -28,10 +30,26 @@ public sealed class ActiveWindowContextService(
             return null;
         }
 
+        var settings = ApplicationSettingsValidator.NormalizePrivacy(
+            getPrivacySettings?.Invoke() ?? PrivacySettings.Default);
+        string? selectedText = null;
+        if (selectedTextProvider is not null)
+        {
+            var selection = await selectedTextProvider.TryGetSelectedTextAsync(
+                externalWindow,
+                settings,
+                getSelectionCharacterLimit?.Invoke() ?? 12_000,
+                cancellationToken);
+            if (selection.IsAvailable && selection.IsTrustedForImmediateSubmission)
+            {
+                selectedText = selection.Text;
+            }
+        }
+
         var context = await activeContextProvider.CaptureAsync(
             new ContextCaptureRequest(
                 externalWindow.WindowHandle,
-                SelectedText: null,
+                SelectedText: selectedText,
                 CaptureScreenshot: false),
             cancellationToken);
 
@@ -40,8 +58,6 @@ public sealed class ActiveWindowContextService(
             return null;
         }
 
-        var settings = ApplicationSettingsValidator.NormalizePrivacy(
-            getPrivacySettings?.Invoke() ?? PrivacySettings.Default);
         var sanitized = context with
         {
             ExecutablePath = settings.IncludeExecutablePathInProviderMetadata

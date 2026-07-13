@@ -85,8 +85,15 @@ public sealed class ProviderFactory(
             chatProviders[ProviderId.Ollama] = new OllamaChatProvider(_httpClientFactory());
         }
 
+        var healthProbes = chatProviders
+            .Where(pair => pair.Value is IChatModelCatalog)
+            .ToDictionary(
+                pair => pair.Key,
+                pair => (IProviderHealthProbe)new ModelCatalogHealthProbe(
+                    (IChatModelCatalog)pair.Value));
+
         return new RuntimeProviderCatalog(
-            new StaticProviderRegistry(runtimeProfiles),
+            new StaticProviderRegistry(runtimeProfiles, healthProbes),
             chatProviders,
             embeddingProviders);
     }
@@ -239,5 +246,30 @@ public sealed class ProviderFactory(
         return value.EndsWith("/", StringComparison.Ordinal)
             ? uri
             : new Uri(value + "/");
+    }
+
+    private sealed class ModelCatalogHealthProbe(IChatModelCatalog catalog)
+        : IProviderHealthProbe
+    {
+        public async Task<ProviderHealth> CheckAsync(
+            ProviderProfile provider,
+            CancellationToken cancellationToken = default)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(3));
+
+            try
+            {
+                _ = await catalog.ListModelsAsync(timeout.Token);
+                return ProviderHealth.Available;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return new ProviderHealth(
+                    ProviderStatus.Unavailable,
+                    "provider_health_check_timeout");
+            }
+        }
     }
 }

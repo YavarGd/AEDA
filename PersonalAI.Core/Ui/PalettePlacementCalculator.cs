@@ -59,6 +59,31 @@ public sealed record AssistResponseLayout(
 
 public static class AssistResponseSizingPolicy
 {
+    public static AssistResponseLayout CalculateMeasured(
+        double desiredHeight,
+        RectBounds workingArea,
+        double rasterizationScale)
+    {
+        var scale = double.IsFinite(rasterizationScale)
+            ? Math.Clamp(rasterizationScale, 0.5, 4)
+            : 1;
+        var width = Math.Max(1, Math.Min(
+            (int)Math.Round(560 * scale),
+            (int)Math.Round(workingArea.Width - (40 * scale))));
+        var minimumHeight = (int)Math.Round(180 * scale);
+        var maximumHeight = Math.Max(1, Math.Min(
+            (int)Math.Round(480 * scale),
+            (int)Math.Round(workingArea.Height - (40 * scale))));
+        var requestedHeight = double.IsFinite(desiredHeight)
+            ? (int)Math.Ceiling(Math.Max(0, desiredHeight) * scale)
+            : minimumHeight;
+
+        return new AssistResponseLayout(
+            width,
+            Math.Clamp(requestedHeight, Math.Min(minimumHeight, maximumHeight), maximumHeight),
+            requestedHeight > maximumHeight);
+    }
+
     public static AssistResponseLayout Calculate(
         int visibleCharacters,
         RectBounds workingArea,

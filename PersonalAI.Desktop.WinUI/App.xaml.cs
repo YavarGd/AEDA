@@ -90,6 +90,15 @@ public partial class App : Application
                     ? await modelCatalog.ListModelsAsync(cancellationToken)
                     : [];
         }
+        async Task<PersonalAI.Core.Providers.ProviderHealth> CheckCurrentProviderAsync(
+            CancellationToken cancellationToken)
+        {
+            var catalog = providerFactory.CreateCatalog(_settingsService.Current);
+            return await catalog.Registry.GetHealthAsync(
+                new PersonalAI.Core.Providers.ProviderId(
+                    _settingsService.Current.ProviderRouting.SelectedChatProvider),
+                cancellationToken);
+        }
         _startupRegistrationService = new WindowsStartupRegistrationService();
         var chatSession = new ChatSessionService(providerFactory, _settingsService);
         var activeContextProvider =
@@ -102,7 +111,9 @@ public partial class App : Application
             activeContextProvider,
             _foregroundWindowTracker,
             GetWindowHandle,
-            () => _settingsService.Current.Privacy);
+            () => _settingsService.Current.Privacy,
+            new WindowsUiaSelectedTextProvider(),
+            () => _settingsService.Current.Context.MaxIndividualClipboardCharacters);
         var screenshotAttachmentService = new ScreenshotAttachmentService(
             new ScreenshotContextService(
                 activeContextProvider,
@@ -381,10 +392,15 @@ public partial class App : Application
                 conversationSession,
                 _settingsService,
                 new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
+                CheckCurrentProviderAsync,
                 ListCurrentModelsAsync,
                 activeWindowContextService,
                 () => viewModel.AttachedContexts.LastOrDefault(context =>
-                    AssistContextPolicy.IsMeaningful(context, DateTimeOffset.UtcNow)),
+                    _foregroundWindowTracker.IsLastObservedExternalWindowSafe &&
+                    AssistContextPolicy.IsMeaningful(context, DateTimeOffset.UtcNow) &&
+                    AssistContextPolicy.MatchesForeground(
+                        context,
+                        _foregroundWindowTracker.GetLastValidExternalWindow())),
                 clipboardWriter,
                 async conversationId =>
                 {
@@ -561,7 +577,12 @@ public partial class App : Application
         var handler = new EditorContextMessageHandler(
             envelope => dispatcherQueue.TryEnqueue(() =>
             {
-                ShowPersonalAi(repositionIfHidden: true);
+                if (!envelope.Command.Equals(
+                        PersonalAI.Core.Editor.EditorContextCommands.UpdateSelectionContext,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowPersonalAi(repositionIfHidden: true);
+                }
                 viewModel.ReceiveEditorContext(envelope);
             }),
             () => dispatcherQueue.TryEnqueue(
