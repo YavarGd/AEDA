@@ -5,7 +5,6 @@ public enum AssistPillState
     Hidden,
     IdlePill,
     DetectingContext,
-    SelectionFallback,
     SpotlightPrompt,
     StreamingResponse,
     Completed,

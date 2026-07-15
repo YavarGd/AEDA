@@ -60,36 +60,6 @@
             </Grid>
         </Border>
 
-        <Border x:Name="SelectionFallbackSurface"
-                Margin="1"
-                Padding="16"
-                Background="{ThemeResource AedaAssistSpotlightBrush}"
-                BorderBrush="{ThemeResource AedaAssistBorderBrush}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource AedaAssistCornerRadius}"
-                Shadow="{StaticResource AedaAssistShadow}"
-                Translation="0,0,8"
-                Visibility="{Binding IsSelectionFallback, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <StackPanel Spacing="12">
-                <TextBlock FontSize="14"
-                           FontWeight="SemiBold"
-                           Foreground="{ThemeResource AedaAssistForegroundBrush}"
-                           Text="{Binding StatusText}"
-                           TextWrapping="Wrap" />
-                <StackPanel HorizontalAlignment="Right"
-                            Orientation="Horizontal"
-                            Spacing="8">
-                    <Button x:Name="SelectScreenTextButton"
-                            Click="SelectScreenTextButton_Click"
-                            AutomationProperties.Name="Select text from a screen region"
-                            Content="{Binding ScreenSelectionActionText}" />
-                    <Button Command="{Binding TypeManuallyCommand}"
-                            AutomationProperties.Name="Type an AEDA Assist prompt manually"
-                            Content="Type manually" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
         <Border x:Name="SpotlightSurface"
                 Margin="1"
                 Padding="8"
@@ -101,19 +71,35 @@
                 Translation="0,0,8"
                 Visibility="{Binding IsFallbackInput, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="44" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="SelectScreenTextButton"
+                        Width="42"
+                        Height="42"
+                        MinWidth="0"
+                        Margin="1"
+                        Click="SelectScreenTextButton_Click"
+                        AutomationProperties.Name="Select text on screen"
+                        ToolTipService.ToolTip="Select text on screen">
+                    <FontIcon Glyph="&#xE7C4;" />
+                </Button>
                 <TextBox x:Name="PromptTextBox"
+                         Grid.Column="1"
                          MinHeight="44"
-                         Padding="12,9,52,9"
+                         Padding="12,9"
                          AcceptsReturn="False"
                          AutomationProperties.Name="AEDA Assist prompt"
                          KeyDown="PromptTextBox_KeyDown"
-                         PlaceholderText="Ask AEDA…"
+                         PlaceholderText="How can I help you?"
                          Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <Button Width="42"
+                <Button Grid.Column="2"
+                        Width="42"
                         Height="42"
                         MinWidth="0"
                         Margin="0,1,1,1"
-                        HorizontalAlignment="Right"
                         Command="{Binding SubmitCommand}"
                         AutomationProperties.Name="Submit AEDA Assist request"
                         ToolTipService.ToolTip="Submit">
@@ -204,8 +190,8 @@
                                   Margin="0,8,0,0"
                                   HorizontalScrollBarVisibility="Disabled"
                                   HorizontalScrollMode="Disabled"
-                                  VerticalScrollBarVisibility="Auto"
-                                  VerticalScrollMode="Auto"
+                                  VerticalScrollBarVisibility="Hidden"
+                                  VerticalScrollMode="Disabled"
                                   ViewChanged="ResponseScrollViewer_ViewChanged">
                         <TextBlock x:Name="ResponsePresenter"
                                    AutomationProperties.Name="AEDA Assist response"

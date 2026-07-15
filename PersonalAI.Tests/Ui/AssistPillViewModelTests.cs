@@ -65,7 +65,7 @@ public sealed class AssistPillViewModelTests
 
         await viewModel.OpenPromptAsync();
 
-        Assert.True(viewModel.IsSelectionFallback);
+        Assert.True(viewModel.IsFallbackInput);
         Assert.Equal(0, host.GenerateCalls);
     }
 
@@ -80,7 +80,7 @@ public sealed class AssistPillViewModelTests
 
         await viewModel.OpenPromptAsync();
 
-        Assert.True(viewModel.IsSelectionFallback);
+        Assert.True(viewModel.IsFallbackInput);
         Assert.Equal(0, host.GenerateCalls);
     }
 
@@ -90,7 +90,6 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { Chunks = ["Visible answer"] };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Help me reason about this";
 
         var generation = viewModel.SubmitAsync();
@@ -99,6 +98,46 @@ public sealed class AssistPillViewModelTests
 
         Assert.Equal("Help me reason about this", host.GeneratedPrompt);
         Assert.Equal(AssistPillState.Completed, viewModel.State);
+    }
+
+    [Fact]
+    public async Task NewInvocationClearsCompletedPresentationBeforeCaptureCompletes()
+    {
+        var host = new FakeHost { Context = Context(10), Chunks = ["Old answer"] };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        await viewModel.WaitForGenerationAsync();
+        viewModel.Collapse();
+        host.Context = null;
+        host.WaitForCapture = true;
+
+        var reopening = viewModel.OpenPromptAsync();
+
+        Assert.Equal(AssistPillState.DetectingContext, viewModel.State);
+        Assert.Empty(viewModel.Response);
+        Assert.False(viewModel.CanShowResponseActions);
+        host.ReleaseCapture();
+        Assert.True(await reopening);
+        Assert.True(viewModel.IsFallbackInput);
+    }
+
+    [Fact]
+    public async Task LatePreviousStreamUpdateCannotChangeNewSpotlightInvocation()
+    {
+        var host = new FakeHost { Context = Context(10), Chunks = ["Old answer"] };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        await viewModel.WaitForGenerationAsync();
+        var previousReport = host.LastReportChunk!;
+        viewModel.Collapse();
+        host.Context = null;
+        await viewModel.OpenPromptAsync();
+
+        previousReport(" stale");
+
+        Assert.True(viewModel.IsFallbackInput);
+        Assert.Empty(viewModel.Response);
+        Assert.Equal("Ask AEDA", viewModel.StatusText);
     }
 
     [Fact]
@@ -189,7 +228,6 @@ public sealed class AssistPillViewModelTests
     {
         var viewModel = CreateViewModel(new FakeHost());
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -204,7 +242,6 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { Chunks = ["<think>private reasoning</think>"] };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -225,7 +262,6 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -248,7 +284,6 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -266,7 +301,6 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
         await viewModel.SubmitAsync();
 
@@ -299,8 +333,8 @@ public sealed class AssistPillViewModelTests
         await viewModel.RetryAsync();
 
         Assert.Equal(1, host.GenerateCalls);
-        Assert.True(viewModel.IsSelectionFallback);
-        Assert.Equal("Selection is no longer available", viewModel.StatusText);
+        Assert.True(viewModel.IsFallbackInput);
+        Assert.Equal("Ask AEDA", viewModel.StatusText);
     }
 
     [Fact]
@@ -309,7 +343,6 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { WaitForCancellation = true };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Long answer";
         var generation = viewModel.SubmitAsync();
         await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -325,7 +358,6 @@ public sealed class AssistPillViewModelTests
         host.Chunks = ["Next answer"];
         viewModel.Collapse();
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Try again";
         await viewModel.SubmitAsync();
 
@@ -340,9 +372,6 @@ public sealed class AssistPillViewModelTests
 
         await viewModel.OpenPromptAsync();
 
-        Assert.True(viewModel.IsSelectionFallback);
-        Assert.False(viewModel.IsFallbackInput);
-        viewModel.TypeManually();
         Assert.True(viewModel.IsFallbackInput);
     }
 
@@ -388,9 +417,8 @@ public sealed class AssistPillViewModelTests
 
         await viewModel.SelectScreenTextAsync();
 
-        Assert.True(viewModel.IsSelectionFallback);
-        Assert.Equal("No text was found in that area", viewModel.StatusText);
-        Assert.Equal("Try again", viewModel.ScreenSelectionActionText);
+        Assert.True(viewModel.IsFallbackInput);
+        Assert.Equal("No text found — try another area", viewModel.StatusText);
         Assert.Equal(0, host.GenerateCalls);
     }
 
@@ -422,8 +450,8 @@ public sealed class AssistPillViewModelTests
         viewModel.CancelContextCapture();
         await capture;
 
-        Assert.True(viewModel.IsSelectionFallback);
-        Assert.Equal("Couldn’t read the current selection", viewModel.StatusText);
+        Assert.True(viewModel.IsFallbackInput);
+        Assert.Equal("Ask AEDA", viewModel.StatusText);
         Assert.Equal(0, host.GenerateCalls);
     }
 
@@ -433,7 +461,6 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { WaitForCancellation = true };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "One request";
 
         var first = viewModel.SubmitAsync();
@@ -454,7 +481,6 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
-        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
         await viewModel.SubmitAsync();
 
@@ -545,7 +571,7 @@ public sealed class AssistPillViewModelTests
         public Exception? Failure { get; init; }
         public AssistGenerationResult Result { get; set; } =
             new(ChatStatus.Completed);
-        public bool WaitForCapture { get; init; }
+        public bool WaitForCapture { get; set; }
         public bool WaitForScreenCapture { get; init; }
         public bool WaitForCancellation { get; set; }
         public bool GenerationWasCancelled { get; private set; }
@@ -555,6 +581,7 @@ public sealed class AssistPillViewModelTests
         public int OpenCalls { get; private set; }
         public string? GeneratedPrompt { get; private set; }
         public AttachedContextItem? GeneratedContext { get; private set; }
+        public Action<string>? LastReportChunk { get; private set; }
         public string CopiedText { get; private set; } = string.Empty;
         public TaskCompletionSource CaptureStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -600,6 +627,7 @@ public sealed class AssistPillViewModelTests
             GenerateCalls++;
             GeneratedPrompt = prompt;
             GeneratedContext = context;
+            LastReportChunk = reportChunk;
             GenerationStarted.TrySetResult();
             foreach (var chunk in Chunks)
             {

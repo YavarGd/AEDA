@@ -4,6 +4,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -24,8 +25,7 @@ public sealed partial class AssistPillWindow : Window
     public const int ResponseResizeIntervalMilliseconds = 150;
     private const int SpotlightWidth = 520;
     private const int SpotlightHeight = 64;
-    private const int SelectionFallbackWidth = 460;
-    private const int SelectionFallbackHeight = 130;
+    private const int ResponseChromeHeight = 132;
 
     private readonly AssistPillViewModel _viewModel;
     private readonly WinUiWindowPlacementService _placementService;
@@ -39,6 +39,7 @@ public sealed partial class AssistPillWindow : Window
     private nint _focusReturnWindow;
     private int _isTransitioning;
     private bool _followLatest = true;
+    private long _pendingResizeInvocationId;
 
     public AssistPillWindow(
         AssistPillViewModel viewModel,
@@ -56,6 +57,11 @@ public sealed partial class AssistPillWindow : Window
         _responseResizeTimer.Tick += (_, _) =>
         {
             _responseResizeTimer.Stop();
+            if (_pendingResizeInvocationId != _viewModel.InvocationId)
+            {
+                return;
+            }
+
             ApplyResponseSize();
             FollowLatestIfNeeded();
         };
@@ -204,10 +210,19 @@ public sealed partial class AssistPillWindow : Window
                     AssistPillState.SpotlightPrompt ||
                     _viewModel.IsResponseSurface);
         }
+        else if (e.PropertyName == nameof(AssistPillViewModel.InvocationId))
+        {
+            _responseResizeTimer.Stop();
+            _pendingResizeInvocationId = _viewModel.InvocationId;
+            _followLatest = true;
+            SetResponseScrolling(false);
+            _ = ResponseScrollViewer.ChangeView(null, 0, null, disableAnimation: true);
+        }
         else if (e.PropertyName == nameof(AssistPillViewModel.Response) &&
             _viewModel.IsResponseSurface &&
             !_responseResizeTimer.IsRunning)
         {
+            _pendingResizeInvocationId = _viewModel.InvocationId;
             _responseResizeTimer.Start();
         }
     }
@@ -229,11 +244,7 @@ public sealed partial class AssistPillWindow : Window
                 ? new SizeInt32(
                     AssistResponseSizingPolicy.ScalePixels(SpotlightWidth, scale),
                     AssistResponseSizingPolicy.ScalePixels(SpotlightHeight, scale))
-                : _viewModel.IsSelectionFallback
-                    ? new SizeInt32(
-                        AssistResponseSizingPolicy.ScalePixels(SelectionFallbackWidth, scale),
-                        AssistResponseSizingPolicy.ScalePixels(SelectionFallbackHeight, scale))
-                    : GetResponseSize();
+                : GetResponseSize();
         AppWindow.Resize(size);
         ApplyWindowShape();
         SetNoActivate(_viewModel.IsIdle);
@@ -260,13 +271,14 @@ public sealed partial class AssistPillWindow : Window
         var area = _placementService.GetActivationWorkingArea(externalWindow);
         var scale = GetRasterizationScale();
         var availableWidth = Math.Max(1, (area.Width / scale) - 40);
-        ResponseCard.Measure(new Windows.Foundation.Size(
-            Math.Min(560, availableWidth),
+        ResponsePresenter.Measure(new Windows.Foundation.Size(
+            Math.Max(1, Math.Min(560, availableWidth) - 56),
             double.PositiveInfinity));
         var layout = AssistResponseSizingPolicy.CalculateMeasured(
-            ResponseCard.DesiredSize.Height,
+            ResponsePresenter.DesiredSize.Height + ResponseChromeHeight,
             area,
             scale);
+        SetResponseScrolling(layout.RequiresScrolling);
         return new SizeInt32(layout.Width, layout.Height);
     }
 
@@ -302,12 +314,28 @@ public sealed partial class AssistPillWindow : Window
             return;
         }
 
+        var invocationId = _viewModel.InvocationId;
         _ = Root.DispatcherQueue.TryEnqueue(() =>
-            ResponseScrollViewer.ChangeView(
-                null,
-                ResponseScrollViewer.ScrollableHeight,
-                null,
-                disableAnimation: true));
+        {
+            if (invocationId == _viewModel.InvocationId && _followLatest)
+            {
+                ResponseScrollViewer.ChangeView(
+                    null,
+                    ResponseScrollViewer.ScrollableHeight,
+                    null,
+                    disableAnimation: true);
+            }
+        });
+    }
+
+    private void SetResponseScrolling(bool enabled)
+    {
+        ResponseScrollViewer.VerticalScrollMode = enabled
+            ? ScrollMode.Auto
+            : ScrollMode.Disabled;
+        ResponseScrollViewer.VerticalScrollBarVisibility = enabled
+            ? ScrollBarVisibility.Auto
+            : ScrollBarVisibility.Hidden;
     }
 
     private async void OpenPromptButton_Click(object sender, RoutedEventArgs e)
@@ -324,7 +352,7 @@ public sealed partial class AssistPillWindow : Window
 
     private async void SelectScreenTextButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_viewModel.IsSelectionFallback)
+        if (!_viewModel.IsFallbackInput)
         {
             return;
         }
