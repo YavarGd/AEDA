@@ -65,7 +65,7 @@ public sealed class AssistPillViewModelTests
 
         await viewModel.OpenPromptAsync();
 
-        Assert.True(viewModel.IsFallbackInput);
+        Assert.True(viewModel.IsSelectionFallback);
         Assert.Equal(0, host.GenerateCalls);
     }
 
@@ -80,7 +80,7 @@ public sealed class AssistPillViewModelTests
 
         await viewModel.OpenPromptAsync();
 
-        Assert.True(viewModel.IsFallbackInput);
+        Assert.True(viewModel.IsSelectionFallback);
         Assert.Equal(0, host.GenerateCalls);
     }
 
@@ -90,6 +90,7 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { Chunks = ["Visible answer"] };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Help me reason about this";
 
         var generation = viewModel.SubmitAsync();
@@ -124,6 +125,49 @@ public sealed class AssistPillViewModelTests
         Assert.Equal(1, host.GenerateCalls);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(20)]
+    [InlineData(50)]
+    [InlineData(150)]
+    public async Task RapidActivationDuringCapture_IsIgnored(int delayMilliseconds)
+    {
+        var host = new FakeHost
+        {
+            Context = Context(10),
+            WaitForCapture = true,
+            Chunks = ["Done"]
+        };
+        var viewModel = CreateViewModel(host);
+
+        var first = viewModel.OpenPromptAsync();
+        await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        if (delayMilliseconds > 0)
+        {
+            await Task.Delay(delayMilliseconds);
+        }
+
+        Assert.False(await viewModel.OpenPromptAsync());
+        host.ReleaseCapture();
+        Assert.True(await first);
+        await viewModel.WaitForGenerationAsync();
+        Assert.Equal(1, host.CaptureCalls);
+        Assert.Equal(1, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task ActivationAfterCaptureCompletion_StartsNormally()
+    {
+        var host = new FakeHost { Context = null };
+        var viewModel = CreateViewModel(host);
+
+        Assert.True(await viewModel.OpenPromptAsync());
+        viewModel.ShowIdle();
+        Assert.True(await viewModel.OpenPromptAsync());
+
+        Assert.Equal(2, host.CaptureCalls);
+    }
+
     [Fact]
     public async Task CancellingContextDetectionRestoresIdleWithoutFallback()
     {
@@ -145,6 +189,7 @@ public sealed class AssistPillViewModelTests
     {
         var viewModel = CreateViewModel(new FakeHost());
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -159,6 +204,7 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { Chunks = ["<think>private reasoning</think>"] };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -179,6 +225,7 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -201,6 +248,7 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
 
         await viewModel.SubmitAsync();
@@ -218,6 +266,7 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
         await viewModel.SubmitAsync();
 
@@ -250,7 +299,7 @@ public sealed class AssistPillViewModelTests
         await viewModel.RetryAsync();
 
         Assert.Equal(1, host.GenerateCalls);
-        Assert.True(viewModel.IsFallbackInput);
+        Assert.True(viewModel.IsSelectionFallback);
         Assert.Equal("Selection is no longer available", viewModel.StatusText);
     }
 
@@ -260,6 +309,7 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { WaitForCancellation = true };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Long answer";
         var generation = viewModel.SubmitAsync();
         await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -275,6 +325,7 @@ public sealed class AssistPillViewModelTests
         host.Chunks = ["Next answer"];
         viewModel.Collapse();
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Try again";
         await viewModel.SubmitAsync();
 
@@ -283,11 +334,106 @@ public sealed class AssistPillViewModelTests
     }
 
     [Fact]
+    public async Task AutomaticFailureOffersScreenSelectionOrManualInput()
+    {
+        var viewModel = CreateViewModel(new FakeHost());
+
+        await viewModel.OpenPromptAsync();
+
+        Assert.True(viewModel.IsSelectionFallback);
+        Assert.False(viewModel.IsFallbackInput);
+        viewModel.TypeManually();
+        Assert.True(viewModel.IsFallbackInput);
+    }
+
+    [Fact]
+    public async Task ScreenTextSuccessSubmitsOnceThroughExistingFlow()
+    {
+        var screenContext = Context(24) with
+        {
+            Metadata = new Dictionary<string, string>
+            {
+                ["selectedTextCharacters"] = "24",
+                ["captureSource"] = "screenOcr"
+            }
+        };
+        var host = new FakeHost
+        {
+            ScreenContext = screenContext,
+            WaitForCancellation = true
+        };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+
+        await viewModel.SelectScreenTextAsync();
+        await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, host.ScreenCaptureCalls);
+        Assert.Equal(1, host.GenerateCalls);
+        Assert.Same(screenContext, host.GeneratedContext);
+        Assert.Equal("Using text selected from screen", viewModel.StatusText);
+        viewModel.Cancel();
+        await viewModel.WaitForGenerationAsync();
+    }
+
+    [Fact]
+    public async Task EmptyScreenTextOffersRetryOrManualWithoutGeneration()
+    {
+        var host = new FakeHost
+        {
+            LastCaptureFailureMessage = "No text was found in that area"
+        };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+
+        await viewModel.SelectScreenTextAsync();
+
+        Assert.True(viewModel.IsSelectionFallback);
+        Assert.Equal("No text was found in that area", viewModel.StatusText);
+        Assert.Equal("Try again", viewModel.ScreenSelectionActionText);
+        Assert.Equal(0, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task RepeatedScreenSelectionActionCreatesOneCapture()
+    {
+        var host = new FakeHost { WaitForScreenCapture = true };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+
+        var first = viewModel.SelectScreenTextAsync();
+        await host.ScreenCaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await viewModel.SelectScreenTextAsync();
+        host.ReleaseScreenCapture();
+        await first;
+
+        Assert.Equal(1, host.ScreenCaptureCalls);
+    }
+
+    [Fact]
+    public async Task ScreenSelectionCanBeCancelledWithoutStartingGeneration()
+    {
+        var host = new FakeHost { WaitForScreenCapture = true };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+
+        var capture = viewModel.SelectScreenTextAsync();
+        await host.ScreenCaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        viewModel.CancelContextCapture();
+        await capture;
+
+        Assert.True(viewModel.IsSelectionFallback);
+        Assert.Equal("Couldn’t read the current selection", viewModel.StatusText);
+        Assert.Equal(0, host.GenerateCalls);
+    }
+
+    [Fact]
     public async Task RapidFallbackSubmissions_StartOneGeneration()
     {
         var host = new FakeHost { WaitForCancellation = true };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "One request";
 
         var first = viewModel.SubmitAsync();
@@ -308,6 +454,7 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        viewModel.TypeManually();
         viewModel.Prompt = "Answer";
         await viewModel.SubmitAsync();
 
@@ -392,20 +539,28 @@ public sealed class AssistPillViewModelTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public AttachedContextItem? Context { get; set; }
+        public AttachedContextItem? ScreenContext { get; set; }
+        public string? LastCaptureFailureMessage { get; set; }
         public IReadOnlyList<string> Chunks { get; set; } = [];
         public Exception? Failure { get; init; }
         public AssistGenerationResult Result { get; set; } =
             new(ChatStatus.Completed);
         public bool WaitForCapture { get; init; }
+        public bool WaitForScreenCapture { get; init; }
         public bool WaitForCancellation { get; set; }
         public bool GenerationWasCancelled { get; private set; }
         public int CaptureCalls { get; private set; }
+        public int ScreenCaptureCalls { get; private set; }
         public int GenerateCalls { get; private set; }
         public int OpenCalls { get; private set; }
         public string? GeneratedPrompt { get; private set; }
         public AttachedContextItem? GeneratedContext { get; private set; }
         public string CopiedText { get; private set; } = string.Empty;
         public TaskCompletionSource CaptureStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ScreenCaptureStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _screenCaptureReleased =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource GenerationStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -421,6 +576,19 @@ public sealed class AssistPillViewModelTests
             }
 
             return Context;
+        }
+
+        public async Task<AttachedContextItem?> CaptureScreenTextAsync(
+            CancellationToken cancellationToken)
+        {
+            ScreenCaptureCalls++;
+            ScreenCaptureStarted.TrySetResult();
+            if (WaitForScreenCapture)
+            {
+                await _screenCaptureReleased.Task.WaitAsync(cancellationToken);
+            }
+
+            return ScreenContext;
         }
 
         public async Task<AssistGenerationResult> GenerateAsync(
@@ -460,6 +628,8 @@ public sealed class AssistPillViewModelTests
         }
 
         public void ReleaseCapture() => _captureReleased.TrySetResult();
+
+        public void ReleaseScreenCapture() => _screenCaptureReleased.TrySetResult();
 
         public Task CopyTextAsync(string text, CancellationToken cancellationToken)
         {

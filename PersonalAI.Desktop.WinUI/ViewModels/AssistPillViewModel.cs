@@ -18,6 +18,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
     private AssistPillSettings _settings;
     private string _safeFullResponse = string.Empty;
     private CancellationTokenSource? _generationCancellation;
+    private CancellationTokenSource? _screenCaptureCancellation;
     private Task? _generationTask;
     private PersonalAI.Core.Context.AttachedContextItem? _context;
     private int _isOpening;
@@ -53,6 +54,14 @@ public sealed partial class AssistPillViewModel : ObservableObject
     public bool IsExpanded => State is not AssistPillState.Hidden and not AssistPillState.IdlePill;
 
     public bool IsFallbackInput => State == AssistPillState.SpotlightPrompt;
+
+    public bool IsSelectionFallback => State == AssistPillState.SelectionFallback;
+
+    public string ScreenSelectionActionText =>
+        StatusText.StartsWith("No text", StringComparison.OrdinalIgnoreCase) ||
+        StatusText.StartsWith("Screen text capture failed", StringComparison.OrdinalIgnoreCase)
+            ? "Try again"
+            : "Select text on screen";
 
     public bool IsDetectingContext => State == AssistPillState.DetectingContext;
 
@@ -111,7 +120,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
         try
         {
             State = AssistPillState.DetectingContext;
-            StatusText = "Checking available context";
+            StatusText = "Reading selected text";
             try
             {
                 _context = await _host.CaptureContextAsync(cancellationToken);
@@ -135,8 +144,9 @@ public sealed partial class AssistPillViewModel : ObservableObject
             {
                 _context = null;
                 Prompt = string.Empty;
-                State = AssistPillState.SpotlightPrompt;
-                StatusText = "Ask AEDA";
+                State = AssistPillState.SelectionFallback;
+                StatusText = _host.LastCaptureFailureMessage ??
+                    "Couldn’t read the current selection";
             }
 
             return true;
@@ -145,6 +155,75 @@ public sealed partial class AssistPillViewModel : ObservableObject
         {
             Interlocked.Exchange(ref _isOpening, 0);
         }
+    }
+
+    [RelayCommand]
+    public async Task SelectScreenTextAsync()
+    {
+        if (State != AssistPillState.SelectionFallback ||
+            Interlocked.CompareExchange(ref _isOpening, 1, 0) != 0)
+        {
+            return;
+        }
+
+        var fallbackStatus = StatusText;
+        var cancellation = new CancellationTokenSource();
+        _screenCaptureCancellation = cancellation;
+        try
+        {
+            State = AssistPillState.DetectingContext;
+            StatusText = "Select text on screen";
+            _context = await _host.CaptureScreenTextAsync(cancellation.Token);
+            if (AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
+            {
+                Prompt = AutomaticContextPrompt;
+                _ = StartGenerationAsync(AutomaticContextPrompt);
+            }
+            else
+            {
+                _context = null;
+                State = AssistPillState.SelectionFallback;
+                StatusText = _host.LastCaptureFailureMessage ??
+                    fallbackStatus;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _context = null;
+            State = AssistPillState.SelectionFallback;
+            StatusText = fallbackStatus;
+        }
+        catch
+        {
+            _context = null;
+            State = AssistPillState.SelectionFallback;
+            StatusText = "Screen text capture failed";
+        }
+        finally
+        {
+            if (ReferenceEquals(_screenCaptureCancellation, cancellation))
+            {
+                _screenCaptureCancellation = null;
+            }
+
+            cancellation.Dispose();
+            Interlocked.Exchange(ref _isOpening, 0);
+        }
+    }
+
+    public void CancelContextCapture() => _screenCaptureCancellation?.Cancel();
+
+    [RelayCommand]
+    public void TypeManually()
+    {
+        if (State != AssistPillState.SelectionFallback)
+        {
+            return;
+        }
+
+        Prompt = string.Empty;
+        State = AssistPillState.SpotlightPrompt;
+        StatusText = "Ask AEDA";
     }
 
     [RelayCommand(CanExecute = nameof(CanSubmit))]
@@ -185,7 +264,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
             {
                 _context = null;
                 Prompt = string.Empty;
-                State = AssistPillState.SpotlightPrompt;
+                State = AssistPillState.SelectionFallback;
                 StatusText = "Selection is no longer available";
                 return;
             }
@@ -222,6 +301,12 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
     public void Collapse()
     {
+        if (IsDetectingContext)
+        {
+            CancelContextCapture();
+            return;
+        }
+
         if (IsStreaming)
         {
             Cancel();
@@ -233,6 +318,12 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
     public void Hide()
     {
+        if (IsDetectingContext)
+        {
+            CancelContextCapture();
+            return;
+        }
+
         if (IsStreaming)
         {
             Cancel();
@@ -258,11 +349,15 @@ public sealed partial class AssistPillViewModel : ObservableObject
         CopyResponseCommand.NotifyCanExecuteChanged();
     }
 
+    partial void OnStatusTextChanged(string value) =>
+        OnPropertyChanged(nameof(ScreenSelectionActionText));
+
     partial void OnStateChanged(AssistPillState value)
     {
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(IsFallbackInput));
+        OnPropertyChanged(nameof(IsSelectionFallback));
         OnPropertyChanged(nameof(IsDetectingContext));
         OnPropertyChanged(nameof(IsResponseSurface));
         OnPropertyChanged(nameof(IsStreaming));
@@ -285,7 +380,9 @@ public sealed partial class AssistPillViewModel : ObservableObject
         _rawResponse.Clear();
         SetResponse(string.Empty);
         _lastPrompt = prompt;
-        StatusText = _context is null ? "Generating" : "Using selected text";
+        StatusText = _context?.Metadata.GetValueOrDefault("captureSource") == "screenOcr"
+            ? "Using text selected from screen"
+            : _context is null ? "Generating" : "Using selected text";
         State = AssistPillState.StreamingResponse;
         var cancellation = new CancellationTokenSource();
         _generationCancellation = cancellation;

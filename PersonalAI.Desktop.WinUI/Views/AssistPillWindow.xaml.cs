@@ -24,6 +24,8 @@ public sealed partial class AssistPillWindow : Window
     public const int ResponseResizeIntervalMilliseconds = 150;
     private const int SpotlightWidth = 520;
     private const int SpotlightHeight = 64;
+    private const int SelectionFallbackWidth = 460;
+    private const int SelectionFallbackHeight = 130;
 
     private readonly AssistPillViewModel _viewModel;
     private readonly WinUiWindowPlacementService _placementService;
@@ -114,6 +116,7 @@ public sealed partial class AssistPillWindow : Window
                 if (_viewModel.IsDetectingContext)
                 {
                     _openingCancellation?.Cancel();
+                    _viewModel.CancelContextCapture();
                 }
                 else if (_viewModel.IsStreaming)
                 {
@@ -155,7 +158,6 @@ public sealed partial class AssistPillWindow : Window
         try
         {
             var opening = _viewModel.OpenPromptAsync(cancellation.Token);
-            ActivateSurface();
             var opened = await opening;
             if (!opened || !_viewModel.IsEnabled)
             {
@@ -227,7 +229,11 @@ public sealed partial class AssistPillWindow : Window
                 ? new SizeInt32(
                     AssistResponseSizingPolicy.ScalePixels(SpotlightWidth, scale),
                     AssistResponseSizingPolicy.ScalePixels(SpotlightHeight, scale))
-                : GetResponseSize();
+                : _viewModel.IsSelectionFallback
+                    ? new SizeInt32(
+                        AssistResponseSizingPolicy.ScalePixels(SelectionFallbackWidth, scale),
+                        AssistResponseSizingPolicy.ScalePixels(SelectionFallbackHeight, scale))
+                    : GetResponseSize();
         AppWindow.Resize(size);
         ApplyWindowShape();
         SetNoActivate(_viewModel.IsIdle);
@@ -306,13 +312,41 @@ public sealed partial class AssistPillWindow : Window
 
     private async void OpenPromptButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_viewModel.IsDetectingContext || Volatile.Read(ref _isTransitioning) != 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                "AEDA Assist activation ignored: duplicate-activation-ignored.");
+            return;
+        }
+
         await ToggleAsync();
+    }
+
+    private async void SelectScreenTextButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.IsSelectionFallback)
+        {
+            return;
+        }
+
+        AppWindow.Hide();
+        _ = DwmFlush();
+        await _viewModel.SelectScreenTextAsync();
+        if (_viewModel.State != AssistPillState.Hidden)
+        {
+            ActivateSurface();
+        }
     }
 
     private void LauncherButton_PointerPressed(
         object sender,
         PointerRoutedEventArgs e)
     {
+        if (!_viewModel.IsDetectingContext && Volatile.Read(ref _isTransitioning) == 0)
+        {
+            _ = _foregroundWindowTracker.CaptureCurrentExternalWindow(_windowHandle);
+        }
+
         _launcherReleaseStoryboard?.Stop();
         if (!_uiSettings.AnimationsEnabled)
         {
@@ -396,6 +430,7 @@ public sealed partial class AssistPillWindow : Window
         else if (_viewModel.IsDetectingContext)
         {
             _openingCancellation?.Cancel();
+            _viewModel.CancelContextCapture();
         }
         else if (_viewModel.IsExpanded)
         {
@@ -559,6 +594,9 @@ public sealed partial class AssistPillWindow : Window
 
     [DllImport("gdi32.dll")]
     private static extern bool DeleteObject(nint handle);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(

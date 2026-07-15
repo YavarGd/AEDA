@@ -134,6 +134,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private int _assistPillResponsePreviewCharacters;
 
     [ObservableProperty]
+    private bool _universalSelectionFallbackEnabled;
+
+    [ObservableProperty]
     private int _maxTotalTextContextCharacters;
 
     [ObservableProperty]
@@ -218,7 +221,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 LaunchAtSignIn),
             new AssistPillSettings(
                 AssistPillEnabled,
-                AssistPillResponsePreviewCharacters),
+                AssistPillResponsePreviewCharacters,
+                UniversalSelectionFallbackEnabled),
             new ContextSettings(
                 MaxTotalTextContextCharacters,
                 MaxIndividualClipboardCharacters,
@@ -467,6 +471,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnAssistPillResponsePreviewCharactersChanged(int value) => QueueSave();
 
+    partial void OnUniversalSelectionFallbackEnabledChanged(bool value) => QueueSave();
+
     partial void OnMaxTotalTextContextCharactersChanged(int value) => QueueSave();
 
     partial void OnMaxIndividualClipboardCharactersChanged(int value) => QueueSave();
@@ -531,6 +537,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             AssistPillEnabled = settings.AssistPill.Enabled;
             AssistPillResponsePreviewCharacters =
                 settings.AssistPill.ResponsePreviewCharacters;
+            UniversalSelectionFallbackEnabled =
+                settings.AssistPill.UniversalSelectionFallbackEnabled;
             MaxTotalTextContextCharacters =
                 settings.Context.MaxTotalTextContextCharacters;
             MaxIndividualClipboardCharacters =

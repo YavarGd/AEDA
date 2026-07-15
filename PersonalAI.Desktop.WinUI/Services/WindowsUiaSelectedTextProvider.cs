@@ -34,7 +34,9 @@ public sealed class WindowsUiaSelectedTextProvider(
         int maxCharacters,
         CancellationToken cancellationToken)
     {
-        if (maxCharacters <= 0 || PrivacyExclusionMatcher.IsSensitiveWindow(
+        if (maxCharacters <= 0 ||
+            foreground.CapturedAtUtc < DateTimeOffset.UtcNow.AddSeconds(-5) ||
+            PrivacyExclusionMatcher.IsSensitiveWindow(
                 foreground.ProcessName,
                 foreground.WindowTitle,
                 privacy.ExcludedApplications))
@@ -69,6 +71,10 @@ public sealed class WindowsUiaSelectedTextProvider(
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return Unavailable(foreground, "Selection capture timed out.");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (TimeoutException)
         {
@@ -120,8 +126,10 @@ public sealed class WindowsUiaSelectedTextProvider(
             }
         }
 
-        var selectedText = string.Join(Environment.NewLine, parts).Trim();
-        return selectedText;
+        var selectedText = string.Join(Environment.NewLine, parts)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Take(2_000);
+        return string.Join(Environment.NewLine, selectedText).Trim();
     }
 
     private static SelectedTextContextResult Unavailable(

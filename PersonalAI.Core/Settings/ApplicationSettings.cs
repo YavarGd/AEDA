@@ -19,7 +19,7 @@ public sealed record ApplicationSettings(
     VoiceSettings Voice,
     MemoryRagSettings MemoryRag)
 {
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
 
     public static ApplicationSettings CreateDefault()
     {
@@ -111,11 +111,13 @@ public sealed record WindowSettings(
 
 public sealed record AssistPillSettings(
     bool Enabled,
-    int ResponsePreviewCharacters)
+    int ResponsePreviewCharacters,
+    bool UniversalSelectionFallbackEnabled = true)
 {
     public static AssistPillSettings Default { get; } = new(
         Enabled: true,
-        ResponsePreviewCharacters: 1_200);
+        ResponsePreviewCharacters: 1_200,
+        UniversalSelectionFallbackEnabled: true);
 }
 
 public sealed record ContextSettings(

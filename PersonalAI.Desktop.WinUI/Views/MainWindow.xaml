@@ -2896,6 +2896,11 @@
                         <StackPanel Spacing="12">
                             <CheckBox Content="Show the AEDA Assist pill"
                                       IsChecked="{Binding AssistPillEnabled, Mode=TwoWay}" />
+                            <CheckBox Content="Universal selection fallback"
+                                      IsChecked="{Binding UniversalSelectionFallbackEnabled, Mode=TwoWay}" />
+                            <TextBlock Text="AEDA can temporarily use Copy to read your current selection when an app does not expose it through Windows accessibility. Your previous clipboard is restored when possible."
+                                       TextWrapping="Wrap"
+                                       Style="{ThemeResource PersonalAiMetadataTextStyle}" />
                             <NumberBox Header="Response preview characters"
                                        Minimum="200"
                                        Maximum="4000"

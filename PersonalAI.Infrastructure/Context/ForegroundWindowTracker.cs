@@ -90,7 +90,8 @@ public sealed class ForegroundWindowTracker(
             processId,
             processName,
             windowTitle,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            NativeMethods.CaptureGuiThread(windowHandle, processId));
         return true;
     }
 
@@ -136,6 +137,39 @@ public sealed class ForegroundWindowTracker(
 
     private static class NativeMethods
     {
+        public static GuiThreadWindowSnapshot? CaptureGuiThread(
+            nint foregroundWindow,
+            uint processId)
+        {
+            var threadId = GetWindowThreadProcessId(foregroundWindow, out var actualProcessId);
+            if (threadId == 0 || actualProcessId != processId)
+            {
+                return null;
+            }
+
+            var info = new GuiThreadInfo { Size = Marshal.SizeOf<GuiThreadInfo>() };
+            if (!GetGUIThreadInfo(threadId, ref info))
+            {
+                return null;
+            }
+
+            nint KeepOwned(nint window) =>
+                window != 0 && IsWindow(window) && GetProcessId(window) == processId
+                    ? window
+                    : 0;
+
+            return new GuiThreadWindowSnapshot(
+                threadId,
+                processId,
+                KeepOwned(info.ActiveWindow),
+                KeepOwned(info.FocusedWindow),
+                KeepOwned(info.CaptureWindow),
+                KeepOwned(info.MenuOwnerWindow),
+                KeepOwned(info.MoveSizeWindow),
+                KeepOwned(info.CaretWindow),
+                DateTimeOffset.UtcNow);
+        }
+
         public static uint GetProcessId(nint windowHandle)
         {
             _ = GetWindowThreadProcessId(windowHandle, out var processId);
@@ -169,6 +203,11 @@ public sealed class ForegroundWindowTracker(
             out uint lpdwProcessId);
 
         [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetGUIThreadInfo(
+            uint idThread,
+            ref GuiThreadInfo info);
+
+        [DllImport("user32.dll", SetLastError = true)]
         private static extern int GetWindowTextLength(nint hWnd);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -176,6 +215,29 @@ public sealed class ForegroundWindowTracker(
             nint hWnd,
             StringBuilder lpString,
             int nMaxCount);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GuiThreadInfo
+        {
+            public int Size;
+            public uint Flags;
+            public nint ActiveWindow;
+            public nint FocusedWindow;
+            public nint CaptureWindow;
+            public nint MenuOwnerWindow;
+            public nint MoveSizeWindow;
+            public nint CaretWindow;
+            public Rect CaretRect;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Rect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
     }
 }
 #endif

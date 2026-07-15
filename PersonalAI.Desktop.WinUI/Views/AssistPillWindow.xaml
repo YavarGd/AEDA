@@ -60,6 +60,36 @@
             </Grid>
         </Border>
 
+        <Border x:Name="SelectionFallbackSurface"
+                Margin="1"
+                Padding="16"
+                Background="{ThemeResource AedaAssistSpotlightBrush}"
+                BorderBrush="{ThemeResource AedaAssistBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource AedaAssistCornerRadius}"
+                Shadow="{StaticResource AedaAssistShadow}"
+                Translation="0,0,8"
+                Visibility="{Binding IsSelectionFallback, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <StackPanel Spacing="12">
+                <TextBlock FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource AedaAssistForegroundBrush}"
+                           Text="{Binding StatusText}"
+                           TextWrapping="Wrap" />
+                <StackPanel HorizontalAlignment="Right"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                    <Button x:Name="SelectScreenTextButton"
+                            Click="SelectScreenTextButton_Click"
+                            AutomationProperties.Name="Select text from a screen region"
+                            Content="{Binding ScreenSelectionActionText}" />
+                    <Button Command="{Binding TypeManuallyCommand}"
+                            AutomationProperties.Name="Type an AEDA Assist prompt manually"
+                            Content="Type manually" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <Border x:Name="SpotlightSurface"
                 Margin="1"
                 Padding="8"

@@ -112,8 +112,11 @@ public partial class App : Application
             _foregroundWindowTracker,
             GetWindowHandle,
             () => _settingsService.Current.Privacy,
-            new WindowsUiaSelectedTextProvider(),
-            () => _settingsService.Current.Context.MaxIndividualClipboardCharacters);
+            new UniversalSelectedTextService(
+                new WindowsUiaSelectedTextProvider(),
+                new WindowsClipboardCopySelectedTextProvider(GetAssistPillWindowHandle)),
+            () => _settingsService.Current.Context.MaxIndividualClipboardCharacters,
+            () => _settingsService.Current.AssistPill.UniversalSelectionFallbackEnabled);
         var screenshotAttachmentService = new ScreenshotAttachmentService(
             new ScreenshotContextService(
                 activeContextProvider,
@@ -395,6 +398,7 @@ public partial class App : Application
                 CheckCurrentProviderAsync,
                 ListCurrentModelsAsync,
                 activeWindowContextService,
+                new ScreenTextCaptureService(),
                 () => viewModel.AttachedContexts.LastOrDefault(context =>
                     _foregroundWindowTracker.IsLastObservedExternalWindowSafe &&
                     AssistContextPolicy.IsMeaningful(context, DateTimeOffset.UtcNow) &&
@@ -678,6 +682,10 @@ public partial class App : Application
             ? 0
             : WinRT.Interop.WindowNative.GetWindowHandle(_window);
     }
+
+    private nint GetAssistPillWindowHandle() => _assistPillWindow is null
+        ? GetWindowHandle()
+        : WinRT.Interop.WindowNative.GetWindowHandle(_assistPillWindow);
 
     private void DisposeShellResources()
     {

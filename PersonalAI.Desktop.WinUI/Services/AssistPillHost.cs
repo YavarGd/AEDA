@@ -8,7 +8,11 @@ namespace PersonalAI.Desktop.WinUI.Services;
 
 public interface IAssistPillHost
 {
+    string? LastCaptureFailureMessage { get; }
+
     Task<AttachedContextItem?> CaptureContextAsync(CancellationToken cancellationToken);
+
+    Task<AttachedContextItem?> CaptureScreenTextAsync(CancellationToken cancellationToken);
 
     Task<AssistGenerationResult> GenerateAsync(
         string prompt,
@@ -32,25 +36,66 @@ public sealed class AssistPillHost(
     Func<CancellationToken, Task<ProviderHealth>> checkProviderHealthAsync,
     Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync,
     ActiveWindowContextService contextService,
+    ScreenTextCaptureService screenTextCaptureService,
     Func<AttachedContextItem?> getExplicitContext,
     IClipboardWriter clipboardWriter,
     Func<Guid?, Task> openConversationAsync) : IAssistPillHost
 {
     private Guid? _conversationId;
 
+    public string? LastCaptureFailureMessage { get; private set; }
+
     public async Task<AttachedContextItem?> CaptureContextAsync(
         CancellationToken cancellationToken)
     {
         var explicitContext = getExplicitContext();
-        if (AssistContextPolicy.IsMeaningful(explicitContext, DateTimeOffset.UtcNow))
+        var captured = await contextService.CaptureAsync(explicitContext, cancellationToken);
+        LastCaptureFailureMessage = contextService.LastCaptureResult?.FailureReason switch
         {
-            return explicitContext;
-        }
-
-        var captured = await contextService.CaptureAsync(cancellationToken);
+            SelectedTextCaptureFailure.PrivacyBlocked =>
+                "Selection capture is disabled for this application.",
+            SelectedTextCaptureFailure.ElevatedTarget =>
+                "Selection capture is unavailable for elevated applications.",
+            SelectedTextCaptureFailure.ClipboardRestoreFailed =>
+                "Clipboard restoration failed; your clipboard may have changed.",
+            _ => null
+        };
         return AssistContextPolicy.IsMeaningful(captured, DateTimeOffset.UtcNow)
             ? captured
             : null;
+    }
+
+    public async Task<AttachedContextItem?> CaptureScreenTextAsync(
+        CancellationToken cancellationToken)
+    {
+        var result = await screenTextCaptureService.CaptureAsync(
+            settingsService.Current.Context.MaxIndividualClipboardCharacters,
+            cancellationToken);
+        LastCaptureFailureMessage = result.Message;
+        if (result.Status != ScreenTextCaptureStatus.Success ||
+            string.IsNullOrWhiteSpace(result.Text))
+        {
+            return null;
+        }
+
+        var context = AttachedContextFactory.FromActiveApplicationContext(new(
+            null,
+            null,
+            "Screen text",
+            null,
+            "Selected screen area",
+            result.Text,
+            null,
+            null,
+            DateTimeOffset.UtcNow));
+        var metadata = context.Metadata.ToDictionary(pair => pair.Key, pair => pair.Value);
+        metadata["captureSource"] = "screenOcr";
+        return context with
+        {
+            SourceName = "Screen text",
+            DisplayTitle = "Selected screen text",
+            Metadata = metadata
+        };
     }
 
     public async Task<AssistGenerationResult> GenerateAsync(

@@ -9,10 +9,14 @@ public sealed class ActiveWindowContextService(
     ForegroundWindowTracker foregroundWindowTracker,
     Func<nint> getOwnWindowHandle,
     Func<PrivacySettings>? getPrivacySettings = null,
-    ISelectedTextContextProvider? selectedTextProvider = null,
-    Func<int>? getSelectionCharacterLimit = null)
+    IUniversalSelectedTextService? selectedTextService = null,
+    Func<int>? getSelectionCharacterLimit = null,
+    Func<bool>? allowClipboardFallback = null)
 {
+    public SelectedTextCaptureResult? LastCaptureResult { get; private set; }
+
     public async Task<AttachedContextItem?> CaptureAsync(
+        AttachedContextItem? explicitContext = null,
         CancellationToken cancellationToken = default)
     {
         var ownHandle = getOwnWindowHandle();
@@ -33,17 +37,22 @@ public sealed class ActiveWindowContextService(
         var settings = ApplicationSettingsValidator.NormalizePrivacy(
             getPrivacySettings?.Invoke() ?? PrivacySettings.Default);
         string? selectedText = null;
-        if (selectedTextProvider is not null)
+        if (selectedTextService is not null)
         {
-            var selection = await selectedTextProvider.TryGetSelectedTextAsync(
-                externalWindow,
-                settings,
-                getSelectionCharacterLimit?.Invoke() ?? 12_000,
+            LastCaptureResult = await selectedTextService.CaptureAsync(
+                new SelectedTextCaptureRequest(
+                    externalWindow,
+                    settings,
+                    getSelectionCharacterLimit?.Invoke() ?? 12_000,
+                    allowClipboardFallback?.Invoke() ?? false,
+                    explicitContext),
                 cancellationToken);
-            if (selection.IsAvailable && selection.IsTrustedForImmediateSubmission)
+            if (LastCaptureResult.ExplicitContext is { } matchedExplicit)
             {
-                selectedText = selection.Text;
+                return matchedExplicit;
             }
+
+            selectedText = LastCaptureResult.Success ? LastCaptureResult.Text : null;
         }
 
         var context = await activeContextProvider.CaptureAsync(

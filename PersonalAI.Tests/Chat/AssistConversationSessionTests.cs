@@ -27,6 +27,7 @@ public sealed class AssistConversationSessionTests
             _ => Task.FromResult(PersonalAI.Core.Providers.ProviderHealth.Available),
             _ => Task.FromResult<IReadOnlyList<string>>(["test-model"]),
             contextService: null!,
+            screenTextCaptureService: null!,
             getExplicitContext: () => null,
             new FakeClipboardWriter(),
             conversationId =>
@@ -63,6 +64,7 @@ public sealed class AssistConversationSessionTests
                 PersonalAI.Core.Providers.ProviderStatus.Unavailable)),
             _ => throw new InvalidOperationException("models must not be queried"),
             contextService: null!,
+            screenTextCaptureService: null!,
             getExplicitContext: () => null,
             clipboardWriter: new FakeClipboardWriter(),
             openConversationAsync: _ => Task.CompletedTask);
