@@ -22,6 +22,8 @@ public sealed partial class MainWindow : Window
     {
         _viewModel = viewModel;
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarDragRegion);
         if (MicaController.IsSupported())
         {
             SystemBackdrop = new MicaBackdrop
@@ -107,19 +109,11 @@ public sealed partial class MainWindow : Window
     private void ApplyTitleBarColors(ElementTheme theme)
     {
         var titleBar = AppWindow.TitleBar;
-        var useLightTheme = theme == ElementTheme.Light;
-        var background = useLightTheme
-            ? Windows.UI.Color.FromArgb(255, 0xFF, 0xFF, 0xFF)
-            : Windows.UI.Color.FromArgb(255, 0x1B, 0x1B, 0x24);
-        var foreground = useLightTheme
-            ? Windows.UI.Color.FromArgb(255, 0x18, 0x18, 0x1B)
-            : Windows.UI.Color.FromArgb(255, 0xF2, 0xF1, 0xF8);
-        var hoverBackground = useLightTheme
-            ? Windows.UI.Color.FromArgb(255, 0xEC, 0xEB, 0xE7)
-            : Windows.UI.Color.FromArgb(255, 0x2C, 0x2C, 0x3A);
-        var pressedBackground = useLightTheme
-            ? Windows.UI.Color.FromArgb(255, 0xDE, 0xDD, 0xD7)
-            : Windows.UI.Color.FromArgb(255, 0x34, 0x34, 0x48);
+        var resources = Application.Current.Resources;
+        var background = (Windows.UI.Color)resources["AedaTitleBarBackgroundColor"];
+        var foreground = (Windows.UI.Color)resources["AedaTitleBarForegroundColor"];
+        var hoverBackground = (Windows.UI.Color)resources["AedaTitleBarHoverColor"];
+        var pressedBackground = (Windows.UI.Color)resources["AedaTitleBarPressedColor"];
 
         titleBar.BackgroundColor = background;
         titleBar.InactiveBackgroundColor = background;

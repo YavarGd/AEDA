@@ -62,6 +62,8 @@ public sealed partial class ModuleTileViewModel : ObservableObject
         ? $"{DisplayName}: {ShortDescription}"
         : $"{DisplayName}: {SafeUnavailableReason}";
 
+    public void RefreshTheme() => OnPropertyChanged(nameof(Kind));
+
     [RelayCommand(CanExecute = nameof(IsEnabled))]
     private void Open() => _openModule?.Invoke(Descriptor);
 }

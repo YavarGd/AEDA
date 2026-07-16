@@ -57,7 +57,7 @@ public sealed record AppearanceSettings(
     bool ShowMessageMetadata)
 {
     public static AppearanceSettings Default { get; } = new(
-        ThemePreference.System,
+        ThemePreference.SystemMica,
         CompactSidebar: false,
         ShowMessageMetadata: true);
 }
@@ -266,9 +266,34 @@ public enum LaunchDestination
 
 public enum ThemePreference
 {
-    System,
-    Light,
-    Dark
+    SystemMica,
+    Graphite,
+    MineralStone,
+    SharpAlmond
+}
+
+public sealed record AedaThemeDefinition(
+    ThemePreference Id,
+    string Label,
+    bool IsDark);
+
+public static class AedaThemeCatalog
+{
+    public static IReadOnlyList<AedaThemeDefinition> All { get; } =
+    [
+        new(ThemePreference.SystemMica, "System Mica", false),
+        new(ThemePreference.Graphite, "Graphite", true),
+        new(ThemePreference.MineralStone, "Mineral Stone", false),
+        new(ThemePreference.SharpAlmond, "Sharp Almond", false)
+    ];
+
+    public static ThemePreference Normalize(ThemePreference theme) =>
+        All.Any(candidate => candidate.Id == theme)
+            ? theme
+            : ThemePreference.SystemMica;
+
+    public static AedaThemeDefinition Get(ThemePreference theme) =>
+        All.Single(candidate => candidate.Id == Normalize(theme));
 }
 
 public enum CloseBehavior

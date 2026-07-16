@@ -1,0 +1,53 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="PersonalAiAccentBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiPageBackgroundBrush" Color="#00FFFFFF" />
+    <SolidColorBrush x:Key="PersonalAiSidebarBackgroundBrush" Color="#F2F2F2" />
+    <SolidColorBrush x:Key="PersonalAiElevatedSurfaceBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="PersonalAiSubtleSurfaceBrush" Color="#F5F5F5" />
+    <SolidColorBrush x:Key="PersonalAiHoverSurfaceBrush" Color="#E8E8E8" />
+    <SolidColorBrush x:Key="PersonalAiPressedSurfaceBrush" Color="#DCDCDC" />
+    <SolidColorBrush x:Key="PersonalAiActiveBrush" Color="#E5E5E5" />
+    <SolidColorBrush x:Key="PersonalAiActiveBorderBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiBorderBrush" Color="#17000000" />
+    <SolidColorBrush x:Key="PersonalAiStrongBorderBrush" Color="#29000000" />
+    <SolidColorBrush x:Key="PersonalAiPrimaryTextBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiSecondaryTextBrush" Color="#5D5D5D" />
+    <SolidColorBrush x:Key="PersonalAiMutedTextBrush" Color="#7A7A7A" />
+    <SolidColorBrush x:Key="PersonalAiAccentTextBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiMessageSurfaceBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PersonalAiToolActivitySurfaceBrush" Color="#F5F5F5" />
+    <SolidColorBrush x:Key="PersonalAiCodeBackgroundBrush" Color="#F8F8F8" />
+    <SolidColorBrush x:Key="PersonalAiCodeHeaderBrush" Color="#E8E8E8" />
+    <SolidColorBrush x:Key="PersonalAiSuccessBrush" Color="#107C10" />
+    <SolidColorBrush x:Key="PersonalAiWarningBrush" Color="#8A6914" />
+    <SolidColorBrush x:Key="PersonalAiErrorBrush" Color="#C42B1C" />
+    <SolidColorBrush x:Key="PersonalAiDangerBrush" Color="#C42B1C" />
+    <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="#F5FCFCFC" />
+    <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="#FAFCFCFC" />
+    <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="#FCFCFC" />
+    <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#29000000" />
+    <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="#202020" />
+    <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="#5D5D5D" />
+    <SolidColorBrush x:Key="AedaDashboardHeroBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="AedaNavigationForegroundBrush" Color="#202020" />
+    <SolidColorBrush x:Key="AedaNavigationSecondaryBrush" Color="#5D5D5D" />
+    <SolidColorBrush x:Key="PersonalAiModuleCodeFillBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PersonalAiModuleCodeForegroundBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiModuleCodeBorderBrush" Color="#29000000" />
+    <SolidColorBrush x:Key="PersonalAiModuleMemoryFillBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PersonalAiModuleMemoryForegroundBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiModuleMemoryBorderBrush" Color="#29000000" />
+    <SolidColorBrush x:Key="PersonalAiModuleResearchFillBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PersonalAiModuleResearchForegroundBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiModuleResearchBorderBrush" Color="#29000000" />
+    <SolidColorBrush x:Key="PersonalAiModuleTaskFillBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PersonalAiModuleTaskForegroundBrush" Color="#202020" />
+    <SolidColorBrush x:Key="PersonalAiModuleTaskBorderBrush" Color="#29000000" />
+    <SolidColorBrush x:Key="PersonalAiModuleDefaultFillBrush" Color="#F5F5F5" />
+    <SolidColorBrush x:Key="PersonalAiModuleDefaultForegroundBrush" Color="#7A7A7A" />
+    <SolidColorBrush x:Key="PersonalAiModuleDefaultBorderBrush" Color="#17000000" />
+    <Color x:Key="AedaTitleBarBackgroundColor">#FFF3F3F3</Color>
+    <Color x:Key="AedaTitleBarForegroundColor">#FF202020</Color>
+    <Color x:Key="AedaTitleBarHoverColor">#FFE8E8E8</Color>
+    <Color x:Key="AedaTitleBarPressedColor">#FFDCDCDC</Color>
+</ResourceDictionary>

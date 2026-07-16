@@ -1,0 +1,150 @@
+<UserControl
+    x:Class="PersonalAI.Desktop.WinUI.Controls.AedaDashboardView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:PersonalAI.Desktop.WinUI.Converters">
+    <UserControl.Resources>
+        <converters:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <DataTemplate x:Key="ModuleCardTemplate">
+            <Button Command="{Binding OpenCommand}" IsEnabled="{Binding IsEnabled}"
+                    Style="{StaticResource PersonalAiTileButtonStyle}"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    ToolTipService.ToolTip="{Binding ToolTipText}"
+                    AutomationProperties.Name="{Binding AccessibleName}">
+                <Border Background="{Binding Kind, Converter={StaticResource ModuleAccentFillConverter}}"
+                        BorderBrush="{Binding Kind, Converter={StaticResource ModuleAccentBorderConverter}}"
+                        BorderThickness="1" CornerRadius="14" Padding="18"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                    <Grid RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Border Width="38" Height="38" CornerRadius="10" Background="#18FFFFFF">
+                                <FontIcon Glyph="{Binding Glyph}" FontSize="18"
+                                          Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                            </Border>
+                            <TextBlock Text="{Binding StatusLabel}" HorizontalAlignment="Right"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                        </Grid>
+                        <TextBlock Grid.Row="1" Text="{Binding DisplayName}" FontSize="17"
+                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                   Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                        <TextBlock Grid.Row="2" Text="{Binding ShortDescription}" TextWrapping="Wrap"
+                                   MaxLines="3" Opacity="0.78"
+                                   Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                        <TextBlock Grid.Row="3" Text="{Binding CapabilityHintText}" FontSize="11"
+                                   TextWrapping="Wrap" MaxLines="2" Opacity="0.68"
+                                   Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                    </Grid>
+                </Border>
+            </Button>
+        </DataTemplate>
+        <DataTemplate x:Key="ActivityTemplate">
+            <Border Padding="12,9" Margin="0,0,0,6" CornerRadius="9"
+                    Background="{ThemeResource PersonalAiSubtleSurfaceBrush}">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding SafeSummary}" FontSize="11"
+                                   Foreground="{ThemeResource PersonalAiSecondaryTextBrush}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding UpdatedAt}" FontSize="11"
+                               VerticalAlignment="Center" Foreground="{ThemeResource PersonalAiMutedTextBrush}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- System Mica: balanced, conventional Windows composition. -->
+        <ScrollViewer Visibility="{Binding Settings.IsSystemMicaTheme, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Padding="28,24" Spacing="18">
+                <Grid>
+                    <StackPanel>
+                        <TextBlock Text="Good to see you" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding ModuleDashboard.CurrentWorkspaceSummary}"
+                                   Foreground="{ThemeResource PersonalAiSecondaryTextBrush}" />
+                    </StackPanel>
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Border Padding="10,5" CornerRadius="10" Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"><TextBlock Text="Local" /></Border>
+                        <Button Content="Open chat" Command="{Binding OpenChatCommand}" />
+                    </StackPanel>
+                </Grid>
+                <Grid ColumnSpacing="14" RowSpacing="14">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="190"/><RowDefinition Height="190"/></Grid.RowDefinitions>
+                    <ContentControl Content="{Binding ModuleDashboard.CodeTile}" ContentTemplate="{StaticResource ModuleCardTemplate}" />
+                    <ContentControl Grid.Column="1" Content="{Binding ModuleDashboard.MemoryTile}" ContentTemplate="{StaticResource ModuleCardTemplate}" />
+                    <ContentControl Grid.Column="2" Content="{Binding ModuleDashboard.ResearchTile}" ContentTemplate="{StaticResource ModuleCardTemplate}" />
+                    <ContentControl Grid.Row="1" Grid.ColumnSpan="2" Content="{Binding ModuleDashboard.TaskCenterTile}" ContentTemplate="{StaticResource ModuleCardTemplate}" />
+                    <Border Grid.Row="1" Grid.Column="2" Padding="16" CornerRadius="10"
+                            Background="{ThemeResource PersonalAiElevatedSurfaceBrush}" BorderBrush="{ThemeResource PersonalAiBorderBrush}" BorderThickness="1">
+                        <StackPanel><TextBlock Text="Recent activity" Style="{StaticResource PersonalAiSectionTitleTextStyle}" Margin="0,0,0,10" />
+                            <ItemsControl ItemsSource="{Binding ModuleDashboard.RecentTasks}" ItemTemplate="{StaticResource ActivityTemplate}" /></StackPanel>
+                    </Border>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding ModuleDashboard.DeferredTiles}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate><DataTemplate><Border Margin="0,0,8,8" Padding="10,6" CornerRadius="8" Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"><TextBlock Text="{Binding DisplayName}" Foreground="{ThemeResource PersonalAiMutedTextBrush}"/></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Graphite: denser operational workspace. -->
+        <ScrollViewer Visibility="{Binding Settings.IsGraphiteTheme, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Padding="24,20" Spacing="14">
+                <Grid><StackPanel><TextBlock Text="AEDA Workspace" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Local modules and current operations" Foreground="{ThemeResource PersonalAiSecondaryTextBrush}"/></StackPanel>
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8"><TextBlock Text="{Binding TaskCenter.ActiveTaskCountText}"/><TextBlock Text="{Binding TaskCenter.WaitingApprovalCountText}"/></StackPanel></Grid>
+                <Grid ColumnSpacing="10" Height="210">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <ContentControl Content="{Binding ModuleDashboard.CodeTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Column="1" Content="{Binding ModuleDashboard.MemoryTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Column="2" Content="{Binding ModuleDashboard.ResearchTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Column="3" Content="{Binding ModuleDashboard.TaskCenterTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                </Grid>
+                <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Border Padding="16" CornerRadius="10" Background="{ThemeResource PersonalAiElevatedSurfaceBrush}" BorderBrush="{ThemeResource PersonalAiBorderBrush}" BorderThickness="1"><StackPanel><TextBlock Text="Activity stream" Style="{StaticResource PersonalAiSectionTitleTextStyle}" Margin="0,0,0,10"/><ItemsControl ItemsSource="{Binding ModuleDashboard.RecentTasks}" ItemTemplate="{StaticResource ActivityTemplate}"/></StackPanel></Border>
+                    <Border Grid.Column="1" Padding="16" CornerRadius="10" Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"><StackPanel><TextBlock Text="Workspace" FontWeight="SemiBold"/><TextBlock Text="{Binding ModuleDashboard.CurrentWorkspaceSummary}" TextWrapping="Wrap" Margin="0,6,0,14"/><Button Content="Open Task Center" Command="{Binding OpenTaskCenterCommand}"/></StackPanel></Border>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Mineral Stone: grouped two-column mineral cards. -->
+        <ScrollViewer Visibility="{Binding Settings.IsMineralStoneTheme, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Padding="30,24" Spacing="18">
+                <Grid><StackPanel><TextBlock Text="Your local workspace" FontSize="28" FontWeight="SemiBold"/><TextBlock Text="Focused tools, grounded in your selected projects" Foreground="{ThemeResource PersonalAiSecondaryTextBrush}"/></StackPanel><Image HorizontalAlignment="Right" Source="ms-appx:///Assets/AedaLogo.svg" Width="52" Height="52"/></Grid>
+                <Grid ColumnSpacing="16" RowSpacing="16">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="205"/><RowDefinition Height="205"/></Grid.RowDefinitions>
+                    <ContentControl Content="{Binding ModuleDashboard.CodeTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Column="1" Content="{Binding ModuleDashboard.MemoryTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Row="1" Content="{Binding ModuleDashboard.ResearchTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding ModuleDashboard.TaskCenterTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                </Grid>
+                <Border Padding="16" CornerRadius="16" Background="{ThemeResource PersonalAiElevatedSurfaceBrush}" BorderBrush="{ThemeResource PersonalAiBorderBrush}" BorderThickness="1"><StackPanel><TextBlock Text="Recent activity" Style="{StaticResource PersonalAiSectionTitleTextStyle}" Margin="0,0,0,10"/><ItemsControl ItemsSource="{Binding ModuleDashboard.RecentTasks}" ItemTemplate="{StaticResource ActivityTemplate}"/></StackPanel></Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Sharp Almond: branded editorial asymmetric composition. -->
+        <ScrollViewer Visibility="{Binding Settings.IsSharpAlmondTheme, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Padding="28,22" Spacing="16">
+                <Border Padding="26,22" CornerRadius="18" Background="{ThemeResource AedaDashboardHeroBrush}">
+                    <Grid><StackPanel MaxWidth="580"><TextBlock Text="AEDA, ready when you are" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="Local intelligence for code, memory, research, and deliberate work." FontSize="14" TextWrapping="Wrap" Margin="0,8,0,16" Foreground="{ThemeResource PersonalAiSecondaryTextBrush}"/><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Start a chat" Command="{Binding OpenChatCommand}"/><TextBlock Text="{Binding ModuleDashboard.CurrentWorkspaceSummary}" VerticalAlignment="Center" Foreground="{ThemeResource PersonalAiSecondaryTextBrush}"/></StackPanel></StackPanel><Image HorizontalAlignment="Right" Source="ms-appx:///Assets/AedaLogo.svg" Width="108" Height="108" Stretch="Uniform"/></Grid>
+                </Border>
+                <Grid ColumnSpacing="14" RowSpacing="14">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="1.2*"/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="170"/><RowDefinition Height="170"/></Grid.RowDefinitions>
+                    <ContentControl Grid.RowSpan="2" Content="{Binding ModuleDashboard.CodeTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Column="1" Content="{Binding ModuleDashboard.MemoryTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Column="2" Content="{Binding ModuleDashboard.ResearchTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                    <ContentControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Content="{Binding ModuleDashboard.TaskCenterTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
+                </Grid>
+                <Border Padding="16" CornerRadius="14" Background="{ThemeResource PersonalAiElevatedSurfaceBrush}" BorderBrush="{ThemeResource PersonalAiBorderBrush}" BorderThickness="1"><StackPanel><TextBlock Text="Recent work" Style="{StaticResource PersonalAiSectionTitleTextStyle}" Margin="0,0,0,10"/><ItemsControl ItemsSource="{Binding ModuleDashboard.RecentTasks}" ItemTemplate="{StaticResource ActivityTemplate}"/></StackPanel></Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -77,6 +77,7 @@ public partial class App : Application
         await taskEventStore.InitializeAsync();
         _settingsService = new JsonApplicationSettingsService();
         await _settingsService.InitializeAsync();
+        AedaThemeManager.Apply(_settingsService.Current.Appearance.Theme);
         var providerFactory = new ProviderFactory(secretStore: new DpapiSecretStore());
         var providerCatalog = providerFactory.CreateCatalog(_settingsService.Current);
         async Task<IReadOnlyList<string>> ListCurrentModelsAsync(
@@ -556,8 +557,10 @@ public partial class App : Application
             _assistPillWindow?.ShowIdle();
         }
 
-        _mainWindow?.ApplyTheme(MapTheme(settings.Appearance.Theme));
-        _assistPillWindow?.ApplyTheme(MapTheme(settings.Appearance.Theme));
+        var elementTheme = AedaThemeManager.Apply(settings.Appearance.Theme);
+        _viewModel?.ModuleDashboard.RefreshTheme();
+        _mainWindow?.ApplyTheme(elementTheme);
+        _assistPillWindow?.ApplyTheme(elementTheme);
     }
 
     private void StartForegroundTracking()
@@ -712,16 +715,6 @@ public partial class App : Application
         _permissionBroker = null;
         _singleInstanceService?.Dispose();
         _singleInstanceService = null;
-    }
-
-    private static ElementTheme MapTheme(ThemePreference theme)
-    {
-        return theme switch
-        {
-            ThemePreference.Light => ElementTheme.Light,
-            ThemePreference.Dark => ElementTheme.Dark,
-            _ => ElementTheme.Default
-        };
     }
 
     private static class NativeMessageBox

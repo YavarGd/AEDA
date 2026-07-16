@@ -526,7 +526,7 @@ public sealed class ApplicationSettingsTests
                 ]),
             Appearance = service.Current.Appearance with
             {
-                Theme = ThemePreference.Dark
+                Theme = ThemePreference.Graphite
             }
         };
 
@@ -538,7 +538,19 @@ public sealed class ApplicationSettingsTests
         Assert.Contains(reloaded.Current.Models.Assignments, assignment =>
             assignment.Category == ModelRoutingCategory.General &&
             assignment.Model == "llama3");
-        Assert.Equal(ThemePreference.Dark, reloaded.Current.Appearance.Theme);
+        Assert.Equal(ThemePreference.Graphite, reloaded.Current.Appearance.Theme);
+    }
+
+    [Fact]
+    public void AedaThemes_AreNamedAndInvalidValuesFallBackSafely()
+    {
+        Assert.Equal(
+            ["System Mica", "Graphite", "Mineral Stone", "Sharp Almond"],
+            AedaThemeCatalog.All.Select(theme => theme.Label));
+        Assert.Equal(
+            ThemePreference.SystemMica,
+            ApplicationSettingsValidator.NormalizeAppearance(
+                AppearanceSettings.Default with { Theme = (ThemePreference)999 }).Theme);
     }
 
     [Fact]

@@ -17,7 +17,7 @@ public static class ApplicationSettingsValidator
         {
             SchemaVersion = ApplicationSettings.CurrentSchemaVersion,
             General = value.General ?? defaults.General,
-            Appearance = value.Appearance ?? defaults.Appearance,
+            Appearance = NormalizeAppearance(value.Appearance ?? defaults.Appearance),
             Models = NormalizeModels(value.Models ?? defaults.Models, normalizedVision),
             Hotkey = HotkeySettingsValidator.Normalize(value.Hotkey ?? defaults.Hotkey),
             Window = value.Window ?? defaults.Window,
@@ -31,6 +31,9 @@ public static class ApplicationSettingsValidator
             MemoryRag = NormalizeMemoryRag(value.MemoryRag ?? defaults.MemoryRag)
         };
     }
+
+    public static AppearanceSettings NormalizeAppearance(AppearanceSettings settings) =>
+        settings with { Theme = AedaThemeCatalog.Normalize(settings.Theme) };
 
     public static AssistPillSettings NormalizeAssistPill(AssistPillSettings settings)
     {

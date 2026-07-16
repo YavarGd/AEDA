@@ -39,8 +39,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         Load(settingsService.Current);
     }
 
-    public IReadOnlyList<ThemePreference> ThemeOptions { get; } =
-        Enum.GetValues<ThemePreference>();
+    public IReadOnlyList<AedaThemeDefinition> ThemeOptions { get; } =
+        AedaThemeCatalog.All;
+
+    public bool IsSystemMicaTheme => Theme == ThemePreference.SystemMica;
+    public bool IsGraphiteTheme => Theme == ThemePreference.Graphite;
+    public bool IsMineralStoneTheme => Theme == ThemePreference.MineralStone;
+    public bool IsSharpAlmondTheme => Theme == ThemePreference.SharpAlmond;
 
     public IReadOnlyList<LaunchDestination> LaunchDestinationOptions { get; } =
         Enum.GetValues<LaunchDestination>();
@@ -445,7 +450,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnConfirmBeforeClearingAllContextChanged(bool value) =>
         QueueSave();
 
-    partial void OnThemeChanged(ThemePreference value) => QueueSave();
+    partial void OnThemeChanged(ThemePreference value)
+    {
+        OnPropertyChanged(nameof(IsSystemMicaTheme));
+        OnPropertyChanged(nameof(IsGraphiteTheme));
+        OnPropertyChanged(nameof(IsMineralStoneTheme));
+        OnPropertyChanged(nameof(IsSharpAlmondTheme));
+        QueueSave();
+    }
 
     partial void OnCompactSidebarChanged(bool value) => QueueSave();
 

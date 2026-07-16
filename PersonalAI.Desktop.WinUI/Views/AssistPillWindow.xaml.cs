@@ -21,8 +21,8 @@ namespace PersonalAI.Desktop.WinUI.Views;
 
 public sealed partial class AssistPillWindow : Window
 {
-    public const int IdleWidth = 64;
-    public const int IdleHeight = 64;
+    public const int IdleWidth = 148;
+    public const int IdleHeight = 52;
     public const int ResponseResizeIntervalMilliseconds = 150;
     private const int SpotlightWidth = 520;
     private const int SpotlightHeight = 64;

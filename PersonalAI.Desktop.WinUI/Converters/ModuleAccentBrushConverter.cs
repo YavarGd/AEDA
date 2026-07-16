@@ -2,6 +2,7 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
+using PersonalAI.Core.Modules;
 
 namespace PersonalAI.Desktop.WinUI.Converters;
 
@@ -37,8 +38,16 @@ public sealed class ModuleAccentBrushConverter : IValueConverter
 
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        var displayName = value as string ?? string.Empty;
-        var moduleKey = ResolveModuleKey(displayName);
+        var moduleKey = value is AedaModuleKind kind
+            ? kind switch
+            {
+                AedaModuleKind.Code => "Code",
+                AedaModuleKind.Memory => "Memory",
+                AedaModuleKind.Research => "Research",
+                AedaModuleKind.TaskCenter => "Task",
+                _ => "Default"
+            }
+            : ResolveModuleKey(value as string ?? string.Empty);
         var resourceKey = $"PersonalAiModule{moduleKey}{AccentKind}Brush";
 
         if (Application.Current.Resources.TryGetValue(resourceKey, out var resource)

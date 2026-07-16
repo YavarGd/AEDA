@@ -1,0 +1,8 @@
+<svg viewBox="220 100 240 300" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>AEDA sharp almond watcher mark</title>
+  <circle cx="340" cy="220" r="100" fill="#b0a5e8"/>
+  <path d="M -70,0 Q -22,-30 0,-31 Q 22,-30 70,0 Q 22,30 0,31 Q -22,30 -70,0 Z" transform="translate(340,220)" fill="#1e1a40"/>
+  <circle cx="340" cy="220" r="13" fill="#b0a5e8"/>
+  <circle cx="345" cy="215" r="4.5" fill="#1e1a40"/>
+  <text x="340" y="370" text-anchor="middle" fill="#6b5ec7" font-family="Segoe UI Variable, Segoe UI, sans-serif" font-size="22" font-weight="600">aeda</text>
+</svg>

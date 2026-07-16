@@ -34,6 +34,13 @@ public sealed partial class AedaModuleDashboardViewModel : ObservableObject
 
     public ObservableCollection<ModuleTileViewModel> ModuleTiles { get; } = [];
 
+    public ModuleTileViewModel CodeTile => Tile(AedaModuleKind.Code);
+    public ModuleTileViewModel MemoryTile => Tile(AedaModuleKind.Memory);
+    public ModuleTileViewModel ResearchTile => Tile(AedaModuleKind.Research);
+    public ModuleTileViewModel TaskCenterTile => Tile(AedaModuleKind.TaskCenter);
+    public IEnumerable<ModuleTileViewModel> DeferredTiles =>
+        ModuleTiles.Where(tile => !tile.IsEnabled);
+
     public ObservableCollection<TaskSummaryItemViewModel> ActiveTasks { get; } = [];
 
     public ObservableCollection<TaskSummaryItemViewModel> RecentTasks { get; } = [];
@@ -95,6 +102,14 @@ public sealed partial class AedaModuleDashboardViewModel : ObservableObject
             : $"{workspaces.Count} workspace(s) registered.";
     }
 
+    public void RefreshTheme()
+    {
+        foreach (var tile in ModuleTiles)
+        {
+            tile.RefreshTheme();
+        }
+    }
+
     private void LoadTiles()
     {
         ModuleTiles.Clear();
@@ -103,4 +118,7 @@ public sealed partial class AedaModuleDashboardViewModel : ObservableObject
             ModuleTiles.Add(new ModuleTileViewModel(module, _openModule));
         }
     }
+
+    private ModuleTileViewModel Tile(AedaModuleKind kind) =>
+        ModuleTiles.Single(tile => tile.Kind == kind);
 }

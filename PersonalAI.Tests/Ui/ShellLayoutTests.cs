@@ -17,7 +17,7 @@ public sealed class ShellLayoutTests
 
     [Theory]
     [InlineData("New chat", "NewChatCommand", "\uE710")]
-    [InlineData("Module dashboard", "OpenDashboardCommand", "\uE80F")]
+    [InlineData("Dashboard", "OpenDashboardCommand", "\uE80F")]
     [InlineData("Settings", "OpenSettingsCommand", "\uE713")]
     [InlineData("Send", "SendMessageCommand", "\uE74A")]
     [InlineData("Add context", null, "\uE898")]
@@ -134,13 +134,15 @@ public sealed class ShellLayoutTests
     }
 
     [Fact]
-    public void ChatSurface_RemovesVisibleStopButtonAndKeepsJumpToLatestAccessible()
+    public void ChatSurface_ShowsStopOnlyWhileGeneratingAndKeepsJumpToLatestAccessible()
     {
         var document = LoadShellXaml();
 
-        Assert.DoesNotContain(
+        Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "Button"),
-            button => AttributeValue(button, "AutomationProperties.Name") == "Stop");
+            button => AttributeValue(button, "AutomationProperties.Name") == "Stop generation" &&
+                AttributeValue(button, "Command") == "{Binding CancelGenerationCommand}" &&
+                AttributeValue(button, "Visibility")?.Contains("IsGenerating", StringComparison.Ordinal) == true);
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "Button"),
             button => AttributeValue(button, "AutomationProperties.Name") == "Jump to latest");
@@ -302,8 +304,8 @@ public sealed class ShellLayoutTests
             document.Descendants().Where(element => element.Name.LocalName == "Grid"),
             grid => AttributeValue(grid, "Visibility")?.Contains("IsChatVisible", StringComparison.Ordinal) == true);
         Assert.Contains(
-            document.Descendants().Where(element => element.Name.LocalName == "Grid"),
-            grid => AttributeValue(grid, "Visibility")?.Contains("IsDashboardVisible", StringComparison.Ordinal) == true);
+            document.Descendants().Where(element => element.Name.LocalName == "AedaDashboardView"),
+            dashboard => AttributeValue(dashboard, "Visibility")?.Contains("IsDashboardVisible", StringComparison.Ordinal) == true);
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "Grid"),
             grid => AttributeValue(grid, "Visibility")?.Contains("IsCodeVisible", StringComparison.Ordinal) == true);
@@ -407,7 +409,7 @@ public sealed class ShellLayoutTests
     }
 
     [Fact]
-    public void AssistPill_IdleSurfaceIsOneCircularLauncher()
+    public void AssistPill_IdleSurfaceIsOneCompactCapsuleLauncher()
     {
         var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
         var launcher = document.Descendants().Single(element =>
@@ -415,11 +417,14 @@ public sealed class ShellLayoutTests
             AttributeValue(element, "AutomationProperties.Name") == "Open AEDA Assist");
         var surface = launcher.Ancestors().Single(element =>
             element.Name.LocalName == "Border" &&
-            AttributeValue(element, "Width") == "64");
+            AttributeValue(element, "Width") == "148");
 
-        Assert.Equal("64", AttributeValue(surface, "Width"));
-        Assert.Equal("64", AttributeValue(surface, "Height"));
-        Assert.Equal("32", AttributeValue(surface, "CornerRadius"));
+        Assert.Equal("148", AttributeValue(surface, "Width"));
+        Assert.Equal("52", AttributeValue(surface, "Height"));
+        Assert.Equal("26", AttributeValue(surface, "CornerRadius"));
+        Assert.Contains(
+            launcher.Descendants(),
+            element => element.Name.LocalName == "TextBlock" && AttributeValue(element, "Text") == "Ask AEDA");
         Assert.Equal("0", AttributeValue(launcher, "MinWidth"));
         Assert.Equal("0", AttributeValue(launcher, "MinHeight"));
         Assert.DoesNotContain(
@@ -428,7 +433,7 @@ public sealed class ShellLayoutTests
         var root = document.Descendants().Single(element =>
             element.Name.LocalName == "Grid" && AttributeValue(element, "Name") == "Root");
         Assert.Equal("Transparent", AttributeValue(root, "Background"));
-        Assert.Equal(AssistPillWindow.IdleWidth, AssistPillWindow.IdleHeight);
+        Assert.True(AssistPillWindow.IdleWidth > AssistPillWindow.IdleHeight);
 
         var source = LoadProjectText("Views", "AssistPillWindow.xaml.cs");
         Assert.Contains("SystemBackdrop = _viewModel.IsIdle ? null", source);

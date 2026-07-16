@@ -12,19 +12,19 @@
         </Grid.Resources>
 
         <Border x:Name="IdleSurface"
-                Width="64"
-                Height="64"
+                Width="148"
+                Height="52"
                 Background="{ThemeResource AedaAssistIdleBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="32"
+                CornerRadius="26"
                 Visibility="{Binding IsIdle, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid>
                 <Button x:Name="LauncherButton"
-                        Margin="6"
-                        Padding="0"
-                        Width="52"
-                        Height="52"
+                        Margin="4"
+                        Padding="8,0"
+                        Width="140"
+                        Height="44"
                         MinWidth="0"
                         MinHeight="0"
                         HorizontalContentAlignment="Stretch"
@@ -38,16 +38,19 @@
                         PointerReleased="LauncherButton_PointerReleased"
                         RenderTransformOrigin="0.5,0.5"
                         Style="{StaticResource AedaAssistLauncherButtonStyle}"
+                        Background="Transparent"
                         ToolTipService.ToolTip="Open AEDA Assist">
                     <Button.RenderTransform>
                         <ScaleTransform x:Name="LauncherScale" ScaleX="1" ScaleY="1" />
                     </Button.RenderTransform>
-                    <TextBlock HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               FontSize="21"
-                               FontWeight="SemiBold"
-                               Foreground="White"
-                               Text="A" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                        <Image Source="ms-appx:///Assets/AedaLogo.svg"
+                               Width="36" Height="36" Stretch="Uniform"
+                               AutomationProperties.Name="AEDA logo" />
+                        <TextBlock Text="Ask AEDA" FontSize="14" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource AedaAssistForegroundBrush}" />
+                    </StackPanel>
                 </Button>
                 <Rectangle Height="6" VerticalAlignment="Top" Fill="Transparent"
                            PointerPressed="IdleDragRegion_PointerPressed" />
@@ -88,7 +91,8 @@
                         Click="SelectScreenTextButton_Click"
                         AutomationProperties.Name="Select text on screen"
                         ToolTipService.ToolTip="Select text on screen">
-                    <FontIcon Glyph="&#xE7C4;" />
+                    <Image Source="ms-appx:///Assets/AedaLogo.svg"
+                           Width="34" Height="34" Stretch="Uniform" />
                 </Button>
                 <TextBox x:Name="PromptTextBox"
                          Grid.Column="1"
@@ -140,15 +144,9 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="28" Height="28"
-                            Background="{ThemeResource PersonalAiAccentBrush}"
-                            CornerRadius="14">
-                        <TextBlock HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   FontWeight="SemiBold"
-                                   Foreground="White"
-                                   Text="A" />
-                    </Border>
+                    <Image Width="32" Height="32" Stretch="Uniform"
+                           Source="ms-appx:///Assets/AedaLogo.svg"
+                           AutomationProperties.Name="AEDA logo" />
                     <Grid x:Name="ExpandedDragRegion"
                           Grid.Column="1"
                           Margin="10,0"

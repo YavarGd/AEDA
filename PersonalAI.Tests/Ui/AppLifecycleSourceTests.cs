@@ -33,7 +33,7 @@ public sealed class AppLifecycleSourceTests
         var dispose = Between(
             source,
             "private void DisposeShellResources()",
-            "private static ElementTheme MapTheme");
+            "private static class NativeMessageBox");
 
         Assert.Contains("if (_shellResourcesDisposed)", dispose);
         Assert.Contains("_shellResourcesDisposed = true;", dispose);

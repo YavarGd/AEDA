@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:PersonalAI.Desktop.WinUI.Controls"
     xmlns:converters="using:PersonalAI.Desktop.WinUI.Converters"
-    Title="PersonalAI">
+    Title="AEDA">
     <Grid x:Name="Root"
           KeyDown="Root_KeyDown"
           MinWidth="1080"
@@ -13,149 +13,138 @@
         <Grid.Resources>
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
             <converters:ChatRoleSurfaceBrushConverter x:Key="ChatRoleSurfaceBrushConverter" />
+            <converters:ThemePreviewBrushConverter x:Key="ThemePreviewBrushConverter" />
         </Grid.Resources>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="{Binding SidebarColumnWidth}" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="TitleBarDragRegion"
+              Grid.Row="0"
+              Padding="16,0,140,0"
+              Background="{ThemeResource PersonalAiSidebarBackgroundBrush}">
+            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <Image Source="ms-appx:///Assets/AedaLogo.svg" Width="28" Height="28"
+                       Stretch="Uniform" AutomationProperties.Name="AEDA logo" />
+                <TextBlock Text="AEDA" FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{ThemeResource AedaNavigationForegroundBrush}" />
+                <TextBlock Text="Local intelligence workspace" FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource AedaNavigationSecondaryBrush}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid x:Name="ShellGrid" Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="72" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
         <Grid Grid.Column="0"
-              MinWidth="240"
-              MaxWidth="280"
-              Margin="12,12,6,12"
-              Padding="{Binding SidebarPadding}"
-              CornerRadius="{StaticResource SidebarCornerRadius}"
+              Margin="8,8,4,8"
+              Padding="6"
+              CornerRadius="14"
               Background="{ThemeResource PersonalAiSidebarBackgroundBrush}"
               BorderBrush="{ThemeResource PersonalAiBorderBrush}"
               BorderThickness="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-
-            <Grid Grid.Row="0"
-                  Margin="0,0,0,20">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel MinWidth="0"
-                            Spacing="2">
-                    <TextBlock Text="PersonalAI"
-                               Style="{ThemeResource PersonalAiSectionTitleTextStyle}"
-                               TextWrapping="NoWrap"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="Local assistant"
-                               Style="{ThemeResource PersonalAiMetadataTextStyle}"
-                               TextWrapping="NoWrap" />
-                </StackPanel>
-                <Button Grid.Column="1"
-                        Style="{StaticResource PersonalAiIconButtonStyle}"
-                        Command="{Binding NewChatCommand}"
-                        ToolTipService.ToolTip="New chat"
-                        AutomationProperties.Name="New chat">
-                    <FontIcon FontFamily="Segoe MDL2 Assets"
-                              Glyph="&#xE710;"
-                              FontSize="16" />
+            <Image Grid.Row="0" Source="ms-appx:///Assets/AedaLogo.svg"
+                   Width="46" Height="46" Margin="0,4,0,18" Stretch="Uniform"
+                   AutomationProperties.Name="AEDA" />
+            <StackPanel Grid.Row="1" Spacing="8">
+                <Button Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
+                        Command="{Binding OpenDashboardCommand}" ToolTipService.ToolTip="Dashboard"
+                        AutomationProperties.Name="Dashboard" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
+                    <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
+                                  Background="{ThemeResource PersonalAiActiveBorderBrush}"
+                                  Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <FontIcon Glyph="&#xE80F;" /></Grid>
                 </Button>
-            </Grid>
-
-            <TextBox Grid.Row="1"
-                     Margin="0,0,0,16"
-                     MinWidth="0"
-                     CornerRadius="10"
-                     PlaceholderText="Search conversations"
-                     Text="{Binding ConversationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <TextBlock Grid.Row="2"
-                       Text="CONVERSATIONS"
-                       Style="{ThemeResource PersonalAiMetadataTextStyle}"
-                       CharacterSpacing="20"
-                       Margin="4,0,0,10" />
-            <ListView Grid.Row="3"
-                      ItemsSource="{Binding Conversations}"
-                      SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
-                      SelectionChanged="ConversationList_SelectionChanged"
-                      Padding="0,0,0,8"
-                      HorizontalContentAlignment="Stretch">
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="Margin" Value="0,0,0,3" />
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="CornerRadius" Value="10" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                    </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Spacing="2"
-                                    MinWidth="0"
-                                    Padding="10,8">
-                            <TextBlock Text="{Binding Title}"
-                                       Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                       TextWrapping="NoWrap"
-                                       TextTrimming="CharacterEllipsis"
-                                       ToolTipService.ToolTip="{Binding Title}" />
-                            <TextBlock Text="{Binding Preview}"
-                                       Style="{ThemeResource PersonalAiMetadataTextStyle}"
-                                       TextWrapping="NoWrap"
-                                       MaxLines="1"
-                                       TextTrimming="CharacterEllipsis"
-                                       Visibility="{Binding DataContext.ShowConversationMetadata, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-            <TextBlock Grid.Row="3"
-                       Text="No conversations yet"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"
-                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                       Visibility="{Binding HasNoConversations, Converter={StaticResource BooleanToVisibilityConverter}}" />
-            <StackPanel Grid.Row="4"
-                        Orientation="Horizontal"
-                        Spacing="8"
-                        Margin="0,12,0,0">
-                <Button Style="{StaticResource PersonalAiIconButtonStyle}"
-                        Command="{Binding OpenDashboardCommand}"
-                        ToolTipService.ToolTip="Module dashboard"
-                        AutomationProperties.Name="Module dashboard">
-                    <FontIcon FontFamily="Segoe MDL2 Assets"
-                              Glyph="&#xE80F;"
-                              FontSize="16" />
+                <Button Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
+                        Command="{Binding OpenChatCommand}" ToolTipService.ToolTip="Chat"
+                        AutomationProperties.Name="Chat" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
+                    <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
+                                  Background="{ThemeResource PersonalAiActiveBorderBrush}"
+                                  Visibility="{Binding IsChatVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <FontIcon Glyph="&#xE8BD;" /></Grid>
                 </Button>
-                <Button Style="{StaticResource PersonalAiIconButtonStyle}"
-                        Command="{Binding OpenTaskCenterCommand}"
-                        ToolTipService.ToolTip="Task Center"
-                        AutomationProperties.Name="Task Center">
-                    <FontIcon FontFamily="Segoe MDL2 Assets"
-                              Glyph="&#xE9D9;"
-                              FontSize="16" />
-                </Button>
-                <Button Style="{StaticResource PersonalAiIconButtonStyle}"
-                        Command="{Binding OpenSettingsCommand}"
-                        ToolTipService.ToolTip="Settings"
-                        AutomationProperties.Name="Settings">
-                    <FontIcon FontFamily="Segoe MDL2 Assets"
-                              Glyph="&#xE713;"
-                              FontSize="16" />
+                <Button Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
+                        Command="{Binding OpenTaskCenterCommand}" ToolTipService.ToolTip="Task Center"
+                        AutomationProperties.Name="Task Center" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
+                    <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
+                                  Background="{ThemeResource PersonalAiActiveBorderBrush}"
+                                  Visibility="{Binding IsTaskCenterVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <FontIcon Glyph="&#xE9D9;" /></Grid>
                 </Button>
             </StackPanel>
+            <Button Grid.Row="2" Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
+                    Command="{Binding OpenSettingsCommand}" ToolTipService.ToolTip="Settings"
+                    AutomationProperties.Name="Settings" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
+                <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
+                              Background="{ThemeResource PersonalAiActiveBorderBrush}"
+                              Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <FontIcon Glyph="&#xE713;" /></Grid>
+            </Button>
         </Grid>
 
         <Grid Grid.Column="1"
               MinWidth="760"
               Padding="{StaticResource PagePadding}"
               Visibility="{Binding IsChatVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0"
+            <Border Grid.RowSpan="3" Grid.Column="0" Margin="0,0,18,0"
+                    Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
+                    BorderBrush="{ThemeResource PersonalAiBorderBrush}" BorderThickness="1"
+                    CornerRadius="12" Padding="12">
+                <Grid RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <TextBlock Text="Conversations" Style="{ThemeResource PersonalAiSectionTitleTextStyle}"
+                                   VerticalAlignment="Center" />
+                        <Button HorizontalAlignment="Right" Style="{StaticResource PersonalAiCompactIconButtonStyle}"
+                                Command="{Binding NewChatCommand}" ToolTipService.ToolTip="New chat"
+                                AutomationProperties.Name="New chat"><FontIcon Glyph="&#xE710;" /></Button>
+                    </Grid>
+                    <TextBox Grid.Row="1" PlaceholderText="Search" MinWidth="0"
+                             Text="{Binding ConversationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ListView Grid.Row="2" ItemsSource="{Binding Conversations}"
+                              SelectedItem="{Binding SelectedConversation, Mode=TwoWay}"
+                              SelectionChanged="ConversationList_SelectionChanged"
+                              HorizontalContentAlignment="Stretch">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Padding="8,7" Spacing="2" MinWidth="0">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Preview}" FontSize="11"
+                                               Foreground="{ThemeResource PersonalAiSecondaryTextBrush}"
+                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="0" Grid.Column="1"
                   ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -210,13 +199,15 @@
                     </Border>
                 </StackPanel>
 
-                <ProgressRing Grid.Column="2"
-                              Width="28"
-                              Height="28"
-                              IsActive="{Binding IsGenerating}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <ProgressRing Width="28" Height="28" IsActive="{Binding IsGenerating}" />
+                    <Button Content="Stop" Command="{Binding CancelGenerationCommand}"
+                            Visibility="{Binding IsGenerating, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            AutomationProperties.Name="Stop generation" />
+                </StackPanel>
             </Grid>
 
-            <Grid Grid.Row="1"
+            <Grid Grid.Row="1" Grid.Column="1"
                   Margin="0,20,0,16"
                   MinWidth="0">
                 <ListView x:Name="TimelineList"
@@ -330,7 +321,7 @@
                 </StackPanel>
             </Grid>
 
-            <Border Grid.Row="2"
+            <Border Grid.Row="2" Grid.Column="1"
                     Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
                     BorderBrush="{ThemeResource PersonalAiBorderBrush}"
                     BorderThickness="1"
@@ -680,6 +671,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Button HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
                                                 Command="{Binding DataContext.TaskCenter.SelectTaskCommand, ElementName=Root}"
                                                 CommandParameter="{Binding}"
                                                 Padding="0"
@@ -720,6 +712,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Button HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
                                                 Command="{Binding DataContext.TaskCenter.SelectTaskCommand, ElementName=Root}"
                                                 CommandParameter="{Binding}"
                                                 Padding="0"
@@ -1435,236 +1428,8 @@
             </ScrollViewer>
         </Grid>
 
-        <Grid Grid.Column="1"
-              Padding="{StaticResource PagePadding}"
-              Background="{ThemeResource PersonalAiPageBackgroundBrush}"
-              Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-
-            <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                    BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource CardCornerRadius}"
-                    Padding="{StaticResource CardPadding}">
-                <Grid>
-                    <StackPanel MinWidth="0">
-                        <TextBlock Text="Module Dashboard"
-                                   Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
-                        <TextBlock Text="{Binding ModuleDashboard.CurrentWorkspaceSummary}"
-                                   Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                   TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                    <Button HorizontalAlignment="Right"
-                            Command="{Binding OpenChatCommand}"
-                            Content="Back to chat" />
-                </Grid>
-            </Border>
-
-            <ScrollViewer Grid.Row="1"
-                          Margin="0,20,0,0">
-                <StackPanel DataContext="{Binding ModuleDashboard}"
-                            Spacing="20">
-                    <Border Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                            BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="{StaticResource CardCornerRadius}"
-                            Padding="{StaticResource CardPadding}">
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal"
-                                        Spacing="8">
-                                <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
-                                        BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource PillCornerRadius}"
-                                        Padding="{StaticResource CompactControlPadding}">
-                                    <TextBlock Text="{Binding DataContext.TaskCenter.ActiveTaskCountText, ElementName=Root}"
-                                               Style="{ThemeResource PersonalAiPillTextStyle}" />
-                                </Border>
-                                <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
-                                        BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource PillCornerRadius}"
-                                        Padding="{StaticResource CompactControlPadding}">
-                                    <TextBlock Text="{Binding DataContext.TaskCenter.WaitingApprovalCountText, ElementName=Root}"
-                                               Style="{ThemeResource PersonalAiPillTextStyle}" />
-                                </Border>
-                                <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}"
-                                        BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource PillCornerRadius}"
-                                        Padding="{StaticResource CompactControlPadding}">
-                                    <TextBlock Text="{Binding DataContext.TaskCenter.RecentFailureCountText, ElementName=Root}"
-                                               Style="{ThemeResource PersonalAiPillTextStyle}" />
-                                </Border>
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    Command="{Binding DataContext.OpenTaskCenterCommand, ElementName=Root}"
-                                    Content="Task Center" />
-                        </Grid>
-                    </Border>
-
-                    <GridView ItemsSource="{Binding ModuleTiles}"
-                              SelectionMode="None"
-                              IsItemClickEnabled="False"
-                              HorizontalAlignment="Stretch">
-                        <GridView.ItemContainerStyle>
-                            <Style TargetType="GridViewItem">
-                                <Setter Property="Margin" Value="0,0,16,16" />
-                                <Setter Property="Padding" Value="0" />
-                            </Style>
-                        </GridView.ItemContainerStyle>
-                        <GridView.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <ItemsWrapGrid Orientation="Horizontal"
-                                               MaximumRowsOrColumns="3" />
-                            </ItemsPanelTemplate>
-                        </GridView.ItemsPanel>
-                        <GridView.ItemTemplate>
-                            <DataTemplate>
-                                <Button Width="240"
-                                        MinHeight="180"
-                                        Style="{StaticResource PersonalAiTileButtonStyle}"
-                                        Command="{Binding OpenCommand}"
-                                        IsEnabled="{Binding IsEnabled}"
-                                        ToolTipService.ToolTip="{Binding ToolTipText}"
-                                        AutomationProperties.Name="{Binding AccessibleName}">
-                                    <Border BorderBrush="{Binding DisplayName, Converter={StaticResource ModuleAccentBorderConverter}}"
-                                            BorderThickness="1"
-                                            CornerRadius="{StaticResource CardCornerRadius}"
-                                            Background="{Binding DisplayName, Converter={StaticResource ModuleAccentFillConverter}}"
-                                            Padding="{StaticResource CardPadding}"
-                                            Width="240"
-                                            MinHeight="180">
-                                        <StackPanel Spacing="8">
-                                            <Grid>
-                                                <Border Width="34"
-                                                        Height="34"
-                                                        CornerRadius="{StaticResource IconContainerCornerRadius}"
-                                                        Background="#1AFFFFFF"
-                                                        HorizontalAlignment="Left">
-                                                    <FontIcon FontFamily="Segoe MDL2 Assets"
-                                                              Glyph="{Binding Glyph}"
-                                                              FontSize="17"
-                                                              Foreground="{Binding DisplayName, Converter={StaticResource ModuleAccentForegroundConverter}}" />
-                                                </Border>
-                                                <Border HorizontalAlignment="Right"
-                                                        Background="#1AFFFFFF"
-                                                        BorderThickness="0"
-                                                        CornerRadius="{StaticResource PillCornerRadius}"
-                                                        Padding="{StaticResource CompactControlPadding}">
-                                                    <TextBlock Text="{Binding StatusLabel}"
-                                                               Style="{ThemeResource PersonalAiPillTextStyle}"
-                                                               Foreground="{Binding DisplayName, Converter={StaticResource ModuleAccentForegroundConverter}}" />
-                                                </Border>
-                                            </Grid>
-                                            <TextBlock Text="{Binding DisplayName}"
-                                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}"
-                                                       TextWrapping="NoWrap"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding ShortDescription}"
-                                                       TextWrapping="Wrap"
-                                                       MaxLines="3"
-                                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                                            <TextBlock Text="{Binding CapabilityHintText}"
-                                                       TextWrapping="Wrap"
-                                                       MaxLines="2"
-                                                       Style="{ThemeResource PersonalAiMetadataTextStyle}" />
-                                            <TextBlock Text="{Binding SafeUnavailableReason}"
-                                                       TextWrapping="Wrap"
-                                                       MaxLines="2"
-                                                       Style="{ThemeResource PersonalAiMetadataTextStyle}"
-                                                       Visibility="{Binding HasUnavailableReason, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                        </StackPanel>
-                                    </Border>
-                                </Button>
-                            </DataTemplate>
-                        </GridView.ItemTemplate>
-                    </GridView>
-
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Active Tasks"
-                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
-                            <TextBlock Text="No active tasks"
-                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                       Visibility="{Binding HasNoActiveTasks, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <ItemsControl ItemsSource="{Binding ActiveTasks}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                                BorderThickness="1"
-                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                                                CornerRadius="{StaticResource CardCornerRadius}"
-                                                Padding="{StaticResource CardPadding}"
-                                                Margin="0,0,0,8">
-                                            <StackPanel Spacing="4">
-                                                <TextBlock Text="{Binding Title}"
-                                                           TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                                                <TextBlock Text="{Binding SafeSummary}"
-                                                           TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                                                <TextBlock Text="{Binding UpdatedAt}"
-                                                           Style="{ThemeResource PersonalAiMetadataTextStyle}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1"
-                                    Spacing="8">
-                            <TextBlock Text="Recent Tasks"
-                                       Style="{ThemeResource PersonalAiSectionTitleTextStyle}" />
-                            <TextBlock Text="No recent tasks"
-                                       Style="{ThemeResource PersonalAiSecondaryTextStyle}"
-                                       Visibility="{Binding HasNoRecentTasks, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <ItemsControl ItemsSource="{Binding RecentTasks}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{ThemeResource PersonalAiBorderBrush}"
-                                                BorderThickness="1"
-                                                Background="{ThemeResource PersonalAiElevatedSurfaceBrush}"
-                                                CornerRadius="{StaticResource CardCornerRadius}"
-                                                Padding="{StaticResource CardPadding}"
-                                                Margin="0,0,0,8">
-                                            <StackPanel Spacing="4">
-                                                <TextBlock Text="{Binding Title}"
-                                                           TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
-                                                <TextBlock Text="{Binding SafeSummary}"
-                                                           TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                                                <TextBlock Text="{Binding UpdatedAt}"
-                                                           Style="{ThemeResource PersonalAiMetadataTextStyle}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </Grid>
-                </StackPanel>
-            </ScrollViewer>
-        </Grid>
+        <controls:AedaDashboardView Grid.Column="1"
+                                    Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
         <Grid Grid.Column="1"
               Padding="{StaticResource PagePadding}"
@@ -2636,9 +2401,36 @@
                             MaxWidth="800"
                             Spacing="12"
                             HorizontalAlignment="Left">
-                    <Expander Header="General"
+                    <Expander Header="Appearance"
                               Style="{ThemeResource PersonalAiSettingsExpanderStyle}"
                               IsExpanded="True">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Choose how AEDA composes the workspace. Changes apply immediately."
+                                       TextWrapping="Wrap" Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
+                            <ListView ItemsSource="{Binding ThemeOptions}"
+                                      SelectedValuePath="Id"
+                                      SelectedValue="{Binding Theme, Mode=TwoWay}"
+                                      SelectionMode="Single" HorizontalContentAlignment="Stretch">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Width="680" Padding="10,8" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Border Width="40" Height="28" CornerRadius="7"
+                                                    Background="{Binding Id, Converter={StaticResource ThemePreviewBrushConverter}}"
+                                                    BorderBrush="{ThemeResource PersonalAiStrongBorderBrush}" BorderThickness="1" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Label}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <CheckBox Content="Show message metadata"
+                                      IsChecked="{Binding ShowMessageMetadata, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="General"
+                              Style="{ThemeResource PersonalAiSettingsExpanderStyle}"
+                              IsExpanded="False">
                         <StackPanel Spacing="12">
                             <ComboBox Header="Launch destination"
                                       ItemsSource="{Binding LaunchDestinationOptions}"
@@ -2655,7 +2447,7 @@
 
                     <Expander Header="Workspaces"
                               Style="{ThemeResource PersonalAiSettingsExpanderStyle}"
-                              IsExpanded="True">
+                              IsExpanded="False">
                         <StackPanel x:Name="WorkspaceManagementPanel"
                                     DataContext="{Binding Workspaces}"
                                     Spacing="12">
@@ -2795,11 +2587,14 @@
 
                     <Expander Header="Appearance"
                               Style="{ThemeResource PersonalAiSettingsExpanderStyle}"
-                              IsExpanded="True">
+                              Visibility="Collapsed"
+                              IsExpanded="False">
                         <StackPanel Spacing="12">
                             <ComboBox Header="Theme"
                                       ItemsSource="{Binding ThemeOptions}"
-                                      SelectedItem="{Binding Theme, Mode=TwoWay}" />
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Id"
+                                      SelectedValue="{Binding Theme, Mode=TwoWay}" />
                             <CheckBox Content="Compact sidebar"
                                       IsChecked="{Binding CompactSidebar, Mode=TwoWay}" />
                             <CheckBox Content="Show message metadata"
@@ -3002,6 +2797,7 @@
                     </Expander>
                 </StackPanel>
             </ScrollViewer>
+        </Grid>
         </Grid>
     </Grid>
 </Window>
