@@ -313,7 +313,8 @@ public sealed class ShellLayoutTests
             document.Descendants().Where(element => element.Name.LocalName == "Grid"),
             grid => AttributeValue(grid, "Visibility")?.Contains("IsResearchVisible", StringComparison.Ordinal) == true);
         Assert.Contains(
-            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            document.Descendants().Where(element =>
+                element.Name.LocalName is "Button" or "RadioButton"),
             button => AttributeValue(button, "Command") == "{Binding OpenChatCommand}");
     }
 
@@ -422,6 +423,16 @@ public sealed class ShellLayoutTests
         Assert.Equal("52", AttributeValue(surface, "Width"));
         Assert.Equal("52", AttributeValue(surface, "Height"));
         Assert.Contains(surface.Elements(), element => element.Name.LocalName == "Ellipse");
+        var logo = launcher.Descendants().Single(element => element.Name.LocalName == "Image");
+        Assert.Equal("ms-appx:///Assets/AedaAppIcon.svg", AttributeValue(logo, "Source"));
+        Assert.Equal("42", AttributeValue(logo, "Width"));
+        Assert.Equal("42", AttributeValue(logo, "Height"));
+        Assert.Equal("Center", AttributeValue(logo, "HorizontalAlignment"));
+        Assert.Equal("Center", AttributeValue(logo, "VerticalAlignment"));
+        Assert.Equal("Uniform", AttributeValue(logo, "Stretch"));
+        Assert.Equal("52", AttributeValue(launcher, "Width"));
+        Assert.Equal("52", AttributeValue(launcher, "Height"));
+        Assert.Equal("0", AttributeValue(launcher, "Margin"));
         Assert.DoesNotContain(
             launcher.Descendants(),
             element => element.Name.LocalName == "TextBlock");
@@ -439,6 +450,47 @@ public sealed class ShellLayoutTests
         Assert.Contains("SystemBackdrop = _viewModel.IsIdle ? null", source);
         Assert.Contains("CreateRoundRectRgn(", source);
         Assert.Contains("ApplyWindowShape();", source);
+    }
+
+    [Fact]
+    public void AssistPill_SpotlightUsesThreeNonOverlappingColumns()
+    {
+        var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
+        var prompt = document.Descendants().Single(element =>
+            AttributeValue(element, "Name") == "PromptTextBox");
+        var spotlightGrid = prompt.Parent!;
+        var buttons = spotlightGrid.Elements()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToArray();
+        var logoButton = buttons.Single(button =>
+            AttributeValue(button, "Name") == "SelectScreenTextButton");
+        var sendButton = buttons.Single(button =>
+            AttributeValue(button, "AutomationProperties.Name") ==
+                "Submit AEDA Assist request");
+        var columns = spotlightGrid.Descendants()
+            .Where(element => element.Name.LocalName == "ColumnDefinition")
+            .Select(element => AttributeValue(element, "Width"))
+            .ToArray();
+        var logo = logoButton.Descendants().Single(element =>
+            element.Name.LocalName == "Image");
+
+        Assert.Equal(3, columns.Length);
+        Assert.Equal("46", columns[0]);
+        Assert.Equal("*", columns[1]);
+        Assert.Equal("46", columns[2]);
+        Assert.Equal("10", AttributeValue(spotlightGrid, "ColumnSpacing"));
+        Assert.Null(AttributeValue(logoButton, "Grid.Column"));
+        Assert.Equal("1", AttributeValue(prompt, "Grid.Column"));
+        Assert.Equal("2", AttributeValue(sendButton, "Grid.Column"));
+        Assert.Equal("0", AttributeValue(logoButton, "Padding"));
+        Assert.Equal("ms-appx:///Assets/AedaAppIcon.svg", AttributeValue(logo, "Source"));
+        Assert.Equal("30", AttributeValue(logo, "Width"));
+        Assert.Equal("30", AttributeValue(logo, "Height"));
+        Assert.DoesNotContain(
+            spotlightGrid.DescendantsAndSelf(),
+            element => AttributeValue(element, "Grid.ColumnSpan") is not null ||
+                element.Name.LocalName == "Canvas" ||
+                AttributeValue(element, "Margin")?.StartsWith("-", StringComparison.Ordinal) == true);
     }
 
     [Fact]
@@ -571,7 +623,7 @@ public sealed class ShellLayoutTests
         return document
             .Descendants()
             .Single(element =>
-                element.Name.LocalName == "Button" &&
+                element.Name.LocalName is "Button" or "RadioButton" &&
                 AttributeValue(element, "AutomationProperties.Name") == accessibleName);
     }
 

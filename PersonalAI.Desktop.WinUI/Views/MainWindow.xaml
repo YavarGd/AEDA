@@ -25,7 +25,7 @@
               Padding="16,0,140,0"
               Background="{ThemeResource PersonalAiSidebarBackgroundBrush}">
             <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                <Image Source="ms-appx:///Assets/AedaLogo.svg" Width="28" Height="28"
+                <Image Source="ms-appx:///Assets/AedaAppIcon.svg" Width="28" Height="28"
                        Stretch="Uniform" AutomationProperties.Name="AEDA logo" />
                 <TextBlock Text="AEDA" FontWeight="SemiBold" VerticalAlignment="Center"
                            Foreground="{ThemeResource AedaNavigationForegroundBrush}" />
@@ -53,43 +53,39 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Image Grid.Row="0" Source="ms-appx:///Assets/AedaLogo.svg"
+            <Image Grid.Row="0" Source="ms-appx:///Assets/AedaAppIcon.svg"
                    Width="46" Height="46" Margin="0,4,0,18" Stretch="Uniform"
                    AutomationProperties.Name="AEDA" />
             <StackPanel Grid.Row="1" Spacing="8">
-                <Button Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
-                        Command="{Binding OpenDashboardCommand}" ToolTipService.ToolTip="Dashboard"
-                        AutomationProperties.Name="Dashboard" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
-                    <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
-                                  Background="{ThemeResource PersonalAiActiveBorderBrush}"
-                                  Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <FontIcon Glyph="&#xE80F;" /></Grid>
-                </Button>
-                <Button Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
-                        Command="{Binding OpenChatCommand}" ToolTipService.ToolTip="Chat"
-                        AutomationProperties.Name="Chat" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
-                    <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
-                                  Background="{ThemeResource PersonalAiActiveBorderBrush}"
-                                  Visibility="{Binding IsChatVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <FontIcon Glyph="&#xE8BD;" /></Grid>
-                </Button>
-                <Button Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
-                        Command="{Binding OpenTaskCenterCommand}" ToolTipService.ToolTip="Task Center"
-                        AutomationProperties.Name="Task Center" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
-                    <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
-                                  Background="{ThemeResource PersonalAiActiveBorderBrush}"
-                                  Visibility="{Binding IsTaskCenterVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <FontIcon Glyph="&#xE9D9;" /></Grid>
-                </Button>
+                <RadioButton Style="{StaticResource AedaNavigationButtonStyle}"
+                             GroupName="AedaPrimaryNavigation"
+                             IsChecked="{Binding IsDashboardVisible, Mode=OneWay}"
+                             Command="{Binding OpenDashboardCommand}" ToolTipService.ToolTip="Dashboard"
+                             AutomationProperties.Name="Dashboard">
+                    <FontIcon Glyph="&#xE80F;" />
+                </RadioButton>
+                <RadioButton Style="{StaticResource AedaNavigationButtonStyle}"
+                             GroupName="AedaPrimaryNavigation"
+                             IsChecked="{Binding IsChatVisible, Mode=OneWay}"
+                             Command="{Binding OpenChatCommand}" ToolTipService.ToolTip="Chat"
+                             AutomationProperties.Name="Chat">
+                    <FontIcon Glyph="&#xE8BD;" />
+                </RadioButton>
+                <RadioButton Style="{StaticResource AedaNavigationButtonStyle}"
+                             GroupName="AedaPrimaryNavigation"
+                             IsChecked="{Binding IsTaskCenterVisible, Mode=OneWay}"
+                             Command="{Binding OpenTaskCenterCommand}" ToolTipService.ToolTip="Task Center"
+                             AutomationProperties.Name="Task Center">
+                    <FontIcon Glyph="&#xE9D9;" />
+                </RadioButton>
             </StackPanel>
-            <Button Grid.Row="2" Style="{StaticResource PersonalAiIconButtonStyle}" Width="48" Height="48"
-                    Command="{Binding OpenSettingsCommand}" ToolTipService.ToolTip="Settings"
-                    AutomationProperties.Name="Settings" Foreground="{ThemeResource AedaNavigationForegroundBrush}">
-                <Grid><Border Width="3" Height="24" HorizontalAlignment="Left" CornerRadius="2"
-                              Background="{ThemeResource PersonalAiActiveBorderBrush}"
-                              Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <FontIcon Glyph="&#xE713;" /></Grid>
-            </Button>
+            <RadioButton Grid.Row="2" Style="{StaticResource AedaNavigationButtonStyle}"
+                         GroupName="AedaPrimaryNavigation"
+                         IsChecked="{Binding IsSettingsVisible, Mode=OneWay}"
+                         Command="{Binding OpenSettingsCommand}" ToolTipService.ToolTip="Settings"
+                         AutomationProperties.Name="Settings">
+                <FontIcon Glyph="&#xE713;" />
+            </RadioButton>
         </Grid>
 
         <Grid Grid.Column="1"

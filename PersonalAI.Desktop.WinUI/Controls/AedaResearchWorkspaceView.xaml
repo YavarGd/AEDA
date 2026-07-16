@@ -63,7 +63,7 @@
                         VerticalAlignment="Top"
                         Visibility="{Binding HasNoSelectedReport, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <StackPanel Spacing="10">
-                        <Image Source="ms-appx:///Assets/AedaLogo.svg" Width="48" Height="48" HorizontalAlignment="Left" />
+                        <Image Source="ms-appx:///Assets/AedaAppIcon.svg" Width="48" Height="48" HorizontalAlignment="Left" />
                         <TextBlock Text="Verify with local evidence" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
                         <TextBlock Text="Paste a claim to build a bounded report from local memory and indexed knowledge."
                                    TextWrapping="Wrap" MaxWidth="440" HorizontalAlignment="Left"

@@ -6,6 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Assets\AedaAppIcon.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\AedaLogo.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\AedaAppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

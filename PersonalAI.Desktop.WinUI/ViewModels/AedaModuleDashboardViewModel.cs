@@ -38,6 +38,8 @@ public sealed partial class AedaModuleDashboardViewModel : ObservableObject
     public ModuleTileViewModel MemoryTile => Tile(AedaModuleKind.Memory);
     public ModuleTileViewModel ResearchTile => Tile(AedaModuleKind.Research);
     public ModuleTileViewModel TaskCenterTile => Tile(AedaModuleKind.TaskCenter);
+    public IReadOnlyList<ModuleTileViewModel> AvailableTiles =>
+        [CodeTile, MemoryTile, ResearchTile, TaskCenterTile];
     public IEnumerable<ModuleTileViewModel> DeferredTiles =>
         ModuleTiles.Where(tile => !tile.IsEnabled);
 

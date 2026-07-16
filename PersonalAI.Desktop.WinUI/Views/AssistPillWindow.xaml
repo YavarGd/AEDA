@@ -20,10 +20,10 @@
             <Ellipse Margin="3" Stroke="{ThemeResource AedaAssistForegroundBrush}"
                      StrokeThickness="1" Opacity="0.12" />
                 <Button x:Name="LauncherButton"
-                        Margin="3"
+                        Margin="0"
                         Padding="0"
-                        Width="46"
-                        Height="46"
+                        Width="52"
+                        Height="52"
                         MinWidth="0"
                         MinHeight="0"
                         HorizontalContentAlignment="Stretch"
@@ -42,8 +42,9 @@
                     <Button.RenderTransform>
                         <ScaleTransform x:Name="LauncherScale" ScaleX="1" ScaleY="1" />
                     </Button.RenderTransform>
-                    <Image Source="ms-appx:///Assets/AedaLogo.svg"
-                           Width="32" Height="32" Stretch="Uniform"
+                    <Image Source="ms-appx:///Assets/AedaAppIcon.svg"
+                           Width="42" Height="42" Stretch="Uniform"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
                            AutomationProperties.Name="AEDA logo" />
                 </Button>
                 <Rectangle Height="6" VerticalAlignment="Top" Fill="Transparent"
@@ -68,22 +69,23 @@
             <Border.RenderTransform>
                 <ScaleTransform x:Name="SpotlightScale" ScaleX="1" ScaleY="1" />
             </Border.RenderTransform>
-            <Grid>
+            <Grid ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="46" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="46" />
                 </Grid.ColumnDefinitions>
                 <Button x:Name="SelectScreenTextButton"
-                        Width="38"
-                        Height="38"
+                        Width="40"
+                        Height="40"
                         MinWidth="0"
                         Margin="0"
+                        Padding="0"
                         Style="{StaticResource AedaAssistActionButtonStyle}"
                         Click="SelectScreenTextButton_Click"
                         AutomationProperties.Name="Select text on screen"
                         ToolTipService.ToolTip="Select text on screen">
-                    <Image Source="ms-appx:///Assets/AedaLogo.svg"
+                    <Image Source="ms-appx:///Assets/AedaAppIcon.svg"
                            Width="30" Height="30" Stretch="Uniform" />
                 </Button>
                 <TextBox x:Name="PromptTextBox"
@@ -105,11 +107,12 @@
                          PlaceholderText="How can I help you?"
                          Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <Button Grid.Column="2"
-                        Width="38"
-                        Height="38"
+                        Width="40"
+                        Height="40"
                         MinWidth="0"
                         Margin="0"
-                        CornerRadius="19"
+                        Padding="0"
+                        CornerRadius="20"
                         Command="{Binding SubmitCommand}"
                         AutomationProperties.Name="Submit AEDA Assist request"
                         ToolTipService.ToolTip="Submit">
@@ -145,7 +148,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Image Width="26" Height="26" Stretch="Uniform"
-                           Source="ms-appx:///Assets/AedaLogo.svg"
+                           Source="ms-appx:///Assets/AedaAppIcon.svg"
                            AutomationProperties.Name="AEDA logo" />
                     <Grid x:Name="ExpandedDragRegion"
                           Grid.Column="1"

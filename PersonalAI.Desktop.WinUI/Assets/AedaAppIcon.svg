@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="AEDA app icon">
+  <circle cx="128" cy="128" r="112" fill="#B0A5E8"/>
+  <path d="M49.6 128 Q103.36 94.4 128 93.28 Q152.64 94.4 206.4 128 Q152.64 161.6 128 162.72 Q103.36 161.6 49.6 128 Z" fill="#1E1A40"/>
+  <circle cx="128" cy="128" r="14.56" fill="#B0A5E8"/>
+  <circle cx="133.6" cy="122.4" r="5.04" fill="#1E1A40"/>
+</svg>

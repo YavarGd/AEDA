@@ -133,6 +133,7 @@ public sealed class AedaShellDashboardTests
             tile.Kind != AedaModuleKind.TaskCenter &&
             tile.Kind != AedaModuleKind.Memory &&
             tile.Kind != AedaModuleKind.Research).ToArray();
+        var available = dashboard.AvailableTiles.ToArray();
 
         Assert.Equal(
             tiles.OrderBy(tile => tile.Descriptor.SortOrder)
@@ -142,6 +143,8 @@ public sealed class AedaShellDashboardTests
         Assert.True(taskCenter.IsEnabled);
         Assert.True(memory.IsEnabled);
         Assert.True(research.IsEnabled);
+        Assert.Equal(4, available.Length);
+        Assert.All(available, tile => Assert.True(tile.IsEnabled));
         Assert.Equal("Task Center", taskCenter.DisplayName);
         Assert.Equal("AEDA Memory", memory.DisplayName);
         Assert.Equal("AEDA Research", research.DisplayName);

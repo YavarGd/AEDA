@@ -54,6 +54,7 @@ public partial class App : Application
 
     public App()
     {
+        AedaWindowChrome.InitializeProcessIdentity();
         InitializeComponent();
     }
 
