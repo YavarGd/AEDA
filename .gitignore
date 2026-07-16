@@ -478,5 +478,28 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Python environments and bytecode
+**/.venv/
+**/__pycache__/
+*.py[cod]
+
+# Local application data and diagnostics
+*.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.local.json
+.env.*
+!*.example.env
+screenshots/
+captured-context/
+
+# Downloaded local model files
+*.gguf
+*.onnx
+*.safetensors
+*.pt
+*.pth
+
 # Vim temporary swap files
 *.swp
