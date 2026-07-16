@@ -135,3 +135,94 @@ public static class AssistScrollFollowPolicy
         double.IsFinite(verticalOffset) &&
         scrollableHeight - verticalOffset <= NearBottomThreshold;
 }
+
+public enum AssistInvocationKind
+{
+    Pointer,
+    Keyboard
+}
+
+public sealed record AssistEntranceMotion(bool IsSpatial, double InitialScale, int DurationMilliseconds);
+
+public static class AssistMotionPolicy
+{
+    public const int ResponseEntranceMilliseconds = 160;
+    public const int SpotlightEntranceMilliseconds = 140;
+    public const int FirstContentFadeMilliseconds = 120;
+
+    public static AssistEntranceMotion Entrance(
+        AssistInvocationKind invocationKind,
+        bool spotlight,
+        bool animationsEnabled) =>
+        invocationKind == AssistInvocationKind.Pointer && animationsEnabled
+            ? new(true, spotlight ? 0.98 : 0.97,
+                spotlight ? SpotlightEntranceMilliseconds : ResponseEntranceMilliseconds)
+            : new(false, 1, 0);
+}
+
+public sealed class AssistHeightInterpolator
+{
+    private int _startHeight;
+    private TimeSpan _startTime;
+    private TimeSpan _duration;
+
+    public int CurrentHeight { get; private set; }
+    public int TargetHeight { get; private set; }
+    public long InvocationId { get; private set; }
+    public bool IsActive { get; private set; }
+
+    public int Retarget(
+        int currentHeight,
+        int requestedHeight,
+        int maximumHeight,
+        bool streaming,
+        bool animationsEnabled,
+        long invocationId,
+        TimeSpan now)
+    {
+        var maximum = Math.Max(1, maximumHeight);
+        CurrentHeight = Math.Clamp(currentHeight, 1, maximum);
+        TargetHeight = Math.Clamp(requestedHeight, 1, maximum);
+        if (streaming)
+        {
+            TargetHeight = Math.Max(CurrentHeight, TargetHeight);
+        }
+
+        InvocationId = invocationId;
+        _startHeight = CurrentHeight;
+        _startTime = now;
+        _duration = TimeSpan.FromMilliseconds(Math.Abs(TargetHeight - CurrentHeight) <= 48 ? 120 : 180);
+        IsActive = animationsEnabled && CurrentHeight != TargetHeight;
+        if (!IsActive)
+        {
+            CurrentHeight = TargetHeight;
+        }
+
+        return CurrentHeight;
+    }
+
+    public bool TrySample(TimeSpan now, long invocationId, out int height)
+    {
+        height = CurrentHeight;
+        if (!IsActive || invocationId != InvocationId)
+        {
+            return false;
+        }
+
+        var progress = Math.Clamp((now - _startTime).TotalMilliseconds / _duration.TotalMilliseconds, 0, 1);
+        var eased = 1 - Math.Pow(1 - progress, 3);
+        height = (int)Math.Round(_startHeight + ((TargetHeight - _startHeight) * eased));
+        height = Math.Clamp(height, Math.Min(_startHeight, TargetHeight), Math.Max(_startHeight, TargetHeight));
+        CurrentHeight = height;
+        if (progress >= 1)
+        {
+            IsActive = false;
+            CurrentHeight = TargetHeight;
+            height = TargetHeight;
+        }
+
+        return true;
+    }
+
+    public void Cancel() => IsActive = false;
+}

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -32,14 +33,23 @@ public sealed partial class AssistPillWindow : Window
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly nint _windowHandle;
     private readonly DispatcherQueueTimer _responseResizeTimer;
+    private readonly DispatcherQueueTimer _heightAnimationTimer;
+    private readonly AssistHeightInterpolator _heightInterpolator = new();
+    private readonly Stopwatch _motionClock = Stopwatch.StartNew();
     private readonly SystemBackdrop? _expandedBackdrop;
     private readonly UISettings _uiSettings = new();
     private CancellationTokenSource? _openingCancellation;
     private Storyboard? _launcherReleaseStoryboard;
+    private Storyboard? _surfaceEntranceStoryboard;
+    private Storyboard? _firstContentStoryboard;
     private nint _focusReturnWindow;
     private int _isTransitioning;
     private bool _followLatest = true;
     private long _pendingResizeInvocationId;
+    private long _responseEntranceInvocationId;
+    private long _spotlightEntranceInvocationId;
+    private long _firstContentInvocationId;
+    private AssistInvocationKind _invocationKind = AssistInvocationKind.Keyboard;
 
     public AssistPillWindow(
         AssistPillViewModel viewModel,
@@ -65,6 +75,9 @@ public sealed partial class AssistPillWindow : Window
             ApplyResponseSize();
             FollowLatestIfNeeded();
         };
+        _heightAnimationTimer = Root.DispatcherQueue.CreateTimer();
+        _heightAnimationTimer.Interval = TimeSpan.FromMilliseconds(16);
+        _heightAnimationTimer.Tick += (_, _) => ApplyHeightAnimationFrame();
         _windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
         if (MicaController.IsSupported())
@@ -91,6 +104,7 @@ public sealed partial class AssistPillWindow : Window
         _placementService.ConfigureWindow(this, rememberPositionChanges: false);
         SetNoActivate(true);
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        Closed += (_, _) => CancelMotion();
     }
 
     public void ShowIdle()
@@ -107,7 +121,7 @@ public sealed partial class AssistPillWindow : Window
         }
     }
 
-    public async Task ToggleAsync()
+    public async Task ToggleAsync(bool pointerTriggered = false)
     {
         if (Interlocked.CompareExchange(ref _isTransitioning, 1, 0) != 0)
         {
@@ -117,6 +131,9 @@ public sealed partial class AssistPillWindow : Window
 
         try
         {
+            _invocationKind = pointerTriggered
+                ? AssistInvocationKind.Pointer
+                : AssistInvocationKind.Keyboard;
             if (_viewModel.IsExpanded)
             {
                 if (_viewModel.IsDetectingContext)
@@ -205,6 +222,11 @@ public sealed partial class AssistPillWindow : Window
                 _followLatest = true;
             }
 
+            if (!_viewModel.IsStreaming)
+            {
+                CancelHeightAnimation();
+            }
+
             ApplyState(
                 reposition: _viewModel.State is AssistPillState.IdlePill or
                     AssistPillState.SpotlightPrompt ||
@@ -212,7 +234,7 @@ public sealed partial class AssistPillWindow : Window
         }
         else if (e.PropertyName == nameof(AssistPillViewModel.InvocationId))
         {
-            _responseResizeTimer.Stop();
+            CancelMotion();
             _pendingResizeInvocationId = _viewModel.InvocationId;
             _followLatest = true;
             SetResponseScrolling(false);
@@ -224,6 +246,7 @@ public sealed partial class AssistPillWindow : Window
         {
             _pendingResizeInvocationId = _viewModel.InvocationId;
             _responseResizeTimer.Start();
+            StartFirstContentFade();
         }
     }
 
@@ -231,8 +254,14 @@ public sealed partial class AssistPillWindow : Window
     {
         if (_viewModel.State == AssistPillState.Hidden)
         {
+            CancelMotion();
             AppWindow.Hide();
             return;
+        }
+
+        if (!_viewModel.IsResponseSurface)
+        {
+            CancelHeightAnimation();
         }
 
         var scale = GetRasterizationScale();
@@ -248,6 +277,7 @@ public sealed partial class AssistPillWindow : Window
         AppWindow.Resize(size);
         ApplyWindowShape();
         SetNoActivate(_viewModel.IsIdle);
+        StartSurfaceEntrance();
 
         if (!reposition)
         {
@@ -292,10 +322,163 @@ public sealed partial class AssistPillWindow : Window
             return;
         }
 
-        AppWindow.Resize(GetResponseSize());
+        var target = GetResponseSize();
+        var scale = GetRasterizationScale();
+        var area = _placementService.GetActivationWorkingArea(
+            _foregroundWindowTracker.GetLastValidExternalWindow());
+        var maximum = Math.Max(1, Math.Min(
+            AssistResponseSizingPolicy.ScalePixels(480, scale),
+            (int)Math.Round(area.Height - (40 * scale))));
+        var current = AppWindow.Size;
+        var height = _heightInterpolator.Retarget(
+            current.Height,
+            target.Height,
+            maximum,
+            _viewModel.IsStreaming,
+            _uiSettings.AnimationsEnabled,
+            _viewModel.InvocationId,
+            _motionClock.Elapsed);
+        ResizeResponseWindow(target.Width, height);
+        if (_heightInterpolator.IsActive)
+        {
+            _heightAnimationTimer.Start();
+        }
+    }
+
+    private void ApplyHeightAnimationFrame()
+    {
+        var invocationId = _viewModel.InvocationId;
+        if (!_viewModel.IsResponseSurface ||
+            !_heightInterpolator.TrySample(_motionClock.Elapsed, invocationId, out var height))
+        {
+            _heightAnimationTimer.Stop();
+            return;
+        }
+
+        ResizeResponseWindow(AppWindow.Size.Width, height);
+        if (!_heightInterpolator.IsActive)
+        {
+            _heightAnimationTimer.Stop();
+            FollowLatestIfNeeded();
+        }
+    }
+
+    private void ResizeResponseWindow(int width, int height)
+    {
+        AppWindow.Resize(new SizeInt32(width, height));
         _placementService.PlaceCentered(
             this,
             _foregroundWindowTracker.GetLastValidExternalWindow());
+    }
+
+    private void StartSurfaceEntrance()
+    {
+        if (_viewModel.IsIdle)
+        {
+            return;
+        }
+
+        var spotlight = _viewModel.IsFallbackInput;
+        ref var animatedInvocationId = ref (spotlight
+            ? ref _spotlightEntranceInvocationId
+            : ref _responseEntranceInvocationId);
+        if (animatedInvocationId == _viewModel.InvocationId)
+        {
+            return;
+        }
+
+        animatedInvocationId = _viewModel.InvocationId;
+        var motion = AssistMotionPolicy.Entrance(
+            _invocationKind,
+            spotlight,
+            _uiSettings.AnimationsEnabled);
+        var surface = spotlight ? SpotlightSurface : ResponseCard;
+        var transform = spotlight ? SpotlightScale : ResponseScale;
+        _surfaceEntranceStoryboard?.Stop();
+        surface.Opacity = 1;
+        transform.ScaleX = 1;
+        transform.ScaleY = 1;
+        if (!motion.IsSpatial)
+        {
+            return;
+        }
+
+        surface.Opacity = 0;
+        transform.ScaleX = motion.InitialScale;
+        transform.ScaleY = motion.InitialScale;
+        var duration = new Duration(TimeSpan.FromMilliseconds(motion.DurationMilliseconds));
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        _surfaceEntranceStoryboard = new Storyboard();
+        AddAnimation(_surfaceEntranceStoryboard, surface, nameof(UIElement.Opacity), 1, duration, easing);
+        AddAnimation(_surfaceEntranceStoryboard, transform, nameof(ScaleTransform.ScaleX), 1, duration, easing);
+        AddAnimation(_surfaceEntranceStoryboard, transform, nameof(ScaleTransform.ScaleY), 1, duration, easing);
+        _surfaceEntranceStoryboard.Begin();
+    }
+
+    private void StartFirstContentFade()
+    {
+        if (string.IsNullOrEmpty(_viewModel.Response) ||
+            _firstContentInvocationId == _viewModel.InvocationId)
+        {
+            return;
+        }
+
+        _firstContentInvocationId = _viewModel.InvocationId;
+        _firstContentStoryboard?.Stop();
+        ResponsePresenter.Opacity = 1;
+        if (!_uiSettings.AnimationsEnabled)
+        {
+            return;
+        }
+
+        ResponsePresenter.Opacity = 0;
+        _firstContentStoryboard = new Storyboard();
+        AddAnimation(
+            _firstContentStoryboard,
+            ResponsePresenter,
+            nameof(UIElement.Opacity),
+            1,
+            new Duration(TimeSpan.FromMilliseconds(AssistMotionPolicy.FirstContentFadeMilliseconds)),
+            new CubicEase { EasingMode = EasingMode.EaseOut });
+        _firstContentStoryboard.Begin();
+    }
+
+    private static void AddAnimation(
+        Storyboard storyboard,
+        DependencyObject target,
+        string property,
+        double to,
+        Duration duration,
+        EasingFunctionBase easing)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = duration,
+            EasingFunction = easing
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        storyboard.Children.Add(animation);
+    }
+
+    private void CancelHeightAnimation()
+    {
+        _heightAnimationTimer.Stop();
+        _heightInterpolator.Cancel();
+    }
+
+    private void CancelMotion()
+    {
+        _responseResizeTimer.Stop();
+        CancelHeightAnimation();
+        _surfaceEntranceStoryboard?.Stop();
+        _firstContentStoryboard?.Stop();
+        SpotlightSurface.Opacity = 1;
+        ResponseCard.Opacity = 1;
+        ResponsePresenter.Opacity = 1;
+        SpotlightScale.ScaleX = SpotlightScale.ScaleY = 1;
+        ResponseScale.ScaleX = ResponseScale.ScaleY = 1;
     }
 
     private void ResponseScrollViewer_ViewChanged(
@@ -347,7 +530,7 @@ public sealed partial class AssistPillWindow : Window
             return;
         }
 
-        await ToggleAsync();
+        await ToggleAsync(pointerTriggered: true);
     }
 
     private async void SelectScreenTextButton_Click(object sender, RoutedEventArgs e)

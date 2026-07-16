@@ -501,10 +501,14 @@ public sealed class ShellLayoutTests
         Assert.Contains("_openingCancellation?.Cancel()", source);
         Assert.Contains("SetForegroundWindow(_windowHandle)", source);
         Assert.Contains("PromptTextBox.Focus(FocusState.Programmatic)", source);
-        Assert.Equal(
-            1,
-            source.Split("new Storyboard()", StringSplitOptions.None).Length - 1);
+        Assert.Contains("AssistMotionPolicy.Entrance", source);
+        Assert.Contains("AssistHeightInterpolator", source);
+        Assert.Contains("CubicEase", source);
+        Assert.Contains("CancelHeightAnimation()", source);
+        Assert.Contains("ToggleAsync(pointerTriggered: true)", source);
+        Assert.Contains("ToggleAsync(bool pointerTriggered = false)", source);
         Assert.DoesNotContain("ScaleX = 0;", source);
+        Assert.DoesNotContain("BounceEase", source);
         Assert.DoesNotContain("AedaAssistGlassBrush", document.ToString());
         Assert.DoesNotContain("PersonalAiElevatedSurfaceBrush", document.ToString());
         Assert.DoesNotContain("PersonalAiSubtleSurfaceBrush", document.ToString());
