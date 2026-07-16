@@ -11,15 +11,14 @@
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </Grid.Resources>
 
-        <Border x:Name="IdleSurface"
+        <Grid x:Name="IdleSurface"
                 Width="52"
                 Height="52"
-                Background="{ThemeResource AedaAssistIdleBrush}"
-                BorderBrush="{ThemeResource AedaAssistBorderBrush}"
-                BorderThickness="1"
-                CornerRadius="26"
                 Visibility="{Binding IsIdle, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid>
+            <Ellipse Fill="{ThemeResource AedaAssistIdleBrush}"
+                     Stroke="{ThemeResource AedaAssistBorderBrush}" StrokeThickness="1" />
+            <Ellipse Margin="3" Stroke="{ThemeResource AedaAssistForegroundBrush}"
+                     StrokeThickness="1" Opacity="0.12" />
                 <Button x:Name="LauncherButton"
                         Margin="3"
                         Padding="0"
@@ -55,12 +54,11 @@
                            PointerPressed="IdleDragRegion_PointerPressed" />
                 <Rectangle Width="6" HorizontalAlignment="Right" Fill="Transparent"
                            PointerPressed="IdleDragRegion_PointerPressed" />
-            </Grid>
-        </Border>
+        </Grid>
 
         <Border x:Name="SpotlightSurface"
                 Margin="0"
-                Padding="8"
+                Padding="6"
                 Background="{ThemeResource AedaAssistSpotlightBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
@@ -72,40 +70,46 @@
             </Border.RenderTransform>
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="40" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="40" />
                 </Grid.ColumnDefinitions>
                 <Button x:Name="SelectScreenTextButton"
-                        Width="42"
-                        Height="42"
+                        Width="38"
+                        Height="38"
                         MinWidth="0"
-                        Margin="1"
+                        Margin="0"
+                        Style="{StaticResource AedaAssistActionButtonStyle}"
                         Click="SelectScreenTextButton_Click"
                         AutomationProperties.Name="Select text on screen"
                         ToolTipService.ToolTip="Select text on screen">
                     <Image Source="ms-appx:///Assets/AedaLogo.svg"
-                           Width="34" Height="34" Stretch="Uniform" />
+                           Width="30" Height="30" Stretch="Uniform" />
                 </Button>
                 <TextBox x:Name="PromptTextBox"
                          Grid.Column="1"
-                         MinHeight="44"
-                         Padding="12,9"
+                         MinHeight="40"
+                         Padding="10,7"
                          Background="Transparent"
-                         BorderBrush="{ThemeResource AedaFocusStroke}"
-                         BorderThickness="1"
-                         CornerRadius="12"
+                         BorderThickness="0"
+                         CornerRadius="16"
+                         UseSystemFocusVisuals="True"
+                         FocusVisualMargin="-2"
+                         FocusVisualPrimaryThickness="1"
+                         FocusVisualSecondaryThickness="0"
+                         FocusVisualPrimaryBrush="{ThemeResource AedaFocusStroke}"
+                         FocusVisualSecondaryBrush="Transparent"
                          AcceptsReturn="False"
                          AutomationProperties.Name="AEDA Assist prompt"
                          KeyDown="PromptTextBox_KeyDown"
                          PlaceholderText="How can I help you?"
                          Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <Button Grid.Column="2"
-                        Width="42"
-                        Height="42"
+                        Width="38"
+                        Height="38"
                         MinWidth="0"
-                        Margin="0,1,1,1"
-                        CornerRadius="21"
+                        Margin="0"
+                        CornerRadius="19"
                         Command="{Binding SubmitCommand}"
                         AutomationProperties.Name="Submit AEDA Assist request"
                         ToolTipService.ToolTip="Submit">
@@ -116,7 +120,7 @@
 
         <Border x:Name="ResponseCard"
                 Margin="0"
-                Padding="14"
+                Padding="12"
                 Background="{ThemeResource AedaAssistResponseBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
@@ -126,7 +130,7 @@
             <Border.RenderTransform>
                 <ScaleTransform x:Name="ResponseScale" ScaleX="1" ScaleY="1" />
             </Border.RenderTransform>
-            <Grid RowSpacing="10">
+            <Grid RowSpacing="7">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -140,18 +144,18 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Image Width="32" Height="32" Stretch="Uniform"
+                    <Image Width="26" Height="26" Stretch="Uniform"
                            Source="ms-appx:///Assets/AedaLogo.svg"
                            AutomationProperties.Name="AEDA logo" />
                     <Grid x:Name="ExpandedDragRegion"
                           Grid.Column="1"
-                          Margin="10,0"
+                          Margin="8,0"
                           PointerPressed="DragRegion_PointerPressed">
                         <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
-                            <TextBlock FontSize="14"
+                            <TextBlock FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource AedaAssistForegroundBrush}"
-                                       Text="AEDA Assist" />
+                                       Text="AEDA · Local" />
                             <ProgressRing Width="14"
                                           Height="14"
                                           IsActive="{Binding IsStreaming}"
@@ -189,7 +193,7 @@
                                TextTrimming="CharacterEllipsis" />
                     <ScrollViewer x:Name="ResponseScrollViewer"
                                   Grid.Row="1"
-                                  Margin="0,8,0,0"
+                                  Margin="0,5,0,0"
                                   HorizontalScrollBarVisibility="Disabled"
                                   HorizontalScrollMode="Disabled"
                                   VerticalScrollBarVisibility="Hidden"
@@ -210,7 +214,7 @@
 
                 <StackPanel Grid.Row="2"
                             HorizontalAlignment="Right"
-                            MinHeight="32"
+                            MinHeight="28"
                             Orientation="Horizontal"
                             Spacing="8">
                     <Button Command="{Binding CancelCommand}"

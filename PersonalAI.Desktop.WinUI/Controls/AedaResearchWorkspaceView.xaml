@@ -41,7 +41,8 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}">
+                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}"
+                            Visibility="{Binding HasRecentReports, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <StackPanel Spacing="8">
                             <TextBlock Text="Recent reports" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
                             <TextBlock Text="No verification reports yet." Style="{StaticResource PersonalAiSecondaryTextStyle}"
@@ -58,7 +59,25 @@
                     </Border>
                 </StackPanel>
 
-                <Border Grid.Column="1" Style="{StaticResource PersonalAiWorkspaceCardStyle}">
+                <Border Grid.Column="1" Style="{StaticResource PersonalAiWorkspaceCardStyle}"
+                        VerticalAlignment="Top"
+                        Visibility="{Binding HasNoSelectedReport, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel Spacing="10">
+                        <Image Source="ms-appx:///Assets/AedaLogo.svg" Width="48" Height="48" HorizontalAlignment="Left" />
+                        <TextBlock Text="Verify with local evidence" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
+                        <TextBlock Text="Paste a claim to build a bounded report from local memory and indexed knowledge."
+                                   TextWrapping="Wrap" MaxWidth="440" HorizontalAlignment="Left"
+                                   Style="{StaticResource PersonalAiSecondaryTextStyle}" />
+                        <StackPanel Spacing="5" Margin="0,4,0,0">
+                            <TextBlock Text="1  Extract claims" />
+                            <TextBlock Text="2  Review local evidence" />
+                            <TextBlock Text="3  Inspect citations and gaps" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource PersonalAiWorkspaceCardStyle}"
+                        Visibility="{Binding HasSelectedReport, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid RowSpacing="12">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                         <StackPanel Spacing="6">
@@ -71,9 +90,6 @@
                         </StackPanel>
                         <ScrollViewer Grid.Row="1">
                             <StackPanel Spacing="10">
-                                <TextBlock Text="Select a report to inspect claims, evidence, citations, and unresolved gaps."
-                                           TextWrapping="Wrap" Style="{StaticResource PersonalAiSecondaryTextStyle}"
-                                           Visibility="{Binding HasNoSelectedReport, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <TextBlock Text="Evidence" FontWeight="SemiBold" />
                                 <ItemsControl ItemsSource="{Binding EvidenceItems}">
                                     <ItemsControl.ItemTemplate><DataTemplate>

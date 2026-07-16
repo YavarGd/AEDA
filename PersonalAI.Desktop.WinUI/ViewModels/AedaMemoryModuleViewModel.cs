@@ -87,6 +87,14 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     public bool HasNoDocuments => !HasDocuments;
 
+    public bool HasStoredContent => HasRecentMemories || HasTaskOutcomes || HasDocuments;
+
+    public bool HasNoStoredContent => !HasStoredContent;
+
+    public bool HasSelectedMemory => SelectedMemory is not null;
+
+    public bool HasNoSelectedMemory => !HasSelectedMemory;
+
     public bool HasSearchResults => SearchResults.Count > 0;
 
     public bool HasRetrievalPreview => RetrievalPreview.Count > 0;
@@ -252,6 +260,12 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         NotifyDashboardChanged();
     }
 
+    partial void OnSelectedMemoryChanged(AedaMemoryRecordDetail? value)
+    {
+        OnPropertyChanged(nameof(HasSelectedMemory));
+        OnPropertyChanged(nameof(HasNoSelectedMemory));
+    }
+
     partial void OnSearchTextChanged(string value)
     {
         OnPropertyChanged(nameof(CanSearchMemories));
@@ -285,6 +299,8 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoTaskOutcomes));
         OnPropertyChanged(nameof(HasDocuments));
         OnPropertyChanged(nameof(HasNoDocuments));
+        OnPropertyChanged(nameof(HasStoredContent));
+        OnPropertyChanged(nameof(HasNoStoredContent));
         OnPropertyChanged(nameof(TotalMemoryCountText));
         OnPropertyChanged(nameof(IndexedKnowledgeText));
         OnPropertyChanged(nameof(PrivacyStatusText));

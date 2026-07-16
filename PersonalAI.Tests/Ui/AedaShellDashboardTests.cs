@@ -242,6 +242,8 @@ public sealed class AedaShellDashboardTests
         Assert.False(viewModel.CreateExplicitMemoryCommand.CanExecute(null));
         Assert.False(viewModel.SearchMemoriesCommand.CanExecute(null));
         Assert.False(viewModel.PreviewRetrievalCommand.CanExecute(null));
+        Assert.True(viewModel.HasNoStoredContent);
+        Assert.True(viewModel.HasNoSelectedMemory);
 
         await viewModel.InitializeAsync();
         viewModel.NewMemoryText = "Remember explicit saves only.";
@@ -251,6 +253,8 @@ public sealed class AedaShellDashboardTests
 
         Assert.True(viewModel.HasDashboard);
         Assert.True(viewModel.HasRecentMemories);
+        Assert.True(viewModel.HasStoredContent);
+        Assert.False(viewModel.HasNoStoredContent);
         Assert.True(viewModel.CreateExplicitMemoryCommand.CanExecute(null));
         Assert.True(viewModel.SearchMemoriesCommand.CanExecute(null));
         Assert.True(viewModel.PreviewRetrievalCommand.CanExecute(null));
@@ -261,6 +265,8 @@ public sealed class AedaShellDashboardTests
 
         Assert.True(viewModel.HasSearchResults);
         Assert.True(viewModel.HasRetrievalPreview);
+        await viewModel.OpenMemoryDetailAsync(viewModel.Dashboard!.RecentMemories[0]);
+        Assert.True(viewModel.HasSelectedMemory);
         Assert.All(viewModel.RetrievalPreview, item =>
             Assert.True(item.PreviewText.Length <= 280));
     }

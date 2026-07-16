@@ -26,10 +26,10 @@
     <SolidColorBrush x:Key="PersonalAiWarningBrush" Color="#8A6914" />
     <SolidColorBrush x:Key="PersonalAiErrorBrush" Color="#B33A4B" />
     <SolidColorBrush x:Key="PersonalAiDangerBrush" Color="#B33A4B" />
-    <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="#F5FEFDFF" />
-    <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="#FAFEFDFF" />
-    <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="#FEFDFF" />
-    <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#406B5EC7" />
+    <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="#D8E8E2FA" />
+    <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="#ECFDFBFF" />
+    <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="#F5FDFBFF" />
+    <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#336758C5" />
     <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="#1E1A40" />
     <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="#5B5670" />
     <SolidColorBrush x:Key="AedaDashboardHeroBrush" Color="#E1DBF7" />

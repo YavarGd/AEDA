@@ -581,10 +581,6 @@
                         <Button Command="{Binding TaskCenter.RefreshCommand}"
                                 Content="Refresh"
                                 ToolTipService.ToolTip="Refresh Task Center" />
-                        <Button Command="{Binding OpenDashboardCommand}"
-                                Content="Dashboard" />
-                        <Button Command="{Binding OpenChatCommand}"
-                                Content="Chat" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -877,10 +873,6 @@
                         <TextBlock Text="{Binding DisplayName}" Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
                         <TextBlock Text="{Binding ShortDescription}" Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
                     </StackPanel>
-                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                        <Button Command="{Binding OpenDashboardCommand}" Content="Dashboard" />
-                        <Button Command="{Binding OpenChatCommand}" Content="Chat" />
-                    </StackPanel>
                 </Grid>
             </Border>
             <controls:AedaResearchWorkspaceView Grid.Row="1" Margin="0,14,0,0" DataContext="{Binding AedaResearch}" />
@@ -896,10 +888,6 @@
                     <StackPanel DataContext="{Binding AedaMemory}">
                         <TextBlock Text="{Binding DisplayName}" Style="{ThemeResource PersonalAiPageTitleTextStyle}" />
                         <TextBlock Text="{Binding PrivacyStatusText}" Style="{ThemeResource PersonalAiSecondaryTextStyle}" />
-                    </StackPanel>
-                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                        <Button Command="{Binding OpenDashboardCommand}" Content="Dashboard" />
-                        <Button Command="{Binding OpenChatCommand}" Content="Chat" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -962,10 +950,6 @@
                         <Button Command="{Binding AedaCode.RefreshCommand}"
                                 Content="Refresh"
                                 AutomationProperties.Name="Refresh AEDA Code workflow" />
-                        <Button Command="{Binding OpenTaskCenterCommand}"
-                                Content="Task Center" />
-                        <Button Command="{Binding OpenDashboardCommand}"
-                                Content="Dashboard" />
                     </StackPanel>
                 </Grid>
             </Border>

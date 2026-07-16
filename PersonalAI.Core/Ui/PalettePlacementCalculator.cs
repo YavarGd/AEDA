@@ -78,9 +78,9 @@ public static class AssistResponseSizingPolicy
         var width = Math.Max(1, Math.Min(
             (int)Math.Round(560 * scale),
             (int)Math.Round(workingArea.Width - (40 * scale))));
-        var minimumHeight = (int)Math.Round(180 * scale);
+        var minimumHeight = (int)Math.Round(148 * scale);
         var maximumHeight = Math.Max(1, Math.Min(
-            (int)Math.Round(480 * scale),
+            (int)Math.Round(420 * scale),
             (int)Math.Round(workingArea.Height - (40 * scale))));
         var requestedHeight = double.IsFinite(desiredHeight)
             ? (int)Math.Ceiling(Math.Max(0, desiredHeight) * scale)
@@ -105,14 +105,14 @@ public static class AssistResponseSizingPolicy
             Math.Min(
                 (int)Math.Round(560 * scale),
                 (int)Math.Round(workingArea.Width - (40 * scale))));
-        var minimumHeight = (int)Math.Round(180 * scale);
+        var minimumHeight = (int)Math.Round(148 * scale);
         var uncappedHeight = minimumHeight +
             (int)Math.Ceiling(Math.Max(0, visibleCharacters) / 72d) *
             (int)Math.Round(18 * scale);
         var maximumHeight = Math.Max(
             1,
             Math.Min(
-                (int)Math.Round(480 * scale),
+                (int)Math.Round(420 * scale),
                 (int)Math.Round(workingArea.Height - (40 * scale))));
         var height = Math.Clamp(
             uncappedHeight,

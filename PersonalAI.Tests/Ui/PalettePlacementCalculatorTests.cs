@@ -77,7 +77,7 @@ public sealed class PalettePlacementCalculatorTests
             1);
 
         Assert.Equal(560, layout.Width);
-        Assert.Equal(180, layout.Height);
+        Assert.Equal(148, layout.Height);
         Assert.False(layout.RequiresScrolling);
     }
 
@@ -89,9 +89,9 @@ public sealed class PalettePlacementCalculatorTests
         var longerResponse = AssistResponseSizingPolicy.Calculate(1_000, area, 1);
         var maximum = AssistResponseSizingPolicy.Calculate(100_000, area, 1);
 
-        Assert.True(shortResponse.Height > 180);
+        Assert.True(shortResponse.Height > 148);
         Assert.True(longerResponse.Height > shortResponse.Height);
-        Assert.Equal(480, maximum.Height);
+        Assert.Equal(420, maximum.Height);
         Assert.True(maximum.RequiresScrolling);
     }
 
@@ -108,7 +108,7 @@ public sealed class PalettePlacementCalculatorTests
             1);
 
         Assert.Equal(1_120, scaled.Width);
-        Assert.Equal(360, scaled.Height);
+        Assert.Equal(296, scaled.Height);
         Assert.True(constrained.Width <= 360);
         Assert.True(constrained.Height <= 260);
     }
@@ -122,9 +122,9 @@ public sealed class PalettePlacementCalculatorTests
         var medium = AssistResponseSizingPolicy.CalculateMeasured(320, area, 1);
         var longResponse = AssistResponseSizingPolicy.CalculateMeasured(900, area, 1);
 
-        Assert.Equal(180, empty.Height);
+        Assert.Equal(148, empty.Height);
         Assert.Equal(320, medium.Height);
-        Assert.Equal(480, longResponse.Height);
+        Assert.Equal(420, longResponse.Height);
         Assert.False(empty.RequiresScrolling);
         Assert.True(longResponse.RequiresScrolling);
         Assert.Equal(empty.Width, longResponse.Width);
@@ -137,15 +137,15 @@ public sealed class PalettePlacementCalculatorTests
     }
 
     [Theory]
-    [InlineData(1.0, 64)]
-    [InlineData(1.25, 80)]
-    [InlineData(1.5, 96)]
-    [InlineData(2.0, 128)]
+    [InlineData(1.0, 52)]
+    [InlineData(1.25, 65)]
+    [InlineData(1.5, 78)]
+    [InlineData(2.0, 104)]
     public void AssistCircle_ScalesLogicalSizeToPhysicalPixels(
         double scale,
         int expected)
     {
-        Assert.Equal(expected, AssistResponseSizingPolicy.ScalePixels(64, scale));
+        Assert.Equal(expected, AssistResponseSizingPolicy.ScalePixels(52, scale));
     }
 
     [Theory]

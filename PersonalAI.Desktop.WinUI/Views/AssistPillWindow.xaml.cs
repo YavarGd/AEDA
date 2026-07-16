@@ -25,8 +25,8 @@ public sealed partial class AssistPillWindow : Window
     public const int IdleHeight = 52;
     public const int ResponseResizeIntervalMilliseconds = 150;
     private const int SpotlightWidth = 520;
-    private const int SpotlightHeight = 64;
-    private const int ResponseChromeHeight = 132;
+    private const int SpotlightHeight = 58;
+    private const int ResponseChromeHeight = 110;
 
     private readonly AssistPillViewModel _viewModel;
     private readonly WinUiWindowPlacementService _placementService;
@@ -328,7 +328,7 @@ public sealed partial class AssistPillWindow : Window
         var area = _placementService.GetActivationWorkingArea(
             _foregroundWindowTracker.GetLastValidExternalWindow());
         var maximum = Math.Max(1, Math.Min(
-            AssistResponseSizingPolicy.ScalePixels(480, scale),
+            AssistResponseSizingPolicy.ScalePixels(420, scale),
             (int)Math.Round(area.Height - (40 * scale))));
         var current = AppWindow.Size;
         var height = _heightInterpolator.Retarget(

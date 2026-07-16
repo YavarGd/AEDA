@@ -388,7 +388,7 @@ public sealed class ShellLayoutTests
             AttributeValue(element, "Visibility")?.Contains(
                 "IsFallbackInput",
                 StringComparison.Ordinal) == true);
-        Assert.Equal("8", AttributeValue(fallback, "Padding"));
+        Assert.Equal("6", AttributeValue(fallback, "Padding"));
         Assert.DoesNotContain(
             fallback.Descendants(),
             element => AttributeValue(element, "Text") == "AEDA Assist");
@@ -416,12 +416,12 @@ public sealed class ShellLayoutTests
             element.Name.LocalName == "Button" &&
             AttributeValue(element, "AutomationProperties.Name") == "Ask AEDA");
         var surface = launcher.Ancestors().Single(element =>
-            element.Name.LocalName == "Border" &&
+            element.Name.LocalName == "Grid" &&
             AttributeValue(element, "Width") == "52");
 
         Assert.Equal("52", AttributeValue(surface, "Width"));
         Assert.Equal("52", AttributeValue(surface, "Height"));
-        Assert.Equal("26", AttributeValue(surface, "CornerRadius"));
+        Assert.Contains(surface.Elements(), element => element.Name.LocalName == "Ellipse");
         Assert.DoesNotContain(
             launcher.Descendants(),
             element => element.Name.LocalName == "TextBlock");
@@ -490,7 +490,7 @@ public sealed class ShellLayoutTests
             AttributeValue(element, "Name") == "ResponsePresenter");
         var actionRow = document.Descendants().Single(element =>
             element.Name.LocalName == "StackPanel" &&
-            AttributeValue(element, "MinHeight") == "32");
+            AttributeValue(element, "MinHeight") == "28");
 
         Assert.Single(scrollViewers);
         Assert.Equal("ResponseScrollViewer_ViewChanged", AttributeValue(scrollViewers[0], "ViewChanged"));

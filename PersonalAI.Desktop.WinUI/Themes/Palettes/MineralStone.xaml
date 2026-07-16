@@ -26,10 +26,10 @@
     <SolidColorBrush x:Key="PersonalAiWarningBrush" Color="#8A6914" />
     <SolidColorBrush x:Key="PersonalAiErrorBrush" Color="#A64D57" />
     <SolidColorBrush x:Key="PersonalAiDangerBrush" Color="#A64D57" />
-    <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="#F5F8FBF8" />
-    <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="#FAF8FBF8" />
-    <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="#F8FBF8" />
-    <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#3D665B" />
+    <SolidColorBrush x:Key="AedaAssistIdleBrush" Color="#D8EAF1EC" />
+    <SolidColorBrush x:Key="AedaAssistSpotlightBrush" Color="#ECF8FBF8" />
+    <SolidColorBrush x:Key="AedaAssistResponseBrush" Color="#F5F8FBF8" />
+    <SolidColorBrush x:Key="AedaAssistBorderBrush" Color="#33536B61" />
     <SolidColorBrush x:Key="AedaAssistForegroundBrush" Color="#24312D" />
     <SolidColorBrush x:Key="AedaAssistSecondaryForegroundBrush" Color="#56655F" />
     <SolidColorBrush x:Key="AedaDashboardHeroBrush" Color="#DCE6DF" />
@@ -37,16 +37,16 @@
     <SolidColorBrush x:Key="AedaNavigationSecondaryBrush" Color="#BFCBC5" />
     <SolidColorBrush x:Key="PersonalAiModuleCodeFillBrush" Color="#F8FAF7" />
     <SolidColorBrush x:Key="PersonalAiModuleCodeForegroundBrush" Color="#3D665B" />
-    <SolidColorBrush x:Key="PersonalAiModuleCodeBorderBrush" Color="#87A79C" />
+    <SolidColorBrush x:Key="PersonalAiModuleCodeBorderBrush" Color="#263D665B" />
     <SolidColorBrush x:Key="PersonalAiModuleMemoryFillBrush" Color="#F8FAF7" />
     <SolidColorBrush x:Key="PersonalAiModuleMemoryForegroundBrush" Color="#A06470" />
-    <SolidColorBrush x:Key="PersonalAiModuleMemoryBorderBrush" Color="#D4AAB2" />
+    <SolidColorBrush x:Key="PersonalAiModuleMemoryBorderBrush" Color="#263D665B" />
     <SolidColorBrush x:Key="PersonalAiModuleResearchFillBrush" Color="#F8FAF7" />
     <SolidColorBrush x:Key="PersonalAiModuleResearchForegroundBrush" Color="#756681" />
-    <SolidColorBrush x:Key="PersonalAiModuleResearchBorderBrush" Color="#B7ACBE" />
+    <SolidColorBrush x:Key="PersonalAiModuleResearchBorderBrush" Color="#263D665B" />
     <SolidColorBrush x:Key="PersonalAiModuleTaskFillBrush" Color="#F8FAF7" />
     <SolidColorBrush x:Key="PersonalAiModuleTaskForegroundBrush" Color="#665F58" />
-    <SolidColorBrush x:Key="PersonalAiModuleTaskBorderBrush" Color="#BDB7B1" />
+    <SolidColorBrush x:Key="PersonalAiModuleTaskBorderBrush" Color="#263D665B" />
     <SolidColorBrush x:Key="PersonalAiModuleDefaultFillBrush" Color="#E1E8E3" />
     <SolidColorBrush x:Key="PersonalAiModuleDefaultForegroundBrush" Color="#7B8982" />
     <SolidColorBrush x:Key="PersonalAiModuleDefaultBorderBrush" Color="#BFCBC5" />

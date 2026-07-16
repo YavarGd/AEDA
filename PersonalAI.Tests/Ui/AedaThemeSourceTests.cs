@@ -129,4 +129,28 @@ public sealed class AedaThemeSourceTests
             element.Name.LocalName == "Grid" &&
             element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "TitleBarDragRegion"));
     }
+
+    [Fact]
+    public void EmptyStatesAndDeferredModulesRemainIntentionalAndBounded()
+    {
+        var shell = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Views", "MainWindow.xaml"));
+        var dashboard = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Controls", "AedaDashboardView.xaml"));
+        var memory = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Controls", "AedaMemoryWorkspaceView.xaml"));
+        var research = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Controls", "AedaResearchWorkspaceView.xaml"));
+
+        Assert.Contains("HasNoStoredContent", memory);
+        Assert.Contains("HasStoredContent", memory);
+        Assert.Contains("HasSelectedMemory", memory);
+        Assert.Contains("HasNoSelectedReport", research);
+        Assert.Contains("HasSelectedReport", research);
+        Assert.Contains("DeferredCardTemplate", dashboard);
+        Assert.Contains("ToolTipService.ToolTip=\"{Binding DisplayName}\"", dashboard);
+        Assert.DoesNotContain("TextTrimming=\"CharacterEllipsis\"", dashboard[dashboard.IndexOf("DeferredCardTemplate", StringComparison.Ordinal)..dashboard.IndexOf("ActivityTemplate", StringComparison.Ordinal)]);
+        Assert.DoesNotContain("Command=\"{Binding OpenDashboardCommand}\" Content=\"Dashboard\"", shell);
+        Assert.DoesNotContain("Command=\"{Binding OpenChatCommand}\" Content=\"Chat\"", shell);
+    }
 }

@@ -22,6 +22,10 @@
                                 <TextBlock Text="Memory overview" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
                                 <TextBlock Text="{Binding TotalMemoryCountText}" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                 <TextBlock Text="{Binding IndexedKnowledgeText}" Style="{StaticResource PersonalAiSecondaryTextStyle}" />
+                                <TextBlock Text="Save an explicit preference or fact when you want AEDA to remember it locally."
+                                           Margin="0,6,0,0" TextWrapping="Wrap" MaxLines="2"
+                                           Style="{StaticResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoStoredContent, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             </StackPanel>
                             <TextBlock Grid.Column="1" Text="{Binding RetrievalStatusText}" VerticalAlignment="Center"
                                        Style="{StaticResource PersonalAiMetadataTextStyle}" />
@@ -48,7 +52,8 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}">
+                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}"
+                            Visibility="{Binding HasStoredContent, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid ColumnSpacing="18">
                             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                             <StackPanel Spacing="6">
@@ -112,7 +117,8 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}">
+                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}"
+                            Visibility="{Binding HasSelectedMemory, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <StackPanel Spacing="5">
                             <TextBlock Text="Selected source" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
                             <TextBlock Text="{Binding SelectedMemory.Text}" TextWrapping="Wrap" MaxLines="4" FontWeight="SemiBold" />
