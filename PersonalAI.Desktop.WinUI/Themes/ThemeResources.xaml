@@ -270,6 +270,20 @@
     <CornerRadius x:Key="AedaAssistCornerRadius">20</CornerRadius>
     <ThemeShadow x:Key="AedaAssistShadow" />
 
+    <Style x:Key="PersonalAiStatusPillStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource PersonalAiSubtleSurfaceBrush}" />
+        <Setter Property="CornerRadius" Value="{StaticResource PillCornerRadius}" />
+        <Setter Property="Padding" Value="10,4,10,4" />
+    </Style>
+
+    <Style x:Key="PersonalAiWorkspaceCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource PersonalAiElevatedSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource PersonalAiBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="Padding" Value="18,16,18,16" />
+    </Style>
+
     <Thickness x:Key="PagePadding">24,20,24,20</Thickness>
     <Thickness x:Key="CardPadding">18,16,18,16</Thickness>
     <Thickness x:Key="CompactControlPadding">10,4,10,4</Thickness>

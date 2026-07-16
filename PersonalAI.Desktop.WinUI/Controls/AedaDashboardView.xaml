@@ -13,7 +13,8 @@
                     AutomationProperties.Name="{Binding AccessibleName}">
                 <Border Background="{Binding Kind, Converter={StaticResource ModuleAccentFillConverter}}"
                         BorderBrush="{Binding Kind, Converter={StaticResource ModuleAccentBorderConverter}}"
-                        BorderThickness="1" CornerRadius="14" Padding="18"
+                        BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}"
+                        Padding="{StaticResource CardPadding}"
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                     <Grid RowSpacing="10">
                         <Grid.RowDefinitions>
@@ -23,13 +24,15 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid>
-                            <Border Width="38" Height="38" CornerRadius="10" Background="#18FFFFFF">
+                            <Border Width="36" Height="36" CornerRadius="9" Background="#18FFFFFF">
                                 <FontIcon Glyph="{Binding Glyph}" FontSize="18"
                                           Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
                             </Border>
-                            <TextBlock Text="{Binding StatusLabel}" HorizontalAlignment="Right"
-                                       FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                            <Border HorizontalAlignment="Right" Padding="8,3" CornerRadius="10"
+                                    Background="#18FFFFFF">
+                                <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{Binding Kind, Converter={StaticResource ModuleAccentForegroundConverter}}" />
+                            </Border>
                         </Grid>
                         <TextBlock Grid.Row="1" Text="{Binding DisplayName}" FontSize="17"
                                    FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
@@ -137,7 +140,7 @@
                 </Border>
                 <Grid ColumnSpacing="14" RowSpacing="14">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="1.2*"/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition Height="170"/><RowDefinition Height="170"/></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="190"/><RowDefinition Height="190"/></Grid.RowDefinitions>
                     <ContentControl Grid.RowSpan="2" Content="{Binding ModuleDashboard.CodeTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
                     <ContentControl Grid.Column="1" Content="{Binding ModuleDashboard.MemoryTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>
                     <ContentControl Grid.Column="2" Content="{Binding ModuleDashboard.ResearchTile}" ContentTemplate="{StaticResource ModuleCardTemplate}"/>

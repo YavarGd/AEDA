@@ -21,7 +21,7 @@ namespace PersonalAI.Desktop.WinUI.Views;
 
 public sealed partial class AssistPillWindow : Window
 {
-    public const int IdleWidth = 148;
+    public const int IdleWidth = 52;
     public const int IdleHeight = 52;
     public const int ResponseResizeIntervalMilliseconds = 150;
     private const int SpotlightWidth = 520;
@@ -100,7 +100,7 @@ public sealed partial class AssistPillWindow : Window
 
         AppWindow.IsShownInSwitchers = false;
         ConfigurePopupStyle();
-        SetRoundedCorners();
+        AedaWindowChrome.Apply(AppWindow, _windowHandle, Root.ActualTheme == ElementTheme.Dark);
         _placementService.ConfigureWindow(this, rememberPositionChanges: false);
         SetNoActivate(true);
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -171,6 +171,7 @@ public sealed partial class AssistPillWindow : Window
     public void ApplyTheme(ElementTheme theme)
     {
         Root.RequestedTheme = theme;
+        AedaWindowChrome.Apply(AppWindow, _windowHandle, theme == ElementTheme.Dark);
     }
 
     private async Task OpenPromptAsync()
@@ -366,6 +367,7 @@ public sealed partial class AssistPillWindow : Window
     private void ResizeResponseWindow(int width, int height)
     {
         AppWindow.Resize(new SizeInt32(width, height));
+        ApplyWindowShape();
         _placementService.PlaceCentered(
             this,
             _foregroundWindowTracker.GetLastValidExternalWindow());
@@ -694,28 +696,20 @@ public sealed partial class AssistPillWindow : Window
         }
     }
 
-    private void SetRoundedCorners()
-    {
-        const int windowCornerPreference = 33;
-        var preference = 3;
-        _ = DwmSetWindowAttribute(
-            _windowHandle,
-            windowCornerPreference,
-            ref preference,
-            sizeof(int));
-    }
-
     private void ApplyWindowShape()
     {
         SystemBackdrop = _viewModel.IsIdle ? null : _expandedBackdrop;
-        if (!_viewModel.IsIdle)
-        {
-            _ = SetWindowRgn(_windowHandle, 0, true);
-            return;
-        }
-
         var size = AppWindow.Size;
-        var region = CreateEllipticRgn(0, 0, size.Width, size.Height);
+        var radius = AssistResponseSizingPolicy.ScalePixels(
+            _viewModel.IsIdle ? IdleHeight / 2 : 20,
+            GetDpiForWindow(_windowHandle) / 96d);
+        var region = CreateRoundRectRgn(
+            0,
+            0,
+            size.Width + 1,
+            size.Height + 1,
+            radius * 2,
+            radius * 2);
         if (region != 0 && SetWindowRgn(_windowHandle, region, true) == 0)
         {
             _ = DeleteObject(region);
@@ -801,19 +795,18 @@ public sealed partial class AssistPillWindow : Window
     private static extern uint GetDpiForWindow(nint hWnd);
 
     [DllImport("gdi32.dll")]
-    private static extern nint CreateEllipticRgn(int left, int top, int right, int bottom);
+    private static extern nint CreateRoundRectRgn(
+        int left,
+        int top,
+        int right,
+        int bottom,
+        int widthEllipse,
+        int heightEllipse);
 
     [DllImport("gdi32.dll")]
     private static extern bool DeleteObject(nint handle);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmFlush();
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(
-        nint hwnd,
-        int attribute,
-        ref int value,
-        int valueSize);
 
 }

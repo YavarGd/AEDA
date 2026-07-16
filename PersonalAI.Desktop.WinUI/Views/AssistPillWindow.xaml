@@ -12,7 +12,7 @@
         </Grid.Resources>
 
         <Border x:Name="IdleSurface"
-                Width="148"
+                Width="52"
                 Height="52"
                 Background="{ThemeResource AedaAssistIdleBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
@@ -21,15 +21,15 @@
                 Visibility="{Binding IsIdle, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid>
                 <Button x:Name="LauncherButton"
-                        Margin="4"
-                        Padding="8,0"
-                        Width="140"
-                        Height="44"
+                        Margin="3"
+                        Padding="0"
+                        Width="46"
+                        Height="46"
                         MinWidth="0"
                         MinHeight="0"
                         HorizontalContentAlignment="Stretch"
                         VerticalContentAlignment="Stretch"
-                        AutomationProperties.Name="Open AEDA Assist"
+                        AutomationProperties.Name="Ask AEDA"
                         Click="OpenPromptButton_Click"
                         PointerCanceled="LauncherButton_PointerReleased"
                         PointerCaptureLost="LauncherButton_PointerReleased"
@@ -39,18 +39,13 @@
                         RenderTransformOrigin="0.5,0.5"
                         Style="{StaticResource AedaAssistLauncherButtonStyle}"
                         Background="Transparent"
-                        ToolTipService.ToolTip="Open AEDA Assist">
+                        ToolTipService.ToolTip="Ask AEDA">
                     <Button.RenderTransform>
                         <ScaleTransform x:Name="LauncherScale" ScaleX="1" ScaleY="1" />
                     </Button.RenderTransform>
-                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                        <Image Source="ms-appx:///Assets/AedaLogo.svg"
-                               Width="36" Height="36" Stretch="Uniform"
-                               AutomationProperties.Name="AEDA logo" />
-                        <TextBlock Text="Ask AEDA" FontSize="14" FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource AedaAssistForegroundBrush}" />
-                    </StackPanel>
+                    <Image Source="ms-appx:///Assets/AedaLogo.svg"
+                           Width="32" Height="32" Stretch="Uniform"
+                           AutomationProperties.Name="AEDA logo" />
                 </Button>
                 <Rectangle Height="6" VerticalAlignment="Top" Fill="Transparent"
                            PointerPressed="IdleDragRegion_PointerPressed" />
@@ -64,15 +59,13 @@
         </Border>
 
         <Border x:Name="SpotlightSurface"
-                Margin="1"
+                Margin="0"
                 Padding="8"
                 Background="{ThemeResource AedaAssistSpotlightBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="{StaticResource AedaAssistCornerRadius}"
-                Shadow="{StaticResource AedaAssistShadow}"
                 RenderTransformOrigin="0.5,0.5"
-                Translation="0,0,8"
                 Visibility="{Binding IsFallbackInput, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Border.RenderTransform>
                 <ScaleTransform x:Name="SpotlightScale" ScaleX="1" ScaleY="1" />
@@ -98,6 +91,10 @@
                          Grid.Column="1"
                          MinHeight="44"
                          Padding="12,9"
+                         Background="Transparent"
+                         BorderBrush="{ThemeResource AedaFocusStroke}"
+                         BorderThickness="1"
+                         CornerRadius="12"
                          AcceptsReturn="False"
                          AutomationProperties.Name="AEDA Assist prompt"
                          KeyDown="PromptTextBox_KeyDown"
@@ -108,6 +105,7 @@
                         Height="42"
                         MinWidth="0"
                         Margin="0,1,1,1"
+                        CornerRadius="21"
                         Command="{Binding SubmitCommand}"
                         AutomationProperties.Name="Submit AEDA Assist request"
                         ToolTipService.ToolTip="Submit">
@@ -117,15 +115,13 @@
         </Border>
 
         <Border x:Name="ResponseCard"
-                Margin="1"
+                Margin="0"
                 Padding="14"
                 Background="{ThemeResource AedaAssistResponseBrush}"
                 BorderBrush="{ThemeResource AedaAssistBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="{StaticResource AedaAssistCornerRadius}"
-                Shadow="{StaticResource AedaAssistShadow}"
                 RenderTransformOrigin="0.5,0.5"
-                Translation="0,0,8"
                 Visibility="{Binding IsResponseSurface, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Border.RenderTransform>
                 <ScaleTransform x:Name="ResponseScale" ScaleX="1" ScaleY="1" />

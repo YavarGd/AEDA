@@ -1,0 +1,96 @@
+<UserControl x:Class="PersonalAI.Desktop.WinUI.Controls.AedaResearchWorkspaceView"
+    x:Name="ResearchWorkspace"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:PersonalAI.Desktop.WinUI.Converters">
+    <UserControl.Resources><converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" /></UserControl.Resources>
+    <ScrollViewer>
+        <StackPanel Spacing="12">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding PrivacyStatusText}" TextWrapping="Wrap" Style="{StaticResource PersonalAiSecondaryTextStyle}" />
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding ProviderStatusLabels}">
+                    <ItemsControl.ItemTemplate><DataTemplate>
+                        <Border Style="{StaticResource PersonalAiStatusPillStyle}" Margin="6,0,0,0"><TextBlock Text="{Binding}" /></Border>
+                    </DataTemplate></ItemsControl.ItemTemplate>
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </Grid>
+
+            <Grid ColumnSpacing="14">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
+                <StackPanel Spacing="12">
+                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}">
+                        <StackPanel Spacing="9">
+                            <TextBlock Text="Verify a claim" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBox PlaceholderText="Paste an answer or factual claim" AcceptsReturn="True" MinHeight="104" MaxHeight="150"
+                                     TextWrapping="Wrap" Text="{Binding VerificationText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Research verification input" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Extract claims" Command="{Binding ExtractClaimsCommand}" />
+                                <Button Content="Verify locally" Command="{Binding VerifyWithLocalEvidenceCommand}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding SafeStatusMessage}" TextWrapping="Wrap" Style="{StaticResource PersonalAiMetadataTextStyle}" />
+                            <ItemsControl ItemsSource="{Binding ExtractedClaims}">
+                                <ItemsControl.ItemTemplate><DataTemplate>
+                                    <Border Background="{ThemeResource PersonalAiSubtleSurfaceBrush}" CornerRadius="9" Padding="10" Margin="0,0,0,6">
+                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" MaxLines="3" />
+                                    </Border>
+                                </DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource PersonalAiWorkspaceCardStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Recent reports" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="No verification reports yet." Style="{StaticResource PersonalAiSecondaryTextStyle}"
+                                       Visibility="{Binding HasNoRecentReports, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ItemsControl ItemsSource="{Binding RecentReports}">
+                                <ItemsControl.ItemTemplate><DataTemplate>
+                                    <Button HorizontalContentAlignment="Stretch" Margin="0,0,0,6"
+                                            Command="{Binding DataContext.SelectReportCommand, ElementName=ResearchWorkspace}" CommandParameter="{Binding}">
+                                        <StackPanel><TextBlock Text="{Binding OverallVerdict}" FontWeight="SemiBold"/><TextBlock Text="{Binding Question.Text}" TextTrimming="CharacterEllipsis"/></StackPanel>
+                                    </Button>
+                                </DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <Border Grid.Column="1" Style="{StaticResource PersonalAiWorkspaceCardStyle}">
+                    <Grid RowSpacing="12">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Evidence workspace" Style="{StaticResource PersonalAiSectionTitleTextStyle}" />
+                            <TextBlock Text="{Binding SelectedReport.Question.Text}" TextWrapping="Wrap" MaxLines="3" Style="{StaticResource PersonalAiSecondaryTextStyle}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding SelectedReport.OverallVerdict}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedReport.Confidence}" Style="{StaticResource PersonalAiMetadataTextStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <ScrollViewer Grid.Row="1">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Select a report to inspect claims, evidence, citations, and unresolved gaps."
+                                           TextWrapping="Wrap" Style="{StaticResource PersonalAiSecondaryTextStyle}"
+                                           Visibility="{Binding HasNoSelectedReport, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <TextBlock Text="Evidence" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{Binding EvidenceItems}">
+                                    <ItemsControl.ItemTemplate><DataTemplate>
+                                        <StackPanel Margin="0,0,0,8"><TextBlock Text="{Binding Excerpt}" TextWrapping="Wrap" MaxLines="3"/><TextBlock Text="{Binding Source.Label}" Style="{StaticResource PersonalAiMetadataTextStyle}"/></StackPanel>
+                                    </DataTemplate></ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="Citations" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{Binding Citations}">
+                                    <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding SourceLabel}" TextTrimming="CharacterEllipsis"/></DataTemplate></ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="Unresolved gaps" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{Binding UnresolvedGaps}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

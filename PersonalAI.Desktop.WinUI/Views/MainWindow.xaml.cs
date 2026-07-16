@@ -37,6 +37,10 @@ public sealed partial class MainWindow : Window
         }
 
         ApplyTitleBarColors(ElementTheme.Default);
+        AedaWindowChrome.Apply(
+            AppWindow,
+            WinRT.Interop.WindowNative.GetWindowHandle(this),
+            Root.ActualTheme == ElementTheme.Dark);
         Root.DataContext = _viewModel;
         _viewModel.ConfirmStopGenerationAsync = ShowStopGenerationDialogAsync;
         _viewModel.ConfirmClearAllContextsAsync = ShowClearAllContextsDialogAsync;
@@ -104,6 +108,10 @@ public sealed partial class MainWindow : Window
     {
         Root.RequestedTheme = theme;
         ApplyTitleBarColors(theme);
+        AedaWindowChrome.Apply(
+            AppWindow,
+            WinRT.Interop.WindowNative.GetWindowHandle(this),
+            theme == ElementTheme.Dark);
     }
 
     private void ApplyTitleBarColors(ElementTheme theme)

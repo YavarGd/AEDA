@@ -64,6 +64,11 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     public IReadOnlyList<EvidenceProviderStatus> ProviderStatuses =>
         Dashboard?.EvidenceProviders ?? [];
 
+    public IReadOnlyList<string> ProviderStatusLabels => ProviderStatuses
+        .Take(2)
+        .Select(provider => $"{provider.DisplayName}: {(provider.IsEnabled ? "Available" : "Not configured")}")
+        .ToArray();
+
     public IReadOnlyList<VerificationReport> RecentReports =>
         Dashboard?.RecentReports ?? [];
 
@@ -97,6 +102,8 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     public bool HasNoRecentReports => !HasRecentReports;
 
     public bool HasSelectedReport => SelectedReport is not null;
+
+    public bool HasNoSelectedReport => !HasSelectedReport;
 
     public bool HasEvidenceItems => EvidenceItems.Count > 0;
 
@@ -187,6 +194,7 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(PrivacyStatusText));
         OnPropertyChanged(nameof(ProviderStatuses));
+        OnPropertyChanged(nameof(ProviderStatusLabels));
         OnPropertyChanged(nameof(RecentReports));
         OnPropertyChanged(nameof(HasRecentReports));
         OnPropertyChanged(nameof(HasNoRecentReports));
@@ -195,6 +203,7 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     private void NotifyReportChanged()
     {
         OnPropertyChanged(nameof(HasSelectedReport));
+        OnPropertyChanged(nameof(HasNoSelectedReport));
         OnPropertyChanged(nameof(EvidenceItems));
         OnPropertyChanged(nameof(Findings));
         OnPropertyChanged(nameof(Citations));

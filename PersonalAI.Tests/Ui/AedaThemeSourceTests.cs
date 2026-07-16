@@ -28,8 +28,51 @@ public sealed class AedaThemeSourceTests
             Assert.Contains("PersonalAiSidebarBackgroundBrush", keys);
             Assert.Contains("AedaDashboardHeroBrush", keys);
             Assert.Contains("AedaTitleBarBackgroundColor", keys);
+            Assert.Contains("AedaWindowBorderColor", keys);
+            Assert.Contains("AedaFocusStroke", keys);
             Assert.Contains("AedaAssistIdleBrush", keys);
         }
+    }
+
+    [Fact]
+    public void NativeWindowsApplyThemeChromeAndCommittedApplicationIcon()
+    {
+        var project = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "PersonalAI.Desktop.WinUI.csproj"));
+        var main = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Views", "MainWindow.xaml.cs"));
+        var assist = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Views", "AssistPillWindow.xaml.cs"));
+        var chrome = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Services", "AedaWindowChrome.cs"));
+        var icon = Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Assets", "AedaAppIcon.ico");
+
+        Assert.True(File.Exists(icon));
+        Assert.NotEqual(0, new FileInfo(icon).Length);
+        Assert.Contains("<ApplicationIcon>Assets\\AedaAppIcon.ico</ApplicationIcon>", project);
+        Assert.Contains("Assets\\AedaAppIcon.ico\" CopyToOutputDirectory=\"PreserveNewest\"", project);
+        Assert.Contains("AedaWindowChrome.Apply", main);
+        Assert.Contains("AedaWindowChrome.Apply", assist);
+        Assert.Contains("BorderColor = 34", chrome);
+        Assert.Contains("CaptionColor = 35", chrome);
+        Assert.Contains("TextColor = 36", chrome);
+        Assert.Contains("appWindow.SetIcon(iconPath)", chrome);
+    }
+
+    [Fact]
+    public void PrimaryModulePagesDoNotRenderCapabilityParadesOrRawProviderCodes()
+    {
+        var shell = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Views", "MainWindow.xaml"));
+        var research = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Controls", "AedaResearchWorkspaceView.xaml"));
+        var memory = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Controls", "AedaMemoryWorkspaceView.xaml"));
+
+        Assert.DoesNotContain("ItemsSource=\"{Binding CapabilityBadges}\"", shell + research + memory);
+        Assert.DoesNotContain("{Binding SafeStatusCode}", shell + research + memory);
+        Assert.Contains("{Binding ProviderStatusLabels}", research);
     }
 
     [Fact]

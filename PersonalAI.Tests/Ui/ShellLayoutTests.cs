@@ -393,8 +393,8 @@ public sealed class ShellLayoutTests
             fallback.Descendants(),
             element => AttributeValue(element, "Text") == "AEDA Assist");
         Assert.Contains(buttons, button =>
-            AttributeValue(button, "AutomationProperties.Name") == "Open AEDA Assist" &&
-            AttributeValue(button, "ToolTipService.ToolTip") == "Open AEDA Assist");
+            AttributeValue(button, "AutomationProperties.Name") == "Ask AEDA" &&
+            AttributeValue(button, "ToolTipService.ToolTip") == "Ask AEDA");
         Assert.Contains(buttons, button =>
             AttributeValue(button, "AutomationProperties.Name") == "Submit AEDA Assist request" &&
             AttributeValue(button, "Command") == "{Binding SubmitCommand}" &&
@@ -409,22 +409,22 @@ public sealed class ShellLayoutTests
     }
 
     [Fact]
-    public void AssistPill_IdleSurfaceIsOneCompactCapsuleLauncher()
+    public void AssistPill_IdleSurfaceIsOneLogoOnlyBubble()
     {
         var document = LoadProjectXaml("Views", "AssistPillWindow.xaml");
         var launcher = document.Descendants().Single(element =>
             element.Name.LocalName == "Button" &&
-            AttributeValue(element, "AutomationProperties.Name") == "Open AEDA Assist");
+            AttributeValue(element, "AutomationProperties.Name") == "Ask AEDA");
         var surface = launcher.Ancestors().Single(element =>
             element.Name.LocalName == "Border" &&
-            AttributeValue(element, "Width") == "148");
+            AttributeValue(element, "Width") == "52");
 
-        Assert.Equal("148", AttributeValue(surface, "Width"));
+        Assert.Equal("52", AttributeValue(surface, "Width"));
         Assert.Equal("52", AttributeValue(surface, "Height"));
         Assert.Equal("26", AttributeValue(surface, "CornerRadius"));
-        Assert.Contains(
+        Assert.DoesNotContain(
             launcher.Descendants(),
-            element => element.Name.LocalName == "TextBlock" && AttributeValue(element, "Text") == "Ask AEDA");
+            element => element.Name.LocalName == "TextBlock");
         Assert.Equal("0", AttributeValue(launcher, "MinWidth"));
         Assert.Equal("0", AttributeValue(launcher, "MinHeight"));
         Assert.DoesNotContain(
@@ -433,11 +433,12 @@ public sealed class ShellLayoutTests
         var root = document.Descendants().Single(element =>
             element.Name.LocalName == "Grid" && AttributeValue(element, "Name") == "Root");
         Assert.Equal("Transparent", AttributeValue(root, "Background"));
-        Assert.True(AssistPillWindow.IdleWidth > AssistPillWindow.IdleHeight);
+        Assert.Equal(AssistPillWindow.IdleWidth, AssistPillWindow.IdleHeight);
 
         var source = LoadProjectText("Views", "AssistPillWindow.xaml.cs");
         Assert.Contains("SystemBackdrop = _viewModel.IsIdle ? null", source);
-        Assert.Contains("CreateEllipticRgn(0, 0, size.Width, size.Height)", source);
+        Assert.Contains("CreateRoundRectRgn(", source);
+        Assert.Contains("ApplyWindowShape();", source);
     }
 
     [Fact]
