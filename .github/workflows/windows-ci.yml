@@ -1,0 +1,49 @@
+name: Windows CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test AEDA
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.301
+
+      - name: Show .NET environment
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore PersonalAI.slnx
+
+      - name: Run automated tests
+        run: dotnet test PersonalAI.Tests/PersonalAI.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=aeda-tests.trx" --results-directory TestResults
+
+      - name: Build Debug
+        run: dotnet build PersonalAI.slnx --configuration Debug --no-restore
+
+      - name: Build Release
+        run: dotnet build PersonalAI.slnx --configuration Release --no-restore
