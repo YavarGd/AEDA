@@ -33,29 +33,37 @@ jobs:
         with:
           dotnet-version: 10.0.301
 
+      - name: Install Windows App SDK runtime 2.1.3
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "WindowsAppRuntimeInstall-x64.exe"
+          Invoke-WebRequest `
+            -Uri "https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe" `
+            -OutFile $installer
+          $process = Start-Process `
+            -FilePath $installer `
+            -ArgumentList "--quiet" `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Windows App SDK runtime installer exited with $($process.ExitCode)."
+          }
+          Get-AppxPackage "Microsoft.WindowsAppRuntime.2.1*" |
+            Select-Object Name, Version, Architecture, PackageFullName |
+            Format-Table -AutoSize
+
       - name: Show .NET environment
         run: dotnet --info
 
       - name: Restore
         run: dotnet restore PersonalAI.slnx
 
-      - name: Capture test project sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: personalai-test-sources
-          path: |
-            PersonalAI.Tests/**/*.cs
-            PersonalAI.Tests/*.csproj
-            !PersonalAI.Tests/bin/**
-            !PersonalAI.Tests/obj/**
-          if-no-files-found: error
-          retention-days: 1
-
       - name: Run automated tests
         timeout-minutes: 8
         run: >-
           dotnet test PersonalAI.Tests/PersonalAI.Tests.csproj
           --configuration Release
+          --runtime win-x64
           --no-restore
           --logger "trx;LogFileName=aeda-tests.trx"
           --results-directory TestResults
