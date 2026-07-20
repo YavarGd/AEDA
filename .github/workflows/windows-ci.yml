@@ -1,0 +1,100 @@
+name: Windows CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test AEDA
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.301
+
+      - name: Install Windows App SDK runtime 2.1.3
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "WindowsAppRuntimeInstall-x64.exe"
+          Invoke-WebRequest `
+            -Uri "https://aka.ms/windowsappsdk/2.1/2.1.3/windowsappruntimeinstall-x64.exe" `
+            -OutFile $installer
+          $process = Start-Process `
+            -FilePath $installer `
+            -ArgumentList "--quiet" `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Windows App SDK runtime installer exited with $($process.ExitCode)."
+          }
+          Get-AppxPackage "Microsoft.WindowsAppRuntime.2.1*" |
+            Select-Object Name, Version, Architecture, PackageFullName |
+            Format-Table -AutoSize
+
+      - name: Show .NET environment
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore PersonalAI.slnx
+
+      - name: Run automated tests
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          New-Item -ItemType Directory -Force TestResults | Out-Null
+          $arguments = @(
+            "test"
+            "PersonalAI.Tests/PersonalAI.Tests.csproj"
+            "--configuration", "Release"
+            "--no-restore"
+            "--logger", "trx;LogFileName=aeda-tests.trx"
+            "--results-directory", "TestResults"
+            "--diag", "TestResults/aeda-test-diagnostics.log"
+            "--blame-hang"
+            "--blame-hang-timeout", "5m"
+            "--blame-hang-dump-type", "mini"
+          )
+          & dotnet @arguments 2>&1 |
+            Tee-Object -FilePath TestResults/aeda-test-console.log
+          $testExitCode = $LASTEXITCODE
+          if ($testExitCode -ne 0) {
+            exit $testExitCode
+          }
+
+      - name: Build Debug
+        if: always()
+        run: dotnet build PersonalAI.slnx --configuration Debug --no-restore
+
+      - name: Build Release
+        if: always()
+        run: dotnet build PersonalAI.slnx --configuration Release --no-restore
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-diagnostics
+          path: TestResults
+          if-no-files-found: error
+          retention-days: 7
