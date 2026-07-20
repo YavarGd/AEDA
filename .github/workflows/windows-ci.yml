@@ -39,6 +39,18 @@ jobs:
       - name: Restore
         run: dotnet restore PersonalAI.slnx
 
+      - name: Capture test project sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: personalai-test-sources
+          path: |
+            PersonalAI.Tests/**/*.cs
+            PersonalAI.Tests/*.csproj
+            !PersonalAI.Tests/bin/**
+            !PersonalAI.Tests/obj/**
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Run automated tests
         timeout-minutes: 8
         run: >-
