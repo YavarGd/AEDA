@@ -59,18 +59,29 @@ jobs:
         run: dotnet restore PersonalAI.slnx
 
       - name: Run automated tests
+        shell: pwsh
         timeout-minutes: 8
-        run: >-
-          dotnet test PersonalAI.Tests/PersonalAI.Tests.csproj
-          --configuration Release
-          --runtime win-x64
-          --no-restore
-          --logger "trx;LogFileName=aeda-tests.trx"
-          --results-directory TestResults
-          --diag TestResults/aeda-test-diagnostics.log
-          --blame-hang
-          --blame-hang-timeout 5m
-          --blame-hang-dump-type mini
+        run: |
+          New-Item -ItemType Directory -Force TestResults | Out-Null
+          $arguments = @(
+            "test"
+            "PersonalAI.Tests/PersonalAI.Tests.csproj"
+            "--configuration", "Release"
+            "--runtime", "win-x64"
+            "--no-restore"
+            "--logger", "trx;LogFileName=aeda-tests.trx"
+            "--results-directory", "TestResults"
+            "--diag", "TestResults/aeda-test-diagnostics.log"
+            "--blame-hang"
+            "--blame-hang-timeout", "5m"
+            "--blame-hang-dump-type", "mini"
+          )
+          & dotnet @arguments 2>&1 |
+            Tee-Object -FilePath TestResults/aeda-test-console.log
+          $testExitCode = $LASTEXITCODE
+          if ($testExitCode -ne 0) {
+            exit $testExitCode
+          }
 
       - name: Build Debug
         if: always()
@@ -86,5 +97,5 @@ jobs:
         with:
           name: windows-test-diagnostics
           path: TestResults
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
