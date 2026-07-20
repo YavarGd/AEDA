@@ -67,7 +67,6 @@ jobs:
             "test"
             "PersonalAI.Tests/PersonalAI.Tests.csproj"
             "--configuration", "Release"
-            "--runtime", "win-x64"
             "--no-restore"
             "--logger", "trx;LogFileName=aeda-tests.trx"
             "--results-directory", "TestResults"
