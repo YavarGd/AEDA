@@ -40,10 +40,31 @@ jobs:
         run: dotnet restore PersonalAI.slnx
 
       - name: Run automated tests
-        run: dotnet test PersonalAI.Tests/PersonalAI.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=aeda-tests.trx" --results-directory TestResults
+        timeout-minutes: 8
+        run: >-
+          dotnet test PersonalAI.Tests/PersonalAI.Tests.csproj
+          --configuration Release
+          --no-restore
+          --logger "trx;LogFileName=aeda-tests.trx"
+          --results-directory TestResults
+          --diag TestResults/aeda-test-diagnostics.log
+          --blame-hang
+          --blame-hang-timeout 5m
+          --blame-hang-dump-type mini
 
       - name: Build Debug
+        if: always()
         run: dotnet build PersonalAI.slnx --configuration Debug --no-restore
 
       - name: Build Release
+        if: always()
         run: dotnet build PersonalAI.slnx --configuration Release --no-restore
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-diagnostics
+          path: TestResults
+          if-no-files-found: warn
+          retention-days: 7
