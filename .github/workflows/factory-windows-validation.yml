@@ -1,0 +1,130 @@
+name: Factory Windows Validation
+
+run-name: >-
+  Factory Windows validation • ${{ inputs.request_id }} • ${{ inputs.target_ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Factory mission/request identifier
+        required: true
+        type: string
+      target_ref:
+        description: Branch, tag, or commit SHA to validate
+        required: true
+        default: main
+        type: string
+      test_filter:
+        description: Optional dotnet test filter
+        required: false
+        default: ""
+        type: string
+      configuration:
+        description: Build configuration
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Debug
+          - Release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-windows-${{ inputs.request_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Windows build and test
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      FACTORY_REQUEST_ID: ${{ inputs.request_id }}
+      FACTORY_TARGET_REF: ${{ inputs.target_ref }}
+      FACTORY_TEST_FILTER: ${{ inputs.test_filter }}
+      FACTORY_CONFIGURATION: ${{ inputs.configuration }}
+      TEST_PROJECT: PersonalAI.Tests/PersonalAI.Tests.csproj
+
+    steps:
+      - name: Check out requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Capture environment
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path TestResults | Out-Null
+          dotnet --info | Tee-Object -FilePath TestResults/dotnet-info.txt
+          git rev-parse HEAD | Tee-Object -FilePath TestResults/validated-commit.txt
+
+      - name: Restore
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet restore $env:TEST_PROJECT --nologo 2>&1 |
+            Tee-Object -FilePath TestResults/restore.log
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $arguments = @(
+            "test",
+            $env:TEST_PROJECT,
+            "--configuration", $env:FACTORY_CONFIGURATION,
+            "--no-restore",
+            "--nologo",
+            "--logger", "trx;LogFileName=factory-windows-validation.trx",
+            "--results-directory", "TestResults",
+            "--verbosity", "normal"
+          )
+
+          if (-not [string]::IsNullOrWhiteSpace($env:FACTORY_TEST_FILTER)) {
+            $arguments += @("--filter", $env:FACTORY_TEST_FILTER)
+          }
+
+          & dotnet @arguments 2>&1 |
+            Tee-Object -FilePath TestResults/test.log
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Write validation summary
+        if: always()
+        shell: pwsh
+        run: |
+          @"
+          ## Factory Windows validation
+
+          - Request: ``$env:FACTORY_REQUEST_ID``
+          - Requested ref: ``$env:FACTORY_TARGET_REF``
+          - Configuration: ``$env:FACTORY_CONFIGURATION``
+          - Test filter: ``$env:FACTORY_TEST_FILTER``
+          - Job status: ``${{ job.status }}``
+          "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-windows-${{ inputs.request_id }}
+          path: TestResults/
+          if-no-files-found: warn
+          retention-days: 14
