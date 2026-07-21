@@ -40,11 +40,20 @@ public enum GuiFocusRestoreState
 public sealed class WindowsClipboardCopySelectedTextProvider(
     Func<nint> getAedaWindowHandle,
     IClipboardCaptureBackend? clipboard = null,
-    IFixedCopyInputSender? input = null) : IClipboardCopySelectedTextProvider
+    IFixedCopyInputSender? input = null,
+    TimeSpan? focusTimeout = null) : IClipboardCopySelectedTextProvider
 {
-    private static readonly TimeSpan FocusTimeout = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan DefaultFocusTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ClipboardTimeout = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan ClipboardStableDelay = TimeSpan.FromMilliseconds(60);
+    private readonly TimeSpan _focusTimeout =
+        focusTimeout is null
+            ? DefaultFocusTimeout
+            : focusTimeout.Value > TimeSpan.Zero
+                ? focusTimeout.Value
+                : throw new ArgumentOutOfRangeException(
+                    nameof(focusTimeout),
+                    "Focus timeout must be positive.");
     private readonly IClipboardCaptureBackend _clipboard = clipboard ?? new NativeClipboardBackend();
     private readonly IFixedCopyInputSender _input = input ?? new NativeFixedCopyInputSender(getAedaWindowHandle);
     private readonly SemaphoreSlim _captureGate = new(1, 1);
@@ -188,7 +197,7 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
     {
         var stopwatch = Stopwatch.StartNew();
         var lastState = GuiFocusRestoreState.TopLevelNotForeground;
-        while (stopwatch.Elapsed < FocusTimeout)
+        while (stopwatch.Elapsed < _focusTimeout)
         {
             if (_input.ValidateTarget(target) is not null)
             {

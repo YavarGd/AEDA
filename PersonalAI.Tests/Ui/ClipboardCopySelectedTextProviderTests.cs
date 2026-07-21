@@ -153,7 +153,7 @@ public sealed class ClipboardCopySelectedTextProviderTests
             ForegroundChecksBeforeSuccess = 3,
             PendingFocusState = GuiFocusRestoreState.ChildNotFocused
         };
-        var provider = Provider(clipboard, input);
+        var provider = Provider(clipboard, input, focusTimeout: TimeSpan.FromSeconds(10));
 
         var result = await provider.CaptureAsync(Request(), CancellationToken.None);
 
@@ -233,9 +233,25 @@ public sealed class ClipboardCopySelectedTextProviderTests
         Assert.Equal(1, input.CopyCalls);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ZeroOrNegativeFocusTimeoutThrows(int milliseconds)
+    {
+        var clipboard = new FakeClipboard("before", "selected");
+        var input = new FakeInput();
+        var timeout = TimeSpan.FromMilliseconds(milliseconds);
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(
+            () => Provider(clipboard, input, focusTimeout: timeout));
+
+        Assert.Equal("focusTimeout", ex.ParamName);
+    }
+
     private static WindowsClipboardCopySelectedTextProvider Provider(
         FakeClipboard clipboard,
-        FakeInput input) => new(() => 99, clipboard, input);
+        FakeInput input,
+        TimeSpan? focusTimeout = null) => new(() => 99, clipboard, input, focusTimeout: focusTimeout);
 
     private static SelectedTextCaptureRequest Request() => new(
         Foreground, PrivacySettings.Default, 1_000, true);
