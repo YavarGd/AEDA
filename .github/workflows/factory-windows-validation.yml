@@ -109,7 +109,6 @@ jobs:
           "dotnet test timeout seconds: $env:DOTNET_TEST_TIMEOUT_SECONDS" |
             Tee-Object -FilePath TestResults/test-timeout.txt
 
-          $output = New-Object System.Collections.Concurrent.ConcurrentQueue[string]
           $process = [System.Diagnostics.Process]::new()
           $process.StartInfo.FileName = "dotnet"
           foreach ($argument in $arguments) {
@@ -121,24 +120,15 @@ jobs:
           $process.StartInfo.UseShellExecute = $false
           $process.StartInfo.CreateNoWindow = $true
 
-          $handler = [System.Diagnostics.DataReceivedEventHandler]{
-            param($sender, $eventArgs)
-            if ($null -ne $eventArgs.Data) {
-              $output.Enqueue($eventArgs.Data)
-              $eventArgs.Data | Out-Host
-            }
-          }
-
-          $process.add_OutputDataReceived($handler)
-          $process.add_ErrorDataReceived($handler)
-
           [void]$process.Start()
-          $process.BeginOutputReadLine()
-          $process.BeginErrorReadLine()
+
+          $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+          $stderrTask = $process.StandardError.ReadToEndAsync()
 
           $completed = $process.WaitForExit([int]$env:DOTNET_TEST_TIMEOUT_SECONDS * 1000)
+          $timedOut = -not $completed
           if ($completed) {
-            $process.WaitForExit()
+            [void]$process.WaitForExit()
           } else {
             "dotnet test exceeded $env:DOTNET_TEST_TIMEOUT_SECONDS seconds; collecting diagnostics." |
               Tee-Object -FilePath TestResults/test-hang-diagnostics.log
@@ -159,17 +149,52 @@ jobs:
               "Failed to kill timed-out dotnet process: $_" |
                 Add-Content -Path TestResults/test-hang-diagnostics.log
             }
+
+            [void]$process.WaitForExit()
           }
 
-          $output.ToArray() | Set-Content -Path TestResults/test.log
+          $outputCollectionTimeout = [TimeSpan]::FromSeconds(30)
+          if ($timedOut) {
+            $stdout = if ($stdoutTask.Wait($outputCollectionTimeout)) {
+              $stdoutTask.GetAwaiter().GetResult()
+            } else {
+              "Timed out waiting for stdout after terminating dotnet process."
+            }
+            $stderr = if ($stderrTask.Wait($outputCollectionTimeout)) {
+              $stderrTask.GetAwaiter().GetResult()
+            } else {
+              "Timed out waiting for stderr after terminating dotnet process."
+            }
+          } else {
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
+          }
 
-          if (-not $completed) {
+          [System.IO.File]::WriteAllText(
+            (Join-Path $PWD "TestResults/test.stdout.log"),
+            $stdout
+          )
+          [System.IO.File]::WriteAllText(
+            (Join-Path $PWD "TestResults/test.stderr.log"),
+            $stderr
+          )
+          [System.IO.File]::WriteAllText(
+            (Join-Path $PWD "TestResults/test.log"),
+            ($stdout + [Environment]::NewLine + $stderr)
+          )
+
+          if ($stdout) {
+            [Console]::Out.WriteLine($stdout)
+          }
+          if ($stderr) {
+            [Console]::Error.WriteLine($stderr)
+          }
+
+          if ($timedOut) {
             exit 124
           }
 
-          if ($process.ExitCode -ne 0) {
-            exit $process.ExitCode
-          }
+          exit $process.ExitCode
 
       - name: Write validation summary
         if: always()
@@ -187,7 +212,7 @@ jobs:
 
       - name: Upload validation evidence
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: factory-windows-${{ inputs.request_id }}
           path: TestResults/
