@@ -40,7 +40,7 @@ jobs:
   validate:
     name: Windows build and test
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     env:
       FACTORY_REQUEST_ID: ${{ inputs.request_id }}
@@ -48,6 +48,7 @@ jobs:
       FACTORY_TEST_FILTER: ${{ inputs.test_filter }}
       FACTORY_CONFIGURATION: ${{ inputs.configuration }}
       TEST_PROJECT: PersonalAI.Tests/PersonalAI.Tests.csproj
+      DOTNET_TEST_TIMEOUT_SECONDS: 3300
 
     steps:
       - name: Check out requested ref
@@ -83,6 +84,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path TestResults | Out-Null
 
           $arguments = @(
             "test",
@@ -99,11 +101,74 @@ jobs:
             $arguments += @("--filter", $env:FACTORY_TEST_FILTER)
           }
 
-          & dotnet @arguments 2>&1 |
-            Tee-Object -FilePath TestResults/test.log
+          $effectiveCommand = "dotnet " + ($arguments -join " ")
+          "Effective test filter: '$env:FACTORY_TEST_FILTER'" |
+            Tee-Object -FilePath TestResults/effective-test-filter.txt
+          "Effective dotnet command: $effectiveCommand" |
+            Tee-Object -FilePath TestResults/effective-dotnet-command.txt
+          "dotnet test timeout seconds: $env:DOTNET_TEST_TIMEOUT_SECONDS" |
+            Tee-Object -FilePath TestResults/test-timeout.txt
 
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
+          $output = New-Object System.Collections.Concurrent.ConcurrentQueue[string]
+          $process = [System.Diagnostics.Process]::new()
+          $process.StartInfo.FileName = "dotnet"
+          foreach ($argument in $arguments) {
+            [void]$process.StartInfo.ArgumentList.Add($argument)
+          }
+
+          $process.StartInfo.RedirectStandardOutput = $true
+          $process.StartInfo.RedirectStandardError = $true
+          $process.StartInfo.UseShellExecute = $false
+          $process.StartInfo.CreateNoWindow = $true
+
+          $handler = [System.Diagnostics.DataReceivedEventHandler]{
+            param($sender, $eventArgs)
+            if ($null -ne $eventArgs.Data) {
+              $output.Enqueue($eventArgs.Data)
+              $eventArgs.Data | Out-Host
+            }
+          }
+
+          $process.add_OutputDataReceived($handler)
+          $process.add_ErrorDataReceived($handler)
+
+          [void]$process.Start()
+          $process.BeginOutputReadLine()
+          $process.BeginErrorReadLine()
+
+          $completed = $process.WaitForExit([int]$env:DOTNET_TEST_TIMEOUT_SECONDS * 1000)
+          if ($completed) {
+            $process.WaitForExit()
+          } else {
+            "dotnet test exceeded $env:DOTNET_TEST_TIMEOUT_SECONDS seconds; collecting diagnostics." |
+              Tee-Object -FilePath TestResults/test-hang-diagnostics.log
+
+            Get-Process dotnet -ErrorAction SilentlyContinue |
+              Select-Object Id, ProcessName, CPU, StartTime, Path |
+              Format-List |
+              Out-File -FilePath TestResults/dotnet-processes.txt
+
+            Get-Process testhost -ErrorAction SilentlyContinue |
+              Select-Object Id, ProcessName, CPU, StartTime, Path |
+              Format-List |
+              Out-File -FilePath TestResults/testhost-processes.txt
+
+            try {
+              $process.Kill($true)
+            } catch {
+              "Failed to kill timed-out dotnet process: $_" |
+                Add-Content -Path TestResults/test-hang-diagnostics.log
+            }
+          }
+
+          $output.ToArray() | Set-Content -Path TestResults/test.log
+
+          if (-not $completed) {
+            exit 124
+          }
+
+          if ($process.ExitCode -ne 0) {
+            exit $process.ExitCode
           }
 
       - name: Write validation summary
@@ -122,7 +187,7 @@ jobs:
 
       - name: Upload validation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: factory-windows-${{ inputs.request_id }}
           path: TestResults/
