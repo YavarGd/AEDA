@@ -150,7 +150,11 @@ jobs:
                 Add-Content -Path TestResults/test-hang-diagnostics.log
             }
 
-            [void]$process.WaitForExit()
+            $processExitTimeoutMilliseconds = 30000
+            if (-not $process.WaitForExit($processExitTimeoutMilliseconds)) {
+              "dotnet process did not exit within 30 seconds after termination was requested." |
+                Add-Content -Path TestResults/test-hang-diagnostics.log
+            }
           }
 
           $outputCollectionTimeout = [TimeSpan]::FromSeconds(30)
