@@ -592,6 +592,22 @@ public sealed class AssistPillViewModelTests
         public TaskCompletionSource GenerationStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public AssistContextEnvelope? CurrentEnvelope { get; set; }
+        public ActiveWindowReference? CapturedForeground { get; set; }
+        public FocusRestorationRequest? LastFocusRestorationRequest { get; private set; }
+
+        public FocusRestorationRequest RequestFocusRestoration(
+            FocusRestorationTrigger trigger)
+        {
+            var request = new FocusRestorationRequest(
+                CapturedForeground, trigger,
+                CapturedForeground is not null &&
+                trigger is not FocusRestorationTrigger.ModuleOpen
+                    and not FocusRestorationTrigger.AppOpen);
+            LastFocusRestorationRequest = request;
+            return request;
+        }
+
         public async Task<AttachedContextItem?> CaptureContextAsync(
             CancellationToken cancellationToken)
         {
@@ -669,6 +685,12 @@ public sealed class AssistPillViewModelTests
         {
             OpenCalls++;
             return Task.CompletedTask;
+        }
+
+        public void HandoffToModule(
+            string userRequest,
+            AssistHandoffDestination destination)
+        {
         }
     }
 }

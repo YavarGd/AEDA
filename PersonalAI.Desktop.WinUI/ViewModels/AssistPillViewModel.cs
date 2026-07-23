@@ -24,6 +24,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
     private int _isOpening;
     private string? _lastPrompt;
     private long _invocationId;
+    private FocusRestorationRequest? _pendingFocusRestoration;
 
     public AssistPillViewModel(
         IAssistPillHost host,
@@ -48,6 +49,9 @@ public sealed partial class AssistPillViewModel : ObservableObject
     [ObservableProperty]
     private string _statusText = "Ready";
 
+    [ObservableProperty]
+    private AssistContextPreviewModel _contextPreview = AssistContextPreviewModel.Empty;
+
     public bool IsEnabled => _settings.Enabled;
 
     public bool IsIdle => State == AssistPillState.IdlePill;
@@ -57,6 +61,8 @@ public sealed partial class AssistPillViewModel : ObservableObject
     public bool IsFallbackInput => State == AssistPillState.SpotlightPrompt;
 
     public long InvocationId => Volatile.Read(ref _invocationId);
+
+    public FocusRestorationRequest? PendingFocusRestoration => _pendingFocusRestoration;
 
     public bool IsDetectingContext => State == AssistPillState.DetectingContext;
 
@@ -136,6 +142,10 @@ public sealed partial class AssistPillViewModel : ObservableObject
                 return false;
             }
 
+            ContextPreview = _host.CurrentEnvelope is not null
+                ? AssistContextPreviewModel.FromEnvelope(_host.CurrentEnvelope)
+                : AssistContextPreviewModel.Empty;
+
             if (AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
             {
                 Prompt = AutomaticContextPrompt;
@@ -171,6 +181,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
         _screenCaptureCancellation = cancellation;
         try
         {
+            ContextPreview = AssistContextPreviewModel.Empty;
             State = AssistPillState.DetectingContext;
             StatusText = "Select text on screen";
             _context = await _host.CaptureScreenTextAsync(cancellation.Token);
@@ -178,6 +189,10 @@ public sealed partial class AssistPillViewModel : ObservableObject
             {
                 return;
             }
+
+            ContextPreview = _host.CurrentEnvelope is not null
+                ? AssistContextPreviewModel.FromEnvelope(_host.CurrentEnvelope)
+                : AssistContextPreviewModel.Empty;
 
             if (AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
             {
@@ -287,6 +302,14 @@ public sealed partial class AssistPillViewModel : ObservableObject
         {
             StatusText = "Copy failed";
         }
+
+        var restorationRequest = _host.RequestFocusRestoration(
+            FocusRestorationTrigger.CopyResponse);
+        if (restorationRequest.ShouldRestore)
+        {
+            _pendingFocusRestoration = restorationRequest;
+            OnPropertyChanged(nameof(PendingFocusRestoration));
+        }
     }
 
     [RelayCommand]
@@ -294,6 +317,16 @@ public sealed partial class AssistPillViewModel : ObservableObject
     {
         await _host.OpenInAedaAsync();
         State = AssistPillState.Hidden;
+    }
+
+    public void HandoffToModule(AssistHandoffDestination destination)
+    {
+        if (_lastPrompt is null || !HasResponse)
+        {
+            return;
+        }
+
+        _host.HandoffToModule(_lastPrompt, destination);
     }
 
     public void Collapse()
@@ -308,6 +341,14 @@ public sealed partial class AssistPillViewModel : ObservableObject
         {
             Cancel();
             return;
+        }
+
+        var restorationRequest = _host.RequestFocusRestoration(
+            FocusRestorationTrigger.Dismiss);
+        if (restorationRequest.ShouldRestore)
+        {
+            _pendingFocusRestoration = restorationRequest;
+            OnPropertyChanged(nameof(PendingFocusRestoration));
         }
 
         ShowIdle();
@@ -325,6 +366,14 @@ public sealed partial class AssistPillViewModel : ObservableObject
         {
             Cancel();
             return;
+        }
+
+        var restorationRequest = _host.RequestFocusRestoration(
+            FocusRestorationTrigger.Dismiss);
+        if (restorationRequest.ShouldRestore)
+        {
+            _pendingFocusRestoration = restorationRequest;
+            OnPropertyChanged(nameof(PendingFocusRestoration));
         }
 
         State = AssistPillState.Hidden;
@@ -370,9 +419,11 @@ public sealed partial class AssistPillViewModel : ObservableObject
         SetResponse(string.Empty);
         Prompt = string.Empty;
         StatusText = string.Empty;
+        ContextPreview = AssistContextPreviewModel.Empty;
         _context = null;
         _lastPrompt = null;
         _generationTask = null;
+        _pendingFocusRestoration = null;
         OnPropertyChanged(nameof(InvocationId));
         return invocationId;
     }

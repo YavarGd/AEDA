@@ -307,18 +307,22 @@ public partial class App : Application
             validationCommandAllowlist,
             taskQueryService,
             taskRuntime);
+        var assistHandoffStore = new AssistHandoffStore();
         var aedaCodeViewModel = new AedaCodeModuleViewModel(
             aedaCodeModule,
             moduleRegistry,
             workspaceRegistry,
             taskCenterService,
-            approvalCheckpointStore);
+            approvalCheckpointStore,
+            assistHandoffStore);
         var aedaMemoryViewModel = new AedaMemoryModuleViewModel(
             aedaMemoryModule,
-            moduleRegistry);
+            moduleRegistry,
+            assistHandoffStore);
         var aedaResearchViewModel = new AedaResearchModuleViewModel(
             aedaResearchModule,
-            moduleRegistry);
+            moduleRegistry,
+            assistHandoffStore);
         var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
         var workspaceRegistrationService = new WorkspaceRegistrationService(
             workspaceRepository,
@@ -392,6 +396,12 @@ public partial class App : Application
             AssistPillWindow.IdleHeight,
             AssistPillWindow.IdleWidth,
             AssistPillWindow.IdleHeight);
+        var assistContextCoordinator = new AssistContextCoordinator(
+            () => _settingsService.Current.Privacy,
+            new UniversalSelectedTextService(
+                new WindowsUiaSelectedTextProvider(),
+                new WindowsClipboardCopySelectedTextProvider(GetAssistPillWindowHandle)));
+        var assistHandoffService = new AssistHandoffService(assistHandoffStore);
         _assistPillViewModel = new AssistPillViewModel(
             new AssistPillHost(
                 conversationSession,
@@ -415,7 +425,9 @@ public partial class App : Application
                     {
                         await viewModel.OpenConversationAsync(id);
                     }
-                }),
+                },
+                assistContextCoordinator,
+                assistHandoffService),
             _settingsService.Current.AssistPill);
         _assistPillWindow = new AssistPillWindow(
             _assistPillViewModel,

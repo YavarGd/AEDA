@@ -15,6 +15,8 @@ public sealed class ActiveWindowContextService(
 {
     public SelectedTextCaptureResult? LastCaptureResult { get; private set; }
 
+    public ActiveWindowReference? LastCapturedForeground { get; private set; }
+
     public async Task<AttachedContextItem?> CaptureAsync(
         AttachedContextItem? explicitContext = null,
         CancellationToken cancellationToken = default)
@@ -31,8 +33,11 @@ public sealed class ActiveWindowContextService(
 
         if (externalWindow is null)
         {
+            LastCapturedForeground = null;
             return null;
         }
+
+        LastCapturedForeground = externalWindow;
 
         var settings = ApplicationSettingsValidator.NormalizePrivacy(
             getPrivacySettings?.Invoke() ?? PrivacySettings.Default);

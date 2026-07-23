@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Memory;
 using PersonalAI.Core.Modules;
+using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;
 
@@ -13,11 +14,13 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     public AedaMemoryModuleViewModel(
         IAedaMemoryModuleService moduleService,
-        IAedaModuleRegistry moduleRegistry)
+        IAedaModuleRegistry moduleRegistry,
+        AssistHandoffStore? handoffStore = null)
     {
         _moduleService = moduleService ??
             throw new ArgumentNullException(nameof(moduleService));
         ArgumentNullException.ThrowIfNull(moduleRegistry);
+        HandoffStore = handoffStore;
 
         if (moduleRegistry.TryGetModule(AedaModuleId.Memory, out var descriptor))
         {
@@ -48,6 +51,11 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     public AedaModuleDescriptor Descriptor { get; }
 
     public IReadOnlyList<string> CapabilityBadges { get; }
+
+    public AssistHandoffStore? HandoffStore { get; }
+
+    public AssistHandoffPayload? ConsumePendingHandoff() =>
+        HandoffStore?.TryConsume();
 
     public string DisplayName => Descriptor.DisplayName;
 

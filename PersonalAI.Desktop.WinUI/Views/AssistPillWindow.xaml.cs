@@ -215,7 +215,11 @@ public sealed partial class AssistPillWindow : Window
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AssistPillViewModel.State))
+        if (e.PropertyName == nameof(AssistPillViewModel.PendingFocusRestoration))
+        {
+            RestoreFocus();
+        }
+        else if (e.PropertyName == nameof(AssistPillViewModel.State))
         {
             if (_viewModel.State is AssistPillState.DetectingContext or
                 AssistPillState.StreamingResponse)
@@ -690,6 +694,25 @@ public sealed partial class AssistPillWindow : Window
 
     private void RestoreFocus()
     {
+        var pendingRequest = _viewModel.PendingFocusRestoration;
+        if (pendingRequest is { ShouldRestore: true, PreviousForeground: not null })
+        {
+            var handle = pendingRequest.PreviousForeground.WindowHandle;
+            if (IsWindow(handle) && SetForegroundWindow(handle))
+            {
+                return;
+            }
+
+            // Allowed request but handle validation failed — fall through to legacy.
+        }
+        else if (pendingRequest is not null)
+        {
+            // Explicit no-restore request (e.g. AppOpen/ModuleOpen) or request
+            // with no PreviousForeground — do not fall back to legacy.
+            return;
+        }
+
+        // Cleared/null pending request — retain legacy behaviour.
         if (_focusReturnWindow != 0 && IsWindow(_focusReturnWindow))
         {
             _ = SetForegroundWindow(_focusReturnWindow);

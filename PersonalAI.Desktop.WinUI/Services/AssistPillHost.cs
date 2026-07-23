@@ -10,6 +10,10 @@ public interface IAssistPillHost
 {
     string? LastCaptureFailureMessage { get; }
 
+    AssistContextEnvelope? CurrentEnvelope { get; }
+
+    ActiveWindowReference? CapturedForeground { get; }
+
     Task<AttachedContextItem?> CaptureContextAsync(CancellationToken cancellationToken);
 
     Task<AttachedContextItem?> CaptureScreenTextAsync(CancellationToken cancellationToken);
@@ -22,7 +26,13 @@ public interface IAssistPillHost
 
     Task CopyTextAsync(string text, CancellationToken cancellationToken);
 
+    FocusRestorationRequest RequestFocusRestoration(FocusRestorationTrigger trigger);
+
     Task OpenInAedaAsync();
+
+    void HandoffToModule(
+        string userRequest,
+        AssistHandoffDestination destination);
 }
 
 public sealed record AssistGenerationResult(
@@ -39,11 +49,17 @@ public sealed class AssistPillHost(
     ScreenTextCaptureService screenTextCaptureService,
     Func<AttachedContextItem?> getExplicitContext,
     IClipboardWriter clipboardWriter,
-    Func<Guid?, Task> openConversationAsync) : IAssistPillHost
+    Func<Guid?, Task> openConversationAsync,
+    AssistContextCoordinator? contextCoordinator = null,
+    AssistHandoffService? handoffService = null) : IAssistPillHost
 {
     private Guid? _conversationId;
 
     public string? LastCaptureFailureMessage { get; private set; }
+
+    public AssistContextEnvelope? CurrentEnvelope { get; private set; }
+
+    public ActiveWindowReference? CapturedForeground { get; private set; }
 
     public async Task<AttachedContextItem?> CaptureContextAsync(
         CancellationToken cancellationToken)
@@ -60,10 +76,30 @@ public sealed class AssistPillHost(
                 "Clipboard restoration failed; your clipboard may have changed.",
             _ => null
         };
+
+        CapturedForeground = contextService.LastCapturedForeground;
+
+        if (contextCoordinator is not null && CapturedForeground is not null)
+        {
+            CurrentEnvelope = await contextCoordinator.CaptureFromContextServiceAsync(
+                contextService,
+                explicitContext,
+                cancellationToken);
+        }
+        else
+        {
+            CurrentEnvelope = CapturedForeground is not null && captured is not null
+                ? AssistContextCoordinator.BuildEnvelopeFromItem(captured, CapturedForeground)
+                : null;
+        }
+
         return AssistContextPolicy.IsMeaningful(captured, DateTimeOffset.UtcNow)
             ? captured
             : null;
     }
+
+    public FocusRestorationRequest RequestFocusRestoration(FocusRestorationTrigger trigger) =>
+        AssistFocusRestorationPolicy.CreateRequest(CapturedForeground, trigger);
 
     public async Task<AttachedContextItem?> CaptureScreenTextAsync(
         CancellationToken cancellationToken)
@@ -205,6 +241,24 @@ public sealed class AssistPillHost(
         clipboardWriter.CopyTextAsync(text, cancellationToken);
 
     public Task OpenInAedaAsync() => openConversationAsync(_conversationId);
+
+    public void HandoffToModule(
+        string userRequest,
+        AssistHandoffDestination destination)
+    {
+        if (handoffService is null)
+        {
+            return;
+        }
+
+        handoffService.Handoff(
+            userRequest,
+            CurrentEnvelope,
+            CapturedForeground?.ProcessName,
+            null,
+            _conversationId,
+            destination);
+    }
 }
 
 public static class AssistContextPolicy
