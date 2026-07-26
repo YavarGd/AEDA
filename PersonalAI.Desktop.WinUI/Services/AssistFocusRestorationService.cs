@@ -1,3 +1,5 @@
+using PersonalAI.Core.Context;
+
 namespace PersonalAI.Desktop.WinUI.Services;
 
 public sealed class AssistFocusRestorationService(WindowsGuiFocusController focusController)
