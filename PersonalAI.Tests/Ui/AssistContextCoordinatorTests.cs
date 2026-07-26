@@ -190,7 +190,7 @@ public sealed class AssistContextCoordinatorTests
         Assert.True(envelope.HasContext);
         Assert.Equal("notepad", envelope.ApplicationLabel);
         Assert.Equal("notepad", envelope.ProcessIdentity);
-        Assert.Equal("notes.txt", envelope.AllowedTitle);
+        Assert.Equal("notes.txt - Notepad", envelope.AllowedTitle);
         Assert.Equal(AssistContextKind.ApplicationWindow, envelope.ContextKind);
         Assert.Equal(42, envelope.SelectedTextLength);
         Assert.Same(item, envelope.UnderlyingItem);

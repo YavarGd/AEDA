@@ -100,9 +100,10 @@ public sealed class AssistContextIntegrationTests
         await viewModel.OpenPromptAsync();
         await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         viewModel.Collapse();
+        await viewModel.WaitForGenerationAsync();
 
         Assert.True(host.GenerationWasCancelled);
-        Assert.Equal(AssistPillState.IdlePill, viewModel.State);
+        Assert.Equal(AssistPillState.Cancelled, viewModel.State);
     }
 
     [Fact]
