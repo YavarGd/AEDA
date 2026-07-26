@@ -6,7 +6,7 @@ namespace PersonalAI.Tests.Ui;
 public sealed class AssistFocusRestorationPolicyTests
 {
     [Fact]
-    public void DismissWithForeground RequestsRestoration()
+    public void DismissWithForeground_RequestsRestoration()
     {
         var foreground = new ActiveWindowReference(
             100, 42, "notepad", "notes.txt", DateTimeOffset.UtcNow);
@@ -20,7 +20,7 @@ public sealed class AssistFocusRestorationPolicyTests
     }
 
     [Fact]
-    public void CopyResponseWithForeground RequestsRestoration()
+    public void CopyResponseWithForeground_RequestsRestoration()
     {
         var foreground = new ActiveWindowReference(
             100, 42, "notepad", "notes.txt", DateTimeOffset.UtcNow);
