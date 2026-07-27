@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Modules;
 using PersonalAI.Core.Research;
+using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;
 
@@ -12,10 +13,12 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
 
     public AedaResearchModuleViewModel(
         IAedaResearchModuleService moduleService,
-        IAedaModuleRegistry moduleRegistry)
+        IAedaModuleRegistry moduleRegistry,
+        AssistHandoffStore? handoffStore = null)
     {
         _moduleService = moduleService ?? throw new ArgumentNullException(nameof(moduleService));
         ArgumentNullException.ThrowIfNull(moduleRegistry);
+        HandoffStore = handoffStore;
 
         if (moduleRegistry.TryGetModule(AedaModuleId.Research, out var descriptor))
         {
@@ -46,6 +49,13 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     public AedaModuleDescriptor Descriptor { get; }
 
     public IReadOnlyList<string> CapabilityBadges { get; }
+
+    public AssistHandoffStore? HandoffStore { get; }
+
+    public AssistHandoffPayload? ConsumePendingHandoff() =>
+        HandoffStore?.TryConsume();
+
+    public AssistHandoffPayload? LastAssistHandoff { get; private set; }
 
     public string DisplayName => Descriptor.DisplayName;
 
@@ -125,12 +135,27 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        ApplyPendingHandoff();
         Dashboard = await _moduleService.GetDashboardAsync(cancellationToken)
             .ConfigureAwait(false);
         SelectedReport = Dashboard.RecentReports.FirstOrDefault();
         SafeStatusMessage = Dashboard.SafeStatusMessage;
         NotifyDashboardChanged();
         NotifyReportChanged();
+    }
+
+    private void ApplyPendingHandoff()
+    {
+        var handoff = ConsumePendingHandoff();
+        if (handoff?.Destination != AssistHandoffDestination.AedaResearch)
+        {
+            return;
+        }
+
+        LastAssistHandoff = handoff;
+        VerificationText = handoff.Context?.HasContext == true
+            ? handoff.Context.SelectedTextPreview ?? handoff.UserRequest
+            : handoff.UserRequest;
     }
 
     [RelayCommand(CanExecute = nameof(CanExtractClaims))]

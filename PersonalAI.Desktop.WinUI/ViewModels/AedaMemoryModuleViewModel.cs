@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Memory;
 using PersonalAI.Core.Modules;
+using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;
 
@@ -13,11 +14,13 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     public AedaMemoryModuleViewModel(
         IAedaMemoryModuleService moduleService,
-        IAedaModuleRegistry moduleRegistry)
+        IAedaModuleRegistry moduleRegistry,
+        AssistHandoffStore? handoffStore = null)
     {
         _moduleService = moduleService ??
             throw new ArgumentNullException(nameof(moduleService));
         ArgumentNullException.ThrowIfNull(moduleRegistry);
+        HandoffStore = handoffStore;
 
         if (moduleRegistry.TryGetModule(AedaModuleId.Memory, out var descriptor))
         {
@@ -48,6 +51,13 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     public AedaModuleDescriptor Descriptor { get; }
 
     public IReadOnlyList<string> CapabilityBadges { get; }
+
+    public AssistHandoffStore? HandoffStore { get; }
+
+    public AssistHandoffPayload? ConsumePendingHandoff() =>
+        HandoffStore?.TryConsume();
+
+    public AssistHandoffPayload? LastAssistHandoff { get; private set; }
 
     public string DisplayName => Descriptor.DisplayName;
 
@@ -155,10 +165,25 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        ApplyPendingHandoff();
         Dashboard = await _moduleService.GetDashboardAsync(cancellationToken)
             .ConfigureAwait(false);
         SafeStatusMessage = Dashboard.SafeStatusMessage;
         NotifyDashboardChanged();
+    }
+
+    private void ApplyPendingHandoff()
+    {
+        var handoff = ConsumePendingHandoff();
+        if (handoff?.Destination != AssistHandoffDestination.AedaMemory)
+        {
+            return;
+        }
+
+        LastAssistHandoff = handoff;
+        NewMemoryText = handoff.Context?.HasContext == true
+            ? handoff.Context.SelectedTextPreview ?? handoff.UserRequest
+            : handoff.UserRequest;
     }
 
     [RelayCommand(CanExecute = nameof(CanSearchMemories))]

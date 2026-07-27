@@ -7,6 +7,7 @@ using PersonalAI.Core.Coding;
 using PersonalAI.Core.Modules;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
+using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;
 
@@ -31,7 +32,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         IAedaModuleRegistry moduleRegistry,
         IWorkspaceRegistry workspaceRegistry,
         IAedaTaskCenterService taskCenterService,
-        IApprovalCheckpointStore approvalStore)
+        IApprovalCheckpointStore approvalStore,
+        AssistHandoffStore? handoffStore = null)
     {
         _moduleService = moduleService ??
             throw new ArgumentNullException(nameof(moduleService));
@@ -42,6 +44,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         _approvalStore = approvalStore ??
             throw new ArgumentNullException(nameof(approvalStore));
         ArgumentNullException.ThrowIfNull(moduleRegistry);
+        HandoffStore = handoffStore;
 
         if (moduleRegistry.TryGetModule(AedaModuleId.Code, out var descriptor))
         {
@@ -73,6 +76,13 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public AedaModuleDescriptor Descriptor { get; }
 
     public IReadOnlyList<string> CapabilityBadges { get; }
+
+    public AssistHandoffStore? HandoffStore { get; }
+
+    public AssistHandoffPayload? ConsumePendingHandoff() =>
+        HandoffStore?.TryConsume();
+
+    public AssistHandoffPayload? LastAssistHandoff { get; private set; }
 
     public ObservableCollection<AedaCodeWorkspaceItem> Workspaces { get; } = [];
 
@@ -588,6 +598,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        ApplyPendingHandoff();
         if (IsBusy)
         {
             return;
@@ -622,6 +633,27 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             IsBusy = false;
             NotifyAll();
+        }
+    }
+
+    private void ApplyPendingHandoff()
+    {
+        var handoff = ConsumePendingHandoff();
+        if (handoff?.Destination != AssistHandoffDestination.AedaCode)
+        {
+            return;
+        }
+
+        LastAssistHandoff = handoff;
+        var context = handoff.Context?.HasContext == true
+            ? handoff.Context.SelectedTextPreview
+            : null;
+        ProposalRequest = string.IsNullOrWhiteSpace(context)
+            ? handoff.UserRequest
+            : $"{handoff.UserRequest}{Environment.NewLine}{Environment.NewLine}{context}";
+        if (ProposalRequest.Length > MaxProposalRequestCharacters)
+        {
+            ProposalRequest = ProposalRequest[..MaxProposalRequestCharacters];
         }
     }
 
