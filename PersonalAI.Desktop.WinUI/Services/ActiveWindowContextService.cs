@@ -17,11 +17,15 @@ public sealed class ActiveWindowContextService(
 
     public ActiveWindowReference? LastCapturedForeground { get; private set; }
 
+    public bool WasLastCapturePrivacyBlocked =>
+        foregroundWindowTracker.WasLastObservedExternalWindowPrivacyBlocked;
+
     public async Task<AttachedContextItem?> CaptureAsync(
         AttachedContextItem? explicitContext = null,
         CancellationToken cancellationToken = default)
     {
         var ownHandle = getOwnWindowHandle();
+        LastCapturedForeground = null;
         _ = foregroundWindowTracker.CaptureCurrentExternalWindow(ownHandle);
 
         if (!foregroundWindowTracker.IsLastObservedExternalWindowSafe)

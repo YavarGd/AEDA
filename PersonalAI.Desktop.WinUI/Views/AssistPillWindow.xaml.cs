@@ -27,6 +27,7 @@ public sealed partial class AssistPillWindow : Window
     private const int SpotlightWidth = 520;
     private const int SpotlightHeight = 58;
     private const int ResponseChromeHeight = 110;
+    private const int ContextSurfaceHeight = 76;
 
     private readonly AssistPillViewModel _viewModel;
     private readonly WinUiWindowPlacementService _placementService;
@@ -148,7 +149,6 @@ public sealed partial class AssistPillWindow : Window
                 else
                 {
                     _viewModel.Collapse();
-                    RestoreFocus();
                 }
 
                 return;
@@ -253,6 +253,10 @@ public sealed partial class AssistPillWindow : Window
             _responseResizeTimer.Start();
             StartFirstContentFade();
         }
+        else if (e.PropertyName == nameof(AssistPillViewModel.HasContextSurface))
+        {
+            ApplyState(reposition: true);
+        }
     }
 
     private void ApplyState(bool reposition)
@@ -277,7 +281,9 @@ public sealed partial class AssistPillWindow : Window
             : _viewModel.IsFallbackInput
                 ? new SizeInt32(
                     AssistResponseSizingPolicy.ScalePixels(SpotlightWidth, scale),
-                    AssistResponseSizingPolicy.ScalePixels(SpotlightHeight, scale))
+                    AssistResponseSizingPolicy.ScalePixels(
+                        SpotlightHeight + GetContextSurfaceHeight(),
+                        scale))
                 : GetResponseSize();
         AppWindow.Resize(size);
         ApplyWindowShape();
@@ -310,12 +316,19 @@ public sealed partial class AssistPillWindow : Window
             Math.Max(1, Math.Min(560, availableWidth) - 56),
             double.PositiveInfinity));
         var layout = AssistResponseSizingPolicy.CalculateMeasured(
-            ResponsePresenter.DesiredSize.Height + ResponseChromeHeight,
+            ResponsePresenter.DesiredSize.Height +
+                ResponseChromeHeight +
+                GetContextSurfaceHeight(),
             area,
             scale);
         SetResponseScrolling(layout.RequiresScrolling);
         return new SizeInt32(layout.Width, layout.Height);
     }
+
+    private int GetContextSurfaceHeight() =>
+        _viewModel.HasContextPreview
+            ? ContextSurfaceHeight
+            : _viewModel.HasBlockedContext ? 44 : 0;
 
     private double GetRasterizationScale() =>
         Root.XamlRoot?.RasterizationScale ?? Math.Max(1, GetDpiForWindow(_windowHandle) / 96d);
@@ -603,14 +616,21 @@ public sealed partial class AssistPillWindow : Window
     private void CollapseButton_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.Collapse();
-        RestoreFocus();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.Hide();
-        RestoreFocus();
     }
+
+    private async void OpenInCodeButton_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.HandoffToModuleAsync(AssistHandoffDestination.AedaCode);
+
+    private async void ResearchThisButton_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.HandoffToModuleAsync(AssistHandoffDestination.AedaResearch);
+
+    private async void SaveToMemoryButton_Click(object sender, RoutedEventArgs e) =>
+        await _viewModel.HandoffToModuleAsync(AssistHandoffDestination.AedaMemory);
 
     private void PromptTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -652,12 +672,10 @@ public sealed partial class AssistPillWindow : Window
         else if (_viewModel.IsExpanded)
         {
             _viewModel.Collapse();
-            RestoreFocus();
         }
         else
         {
             _viewModel.Hide();
-            RestoreFocus();
         }
     }
 

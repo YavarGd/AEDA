@@ -18,6 +18,8 @@ public sealed class ForegroundWindowTracker(
 
     public bool IsLastObservedExternalWindowSafe { get; private set; }
 
+    public bool WasLastObservedExternalWindowPrivacyBlocked { get; private set; }
+
     public ActiveWindowReference? CaptureCurrentExternalWindow(nint ownWindowHandle)
     {
         var windowHandle = NativeMethods.GetForegroundWindow();
@@ -34,6 +36,7 @@ public sealed class ForegroundWindowTracker(
             return _referenceTracker.Current;
         }
 
+        WasLastObservedExternalWindowPrivacyBlocked = false;
         if (!TryCreateExternalReference(windowHandle, out var reference))
         {
             IsLastObservedExternalWindowSafe = false;
@@ -78,8 +81,14 @@ public sealed class ForegroundWindowTracker(
 
         var privacySettings = ApplicationSettingsValidator.NormalizePrivacy(
             _getPrivacySettings?.Invoke() ?? PrivacySettings.Default);
+        WasLastObservedExternalWindowPrivacyBlocked =
+            PrivacyExclusionMatcher.IsSensitiveWindow(
+                processName,
+                windowTitle,
+                privacySettings.ExcludedApplications);
 
-        if (!IsUsableExternalWindow(processName, windowTitle, privacySettings))
+        if (WasLastObservedExternalWindowPrivacyBlocked ||
+            !IsUsableExternalWindow(processName))
         {
             reference = null;
             return false;
@@ -117,21 +126,14 @@ public sealed class ForegroundWindowTracker(
         }
     }
 
-    private static bool IsUsableExternalWindow(
-        string? processName,
-        string? windowTitle,
-        PrivacySettings privacySettings)
+    private static bool IsUsableExternalWindow(string? processName)
     {
         if (string.IsNullOrWhiteSpace(processName))
         {
             return false;
         }
 
-        return !PrivacyExclusionMatcher.IsSensitiveWindow(
-            processName,
-            windowTitle,
-            privacySettings.ExcludedApplications) &&
-            !processName.Equals("explorer", StringComparison.OrdinalIgnoreCase) &&
+        return !processName.Equals("explorer", StringComparison.OrdinalIgnoreCase) &&
             !processName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);
     }
 

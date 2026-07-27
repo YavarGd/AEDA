@@ -82,6 +82,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public AssistHandoffPayload? ConsumePendingHandoff() =>
         HandoffStore?.TryConsume();
 
+    public AssistHandoffPayload? LastAssistHandoff { get; private set; }
+
     public ObservableCollection<AedaCodeWorkspaceItem> Workspaces { get; } = [];
 
     public ObservableCollection<AedaCodeProposalItem> Proposals { get; } = [];
@@ -596,6 +598,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        ApplyPendingHandoff();
         if (IsBusy)
         {
             return;
@@ -630,6 +633,27 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             IsBusy = false;
             NotifyAll();
+        }
+    }
+
+    private void ApplyPendingHandoff()
+    {
+        var handoff = ConsumePendingHandoff();
+        if (handoff?.Destination != AssistHandoffDestination.AedaCode)
+        {
+            return;
+        }
+
+        LastAssistHandoff = handoff;
+        var context = handoff.Context?.HasContext == true
+            ? handoff.Context.SelectedTextPreview
+            : null;
+        ProposalRequest = string.IsNullOrWhiteSpace(context)
+            ? handoff.UserRequest
+            : $"{handoff.UserRequest}{Environment.NewLine}{Environment.NewLine}{context}";
+        if (ProposalRequest.Length > MaxProposalRequestCharacters)
+        {
+            ProposalRequest = ProposalRequest[..MaxProposalRequestCharacters];
         }
     }
 

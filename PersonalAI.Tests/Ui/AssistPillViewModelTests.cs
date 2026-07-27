@@ -19,7 +19,7 @@ public sealed class AssistPillViewModelTests
     }
 
     [Fact]
-    public async Task MeaningfulContext_StartsDirectGenerationWithoutFallback()
+    public async Task MeaningfulContext_PrefillsPromptAndWaitsForSubmission()
     {
         var host = new FakeHost
         {
@@ -29,11 +29,13 @@ public sealed class AssistPillViewModelTests
         var viewModel = CreateViewModel(host);
 
         Assert.True(await viewModel.OpenPromptAsync());
+        Assert.True(viewModel.IsFallbackInput);
+        Assert.Equal(0, host.GenerateCalls);
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
 
         Assert.Equal(AssistPillViewModel.AutomaticContextPrompt, host.GeneratedPrompt);
         Assert.Same(host.Context, host.GeneratedContext);
-        Assert.False(viewModel.IsFallbackInput);
         Assert.Equal(AssistPillState.Completed, viewModel.State);
         Assert.Equal("First answer", viewModel.Response);
     }
@@ -49,12 +51,13 @@ public sealed class AssistPillViewModelTests
         var viewModel = CreateViewModel(host);
 
         await viewModel.OpenPromptAsync();
+        var generation = viewModel.SubmitAsync();
         await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal(AssistPillState.StreamingResponse, viewModel.State);
         Assert.Equal("Using selected text", viewModel.StatusText);
         viewModel.Cancel();
-        await viewModel.WaitForGenerationAsync();
+        await generation;
     }
 
     [Fact]
@@ -106,6 +109,7 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { Context = Context(10), Chunks = ["Old answer"] };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
         viewModel.Collapse();
         host.Context = null;
@@ -127,6 +131,7 @@ public sealed class AssistPillViewModelTests
         var host = new FakeHost { Context = Context(10), Chunks = ["Old answer"] };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
         var previousReport = host.LastReportChunk!;
         viewModel.Collapse();
@@ -161,7 +166,7 @@ public sealed class AssistPillViewModelTests
         await viewModel.WaitForGenerationAsync();
 
         Assert.Equal(1, host.CaptureCalls);
-        Assert.Equal(1, host.GenerateCalls);
+        Assert.Equal(0, host.GenerateCalls);
     }
 
     [Theory]
@@ -191,7 +196,7 @@ public sealed class AssistPillViewModelTests
         Assert.True(await first);
         await viewModel.WaitForGenerationAsync();
         Assert.Equal(1, host.CaptureCalls);
-        Assert.Equal(1, host.GenerateCalls);
+        Assert.Equal(0, host.GenerateCalls);
     }
 
     [Fact]
@@ -324,6 +329,7 @@ public sealed class AssistPillViewModelTests
         };
         var viewModel = CreateViewModel(host);
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
         host.Context = Context(20) with
         {
@@ -395,6 +401,7 @@ public sealed class AssistPillViewModelTests
         await viewModel.OpenPromptAsync();
 
         await viewModel.SelectScreenTextAsync();
+        var generation = viewModel.SubmitAsync();
         await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal(1, host.ScreenCaptureCalls);
@@ -402,7 +409,7 @@ public sealed class AssistPillViewModelTests
         Assert.Same(screenContext, host.GeneratedContext);
         Assert.Equal("Using text selected from screen", viewModel.StatusText);
         viewModel.Cancel();
-        await viewModel.WaitForGenerationAsync();
+        await generation;
     }
 
     [Fact]
@@ -490,6 +497,39 @@ public sealed class AssistPillViewModelTests
         Assert.Equal("Visible", host.CopiedText);
         Assert.Equal(1, host.OpenCalls);
         Assert.Equal(AssistPillState.Hidden, viewModel.State);
+    }
+
+    [Fact]
+    public async Task VsCodeUiAutomationSelection_OffersOnlyCodeHandoff()
+    {
+        var context = Context(59);
+        var host = new FakeHost
+        {
+            Context = context,
+            Chunks = ["Answer"],
+            CurrentEnvelope = new AssistContextEnvelope(
+                "Code",
+                "Code",
+                null,
+                AssistContextKind.ApplicationWindow,
+                "public static int Add(int left, int right) => left + right;",
+                59,
+                SelectedTextCaptureSource.UiAutomationTextPattern,
+                DateTimeOffset.UtcNow,
+                IsTruncated: false,
+                IsBlocked: false,
+                BlockedReason: null,
+                context,
+                new Dictionary<string, string>())
+        };
+        var viewModel = CreateViewModel(host);
+
+        await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
+
+        Assert.Equal("Selected code", viewModel.ContextTypeText);
+        Assert.True(viewModel.CanHandoffToCode);
+        Assert.False(viewModel.CanHandoffToResearch);
     }
 
     [Fact]
@@ -681,16 +721,29 @@ public sealed class AssistPillViewModelTests
             return Task.CompletedTask;
         }
 
+        public void ClearContext()
+        {
+            Context = null;
+            CurrentEnvelope = null;
+        }
+
         public Task OpenInAedaAsync()
         {
             OpenCalls++;
             return Task.CompletedTask;
         }
 
-        public void HandoffToModule(
+        public Task HandoffToModuleAsync(
             string userRequest,
+            string? currentResponse,
             AssistHandoffDestination destination)
         {
+            if (destination == AssistHandoffDestination.Chat)
+            {
+                OpenCalls++;
+            }
+
+            return Task.CompletedTask;
         }
     }
 }

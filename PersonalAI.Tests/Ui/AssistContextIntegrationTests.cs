@@ -22,6 +22,7 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
 
         Assert.NotNull(host.StoredEnvelope);
@@ -58,6 +59,7 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
         await viewModel.CopyResponseAsync();
 
@@ -98,9 +100,10 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        var generation = viewModel.SubmitAsync();
         await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         viewModel.Collapse();
-        await viewModel.WaitForGenerationAsync();
+        await generation;
 
         Assert.True(host.GenerationWasCancelled);
         Assert.Equal(AssistPillState.Cancelled, viewModel.State);
@@ -120,6 +123,7 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
         await viewModel.OpenInAedaAsync();
 
@@ -128,7 +132,7 @@ public sealed class AssistContextIntegrationTests
     }
 
     [Fact]
-    public async Task OpenInAedaAsync_DoesNotRequestFocusRestoration()
+    public async Task OpenInAedaAsync_RequestsExplicitNoRestore()
     {
         var host = new IntegrationFakeHost { Context = ContextItem(42) };
         var viewModel = new AssistPillViewModel(
@@ -138,7 +142,9 @@ public sealed class AssistContextIntegrationTests
         await viewModel.OpenPromptAsync();
         await viewModel.OpenInAedaAsync();
 
-        Assert.Null(host.LastFocusRestorationRequest);
+        Assert.NotNull(host.LastFocusRestorationRequest);
+        Assert.False(host.LastFocusRestorationRequest!.ShouldRestore);
+        Assert.Equal(FocusRestorationTrigger.AppOpen, host.LastFocusRestorationRequest.Trigger);
     }
 
     [Fact]
@@ -158,10 +164,13 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
-        viewModel.HandoffToModule(AssistHandoffDestination.AedaCode);
+        await viewModel.HandoffToModuleAsync(AssistHandoffDestination.AedaCode);
 
-        Assert.Null(host.LastFocusRestorationRequest);
+        Assert.NotNull(host.LastFocusRestorationRequest);
+        Assert.False(host.LastFocusRestorationRequest!.ShouldRestore);
+        Assert.Equal(FocusRestorationTrigger.ModuleOpen, host.LastFocusRestorationRequest.Trigger);
         Assert.True(store.TryRead(out _));
     }
 
@@ -200,6 +209,7 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
         await viewModel.CopyResponseAsync();
 
@@ -222,6 +232,7 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
 
         Assert.Equal(
@@ -250,8 +261,9 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
-        viewModel.HandoffToModule(AssistHandoffDestination.AedaCode);
+        await viewModel.HandoffToModuleAsync(AssistHandoffDestination.AedaCode);
 
         var consumed = store.TryConsume();
         Assert.NotNull(consumed);
@@ -280,11 +292,12 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
 
         foreach (var dest in Enum.GetValues<AssistHandoffDestination>())
         {
-            viewModel.HandoffToModule(dest);
+            await viewModel.HandoffToModuleAsync(dest);
             Assert.True(store.TryRead(out var stored));
             Assert.Equal(dest, stored!.Destination);
             Assert.True(stored.HasContext);
@@ -308,7 +321,7 @@ public sealed class AssistContextIntegrationTests
 
         await viewModel.OpenPromptAsync();
 
-        viewModel.HandoffToModule(AssistHandoffDestination.Chat);
+        await viewModel.HandoffToModuleAsync(AssistHandoffDestination.Chat);
 
         Assert.False(store.TryRead(out _));
     }
@@ -326,6 +339,34 @@ public sealed class AssistContextIntegrationTests
         Assert.True(viewModel.IsFallbackInput);
         Assert.True(viewModel.ContextPreview.IsEmpty);
         Assert.Equal(0, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task ClearContext_RemovesPayloadButPreservesPromptAndResponse()
+    {
+        var store = new AssistHandoffStore();
+        var host = new IntegrationFakeHost
+        {
+            Context = ContextItem(42),
+            Envelope = CreateEnvelope(),
+            Chunks = ["Answer"],
+            HandoffService = new AssistHandoffService(store)
+        };
+        var viewModel = new AssistPillViewModel(
+            host,
+            new AssistPillSettings(true, 1_200));
+
+        await viewModel.OpenPromptAsync();
+        viewModel.ClearContext();
+        await viewModel.SubmitAsync();
+        await viewModel.HandoffToModuleAsync(AssistHandoffDestination.Chat);
+
+        var payload = store.TryConsume();
+        Assert.NotNull(payload);
+        Assert.False(payload.HasContext);
+        Assert.Equal(AssistPillViewModel.AutomaticContextPrompt, payload.UserRequest);
+        Assert.Equal("Answer", payload.CurrentResponse);
+        Assert.Equal("Answer", viewModel.Response);
     }
 
     [Fact]
@@ -518,7 +559,7 @@ public sealed class AssistContextIntegrationTests
     }
 
     [Fact]
-    public async Task OpenInAedaAsync_DoesNotStoreHandoffPayload()
+    public async Task OpenInAedaAsync_StoresChatHandoffPayload()
     {
         var store = new AssistHandoffStore();
         var service = new AssistHandoffService(store);
@@ -534,10 +575,12 @@ public sealed class AssistContextIntegrationTests
             new AssistPillSettings(true, 1_200));
 
         await viewModel.OpenPromptAsync();
+        await viewModel.SubmitAsync();
         await viewModel.WaitForGenerationAsync();
         await viewModel.OpenInAedaAsync();
 
-        Assert.False(store.TryRead(out _));
+        Assert.True(store.TryRead(out var payload));
+        Assert.Equal(AssistHandoffDestination.Chat, payload!.Destination);
     }
 
     private static AttachedContextItem ContextItem(int selectedCharacters) =>
@@ -651,6 +694,12 @@ public sealed class AssistContextIntegrationTests
         public Task CopyTextAsync(string text, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
+        public void ClearContext()
+        {
+            Context = null;
+            StoredEnvelope = null;
+        }
+
         public FocusRestorationRequest RequestFocusRestoration(
             FocusRestorationTrigger trigger)
         {
@@ -666,20 +715,26 @@ public sealed class AssistContextIntegrationTests
             return Task.CompletedTask;
         }
 
-        public void HandoffToModule(
+        public Task HandoffToModuleAsync(
             string userRequest,
+            string? currentResponse,
             AssistHandoffDestination destination)
         {
             HandoffCalls++;
+            if (destination == AssistHandoffDestination.Chat)
+            {
+                OpenCalls++;
+            }
             LastHandoffRequest = userRequest;
             LastHandoffDestination = destination;
             HandoffService?.Handoff(
                 userRequest,
                 StoredEnvelope,
                 Foreground?.ProcessName,
-                null,
+                currentResponse,
                 null,
                 destination);
+            return Task.CompletedTask;
         }
     }
 }

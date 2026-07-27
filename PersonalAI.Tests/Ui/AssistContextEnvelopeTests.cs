@@ -130,6 +130,29 @@ public sealed class AssistContextEnvelopeTests
     }
 
     [Fact]
+    public void FromCaptureResult_UnsupportedControlProducesEmptyContext()
+    {
+        var foreground = new ActiveWindowReference(
+            100, 42, "notepad", "notes.txt", DateTimeOffset.UtcNow);
+        var result = new SelectedTextCaptureResult(
+            false,
+            null,
+            SelectedTextCaptureSource.None,
+            "notepad",
+            DateTimeOffset.UtcNow,
+            SelectedTextCaptureFailure.UnsupportedControl,
+            false,
+            true,
+            "copy-disabled");
+
+        var envelope = AssistContextEnvelope.FromCaptureResult(foreground, result);
+
+        Assert.False(envelope.HasContext);
+        Assert.False(envelope.IsBlocked);
+        Assert.True(AssistContextPreviewModel.FromEnvelope(envelope).IsEmpty);
+    }
+
+    [Fact]
     public void FromCaptureResult_PasswordControlResultProducesBlockedEnvelope()
     {
         var foreground = new ActiveWindowReference(

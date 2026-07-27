@@ -57,6 +57,8 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     public AssistHandoffPayload? ConsumePendingHandoff() =>
         HandoffStore?.TryConsume();
 
+    public AssistHandoffPayload? LastAssistHandoff { get; private set; }
+
     public string DisplayName => Descriptor.DisplayName;
 
     public string ShortDescription => Descriptor.ShortDescription;
@@ -163,10 +165,25 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        ApplyPendingHandoff();
         Dashboard = await _moduleService.GetDashboardAsync(cancellationToken)
             .ConfigureAwait(false);
         SafeStatusMessage = Dashboard.SafeStatusMessage;
         NotifyDashboardChanged();
+    }
+
+    private void ApplyPendingHandoff()
+    {
+        var handoff = ConsumePendingHandoff();
+        if (handoff?.Destination != AssistHandoffDestination.AedaMemory)
+        {
+            return;
+        }
+
+        LastAssistHandoff = handoff;
+        NewMemoryText = handoff.Context?.HasContext == true
+            ? handoff.Context.SelectedTextPreview ?? handoff.UserRequest
+            : handoff.UserRequest;
     }
 
     [RelayCommand(CanExecute = nameof(CanSearchMemories))]

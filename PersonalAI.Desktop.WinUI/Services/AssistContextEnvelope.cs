@@ -55,12 +55,11 @@ public sealed record AssistContextEnvelope(
         ActiveWindowReference foreground,
         SelectedTextCaptureResult captureResult)
     {
-        if (captureResult.FailureReason is not
-            SelectedTextCaptureFailure.None and not
-            SelectedTextCaptureFailure.NoSelection and not
-            SelectedTextCaptureFailure.Cancelled and not
-            SelectedTextCaptureFailure.Timeout and not
-            SelectedTextCaptureFailure.SafeFailure)
+        if (captureResult.FailureReason is
+            SelectedTextCaptureFailure.PrivacyBlocked or
+            SelectedTextCaptureFailure.ProtectedControl or
+            SelectedTextCaptureFailure.PasswordControl or
+            SelectedTextCaptureFailure.ElevatedTarget)
         {
             return Blocked(
                 MapFailureToBlockedReason(captureResult.FailureReason),

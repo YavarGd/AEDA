@@ -34,9 +34,11 @@ public sealed record AssistContextPreviewModel(
         }
 
         var preview = envelope.SelectedTextPreview;
+        var isTruncated = envelope.IsTruncated;
         if (preview is not null && preview.Length > PreviewLimit)
         {
             preview = preview[..PreviewLimit] + "...";
+            isTruncated = true;
         }
 
         return new AssistContextPreviewModel(
@@ -44,12 +46,13 @@ public sealed record AssistContextPreviewModel(
             envelope.ContextKind.ToString(),
             preview ?? string.Empty,
             envelope.SelectedTextLength,
-            envelope.IsTruncated,
+            isTruncated,
             envelope.IsBlocked,
             envelope.BlockedReason,
             envelope.HasContext,
             envelope.ProcessIdentity);
     }
 
-    public bool IsEmpty => string.IsNullOrEmpty(ApplicationLabel) && ContextType == AssistContextKind.None.ToString();
+    public bool IsEmpty =>
+        !IsBlocked && ContextType == AssistContextKind.None.ToString();
 }

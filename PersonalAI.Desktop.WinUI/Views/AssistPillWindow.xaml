@@ -9,6 +9,73 @@
           KeyDown="Root_KeyDown">
         <Grid.Resources>
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <DataTemplate x:Key="AssistContextTemplate">
+                <Border Padding="10,8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource AedaAssistBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                    <Grid>
+                        <Grid Visibility="{Binding HasContextPreview, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="32" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="40" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon FontSize="16"
+                                      Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
+                                      Glyph="&#xE8A7;"
+                                      AutomationProperties.Name="Source application" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource AedaAssistForegroundBrush}"
+                                               Text="{Binding ContextApplicationText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock FontSize="12"
+                                               Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
+                                               Text="{Binding ContextTypeText}" />
+                                    <TextBlock FontSize="12"
+                                               Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
+                                               Text="{Binding ContextCountText}" />
+                                    <TextBlock FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
+                                               Text="Truncated"
+                                               Visibility="{Binding ContextPreview.IsTruncated, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                </StackPanel>
+                                <TextBlock MaxLines="2"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
+                                           Text="{Binding ContextPreview.ShortPreview}"
+                                           TextWrapping="Wrap"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="2"
+                                    Width="40"
+                                    Height="40"
+                                    MinWidth="40"
+                                    MinHeight="40"
+                                    Padding="0"
+                                    HorizontalAlignment="Right"
+                                    Command="{Binding ClearContextCommand}"
+                                    IsEnabled="{Binding CanClearContext}"
+                                    Style="{StaticResource AedaAssistActionButtonStyle}"
+                                    AutomationProperties.Name="Clear captured context"
+                                    ToolTipService.ToolTip="Clear context">
+                                <FontIcon FontSize="12" Glyph="&#xE74D;" />
+                            </Button>
+                        </Grid>
+                        <TextBlock FontSize="12"
+                                   Foreground="{ThemeResource AedaAssistSecondaryForegroundBrush}"
+                                   Text="{Binding ContextStatusMessage}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasBlockedContext, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </Grid>
+                </Border>
+            </DataTemplate>
         </Grid.Resources>
 
         <Grid x:Name="IdleSurface"
@@ -69,55 +136,66 @@
             <Border.RenderTransform>
                 <ScaleTransform x:Name="SpotlightScale" ScaleX="1" ScaleY="1" />
             </Border.RenderTransform>
-            <Grid ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="46" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="46" />
-                </Grid.ColumnDefinitions>
-                <Button x:Name="SelectScreenTextButton"
-                        Width="40"
-                        Height="40"
-                        MinWidth="0"
-                        Margin="0"
-                        Padding="0"
-                        Style="{StaticResource AedaAssistActionButtonStyle}"
-                        Click="SelectScreenTextButton_Click"
-                        AutomationProperties.Name="Select text on screen"
-                        ToolTipService.ToolTip="Select text on screen">
-                    <Image Source="ms-appx:///Assets/AedaAppIcon.svg"
-                           Width="30" Height="30" Stretch="Uniform" />
-                </Button>
-                <TextBox x:Name="PromptTextBox"
-                         Grid.Column="1"
-                         MinHeight="40"
-                         Padding="10,7"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         CornerRadius="16"
-                         UseSystemFocusVisuals="True"
-                         FocusVisualMargin="-2"
-                         FocusVisualPrimaryThickness="1"
-                         FocusVisualSecondaryThickness="0"
-                         FocusVisualPrimaryBrush="{ThemeResource AedaFocusStroke}"
-                         FocusVisualSecondaryBrush="Transparent"
-                         AcceptsReturn="False"
-                         AutomationProperties.Name="AEDA Assist prompt"
-                         KeyDown="PromptTextBox_KeyDown"
-                         PlaceholderText="How can I help you?"
-                         Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <Button Grid.Column="2"
-                        Width="40"
-                        Height="40"
-                        MinWidth="0"
-                        Margin="0"
-                        Padding="0"
-                        CornerRadius="20"
-                        Command="{Binding SubmitCommand}"
-                        AutomationProperties.Name="Submit AEDA Assist request"
-                        ToolTipService.ToolTip="Submit">
-                    <FontIcon Glyph="&#xE74A;" />
-                </Button>
+            <Grid RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="46" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="46" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="SelectScreenTextButton"
+                            Width="40"
+                            Height="40"
+                            MinWidth="0"
+                            Margin="0"
+                            Padding="0"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
+                            Click="SelectScreenTextButton_Click"
+                            AutomationProperties.Name="Select text on screen"
+                            ToolTipService.ToolTip="Select text on screen">
+                        <Image Source="ms-appx:///Assets/AedaAppIcon.svg"
+                               Width="30" Height="30" Stretch="Uniform" />
+                    </Button>
+                    <TextBox x:Name="PromptTextBox"
+                             Grid.Column="1"
+                             MinHeight="40"
+                             Padding="10,7"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             CornerRadius="16"
+                             UseSystemFocusVisuals="True"
+                             FocusVisualMargin="-2"
+                             FocusVisualPrimaryThickness="1"
+                             FocusVisualSecondaryThickness="0"
+                             FocusVisualPrimaryBrush="{ThemeResource AedaFocusStroke}"
+                             FocusVisualSecondaryBrush="Transparent"
+                             AcceptsReturn="False"
+                             AutomationProperties.Name="AEDA Assist prompt"
+                             KeyDown="PromptTextBox_KeyDown"
+                             PlaceholderText="How can I help you?"
+                             Text="{Binding Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Column="2"
+                            Width="40"
+                            Height="40"
+                            MinWidth="0"
+                            Margin="0"
+                            Padding="0"
+                            CornerRadius="20"
+                            Command="{Binding SubmitCommand}"
+                            AutomationProperties.Name="Submit AEDA Assist request"
+                            ToolTipService.ToolTip="Submit">
+                        <FontIcon Glyph="&#xE74A;" />
+                    </Button>
+                </Grid>
+                <ContentControl Grid.Row="1"
+                                Content="{Binding}"
+                                ContentTemplate="{StaticResource AssistContextTemplate}"
+                                HorizontalContentAlignment="Stretch"
+                                Visibility="{Binding HasContextSurface, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </Grid>
         </Border>
 
@@ -135,6 +213,7 @@
             </Border.RenderTransform>
             <Grid RowSpacing="7">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -182,7 +261,14 @@
                     </Button>
                 </Grid>
 
-                <Grid Grid.Row="1"
+                <ContentControl Grid.Row="1"
+                                Margin="0,2,0,0"
+                                Content="{Binding}"
+                                ContentTemplate="{StaticResource AssistContextTemplate}"
+                                HorizontalContentAlignment="Stretch"
+                                Visibility="{Binding HasContextSurface, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                <Grid Grid.Row="2"
                       Visibility="{Binding IsResponseSurface, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -215,7 +301,7 @@
                     </ScrollViewer>
                 </Grid>
 
-                <StackPanel Grid.Row="2"
+                <StackPanel Grid.Row="3"
                             HorizontalAlignment="Right"
                             MinHeight="28"
                             Orientation="Horizontal"
@@ -237,9 +323,24 @@
                             Visibility="{Binding CanShowResponseActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Command="{Binding OpenInAedaCommand}"
                             Style="{StaticResource AedaAssistActionButtonStyle}"
-                            AutomationProperties.Name="Open response in AEDA"
-                            Content="Open in AEDA"
+                            AutomationProperties.Name="Continue this response in AEDA Chat"
+                            Content="Continue in Chat"
                             Visibility="{Binding CanShowResponseActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Click="OpenInCodeButton_Click"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
+                            AutomationProperties.Name="Open this context in AEDA Code"
+                            Content="Open in Code"
+                            Visibility="{Binding CanHandoffToCode, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Click="ResearchThisButton_Click"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
+                            AutomationProperties.Name="Research this context in AEDA Research"
+                            Content="Research this"
+                            Visibility="{Binding CanHandoffToResearch, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Click="SaveToMemoryButton_Click"
+                            Style="{StaticResource AedaAssistActionButtonStyle}"
+                            AutomationProperties.Name="Save this context to AEDA Memory"
+                            Content="Save to Memory"
+                            Visibility="{Binding CanHandoffToMemory, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
             </Grid>
         </Border>

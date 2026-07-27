@@ -26,12 +26,15 @@ public interface IAssistPillHost
 
     Task CopyTextAsync(string text, CancellationToken cancellationToken);
 
+    void ClearContext();
+
     FocusRestorationRequest RequestFocusRestoration(FocusRestorationTrigger trigger);
 
     Task OpenInAedaAsync();
 
-    void HandoffToModule(
+    Task HandoffToModuleAsync(
         string userRequest,
+        string? currentResponse,
         AssistHandoffDestination destination);
 }
 
@@ -51,7 +54,8 @@ public sealed class AssistPillHost(
     IClipboardWriter clipboardWriter,
     Func<Guid?, Task> openConversationAsync,
     AssistContextCoordinator? contextCoordinator = null,
-    AssistHandoffService? handoffService = null) : IAssistPillHost
+    AssistHandoffService? handoffService = null,
+    Func<AssistHandoffDestination, Task>? openHandoffAsync = null) : IAssistPillHost
 {
     private Guid? _conversationId;
 
@@ -79,12 +83,19 @@ public sealed class AssistPillHost(
 
         CapturedForeground = contextService.LastCapturedForeground;
 
-        if (contextCoordinator is not null && CapturedForeground is not null)
+        if (contextService.WasLastCapturePrivacyBlocked)
         {
-            CurrentEnvelope = await contextCoordinator.CaptureFromContextServiceAsync(
-                contextService,
-                explicitContext,
-                cancellationToken);
+            CurrentEnvelope = AssistContextEnvelope.Blocked(
+                "privacy-blocked",
+                string.Empty);
+        }
+        else if (contextCoordinator is not null &&
+            CapturedForeground is not null &&
+            contextService.LastCaptureResult is { } captureResult)
+        {
+            CurrentEnvelope = AssistContextEnvelope.FromCaptureResult(
+                CapturedForeground,
+                captureResult);
         }
         else
         {
@@ -126,12 +137,16 @@ public sealed class AssistPillHost(
             DateTimeOffset.UtcNow));
         var metadata = context.Metadata.ToDictionary(pair => pair.Key, pair => pair.Value);
         metadata["captureSource"] = "screenOcr";
-        return context with
+        var captured = context with
         {
             SourceName = "Screen text",
             DisplayTitle = "Selected screen text",
             Metadata = metadata
         };
+        CurrentEnvelope = AssistContextCoordinator.BuildEnvelopeFromItem(
+            captured,
+            CapturedForeground);
+        return captured;
     }
 
     public async Task<AssistGenerationResult> GenerateAsync(
@@ -240,10 +255,13 @@ public sealed class AssistPillHost(
     public Task CopyTextAsync(string text, CancellationToken cancellationToken) =>
         clipboardWriter.CopyTextAsync(text, cancellationToken);
 
+    public void ClearContext() => CurrentEnvelope = null;
+
     public Task OpenInAedaAsync() => openConversationAsync(_conversationId);
 
-    public void HandoffToModule(
+    public async Task HandoffToModuleAsync(
         string userRequest,
+        string? currentResponse,
         AssistHandoffDestination destination)
     {
         if (handoffService is null)
@@ -255,9 +273,14 @@ public sealed class AssistPillHost(
             userRequest,
             CurrentEnvelope,
             CapturedForeground?.ProcessName,
-            null,
+            currentResponse,
             _conversationId,
             destination);
+
+        if (openHandoffAsync is not null)
+        {
+            await openHandoffAsync(destination);
+        }
     }
 }
 

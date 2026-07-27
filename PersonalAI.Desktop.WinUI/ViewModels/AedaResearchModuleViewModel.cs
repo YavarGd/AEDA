@@ -55,6 +55,8 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     public AssistHandoffPayload? ConsumePendingHandoff() =>
         HandoffStore?.TryConsume();
 
+    public AssistHandoffPayload? LastAssistHandoff { get; private set; }
+
     public string DisplayName => Descriptor.DisplayName;
 
     public string ShortDescription => Descriptor.ShortDescription;
@@ -133,12 +135,27 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        ApplyPendingHandoff();
         Dashboard = await _moduleService.GetDashboardAsync(cancellationToken)
             .ConfigureAwait(false);
         SelectedReport = Dashboard.RecentReports.FirstOrDefault();
         SafeStatusMessage = Dashboard.SafeStatusMessage;
         NotifyDashboardChanged();
         NotifyReportChanged();
+    }
+
+    private void ApplyPendingHandoff()
+    {
+        var handoff = ConsumePendingHandoff();
+        if (handoff?.Destination != AssistHandoffDestination.AedaResearch)
+        {
+            return;
+        }
+
+        LastAssistHandoff = handoff;
+        VerificationText = handoff.Context?.HasContext == true
+            ? handoff.Context.SelectedTextPreview ?? handoff.UserRequest
+            : handoff.UserRequest;
     }
 
     [RelayCommand(CanExecute = nameof(CanExtractClaims))]

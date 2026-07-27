@@ -83,6 +83,54 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
     public bool CanShowResponseActions => HasResponse && !IsStreaming;
 
+    public bool HasContextPreview => !ContextPreview.IsEmpty && !ContextPreview.IsBlocked;
+
+    public bool HasBlockedContext => ContextPreview.IsBlocked;
+
+    public bool HasContextSurface => HasContextPreview || HasBlockedContext;
+
+    public bool CanClearContext => ContextPreview.IsClearable && !IsStreaming;
+
+    public bool CanHandoffToCode => CanShowResponseActions && IsCodeContext;
+
+    public bool CanHandoffToResearch => CanShowResponseActions &&
+        HasContextPreview &&
+        !CanHandoffToCode;
+
+    public bool CanHandoffToMemory => CanShowResponseActions && HasContextPreview;
+
+    public string ContextTypeText => IsCodeContext
+        ? "Selected code"
+        : ContextPreview.ContextType switch
+        {
+            nameof(PersonalAI.Core.Context.AssistContextKind.ScreenText) => "Screen text",
+            nameof(PersonalAI.Core.Context.AssistContextKind.Clipboard) => "Clipboard text",
+            _ => "Selected text"
+        };
+
+    public string ContextCountText =>
+        $"{ContextPreview.TextLength:N0} {(ContextPreview.TextLength == 1 ? "character" : "characters")}";
+
+    public string ContextApplicationText => ContextPreview.ApplicationLabel.ToLowerInvariant() switch
+    {
+        "msedge" => "Microsoft Edge",
+        "chrome" => "Google Chrome",
+        "code" or "code - insiders" => "Visual Studio Code",
+        _ => ContextPreview.ApplicationLabel
+    };
+
+    private bool IsCodeContext =>
+        ContextPreview.ContextType == PersonalAI.Core.Context.AssistContextKind.VsCodeEditor.ToString() ||
+        ContextPreview.ApplicationLabel.Equals("Code", StringComparison.OrdinalIgnoreCase) ||
+        ContextPreview.ApplicationLabel.StartsWith("Code - ", StringComparison.OrdinalIgnoreCase);
+
+    public string ContextStatusMessage => ContextPreview.BlockedReason switch
+    {
+        "password-control" or "protected-control" => "Protected content was not captured.",
+        "privacy-blocked" or "elevated-target" => "AEDA did not read this app.",
+        _ => "Context could not be captured."
+    };
+
     public bool CanRetry => State == AssistPillState.Failed &&
         !string.IsNullOrWhiteSpace(_lastPrompt);
 
@@ -149,7 +197,8 @@ public sealed partial class AssistPillViewModel : ObservableObject
             if (AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
             {
                 Prompt = AutomaticContextPrompt;
-                _ = StartGenerationAsync(AutomaticContextPrompt, invocationId);
+                State = AssistPillState.SpotlightPrompt;
+                StatusText = "Context ready";
             }
             else
             {
@@ -197,7 +246,8 @@ public sealed partial class AssistPillViewModel : ObservableObject
             if (AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
             {
                 Prompt = AutomaticContextPrompt;
-                _ = StartGenerationAsync(AutomaticContextPrompt, invocationId);
+                State = AssistPillState.SpotlightPrompt;
+                StatusText = "Context ready";
             }
             else
             {
@@ -266,15 +316,22 @@ public sealed partial class AssistPillViewModel : ObservableObject
             try
             {
                 _context = await _host.CaptureContextAsync(CancellationToken.None);
+                ContextPreview = _host.CurrentEnvelope is not null
+                    ? AssistContextPreviewModel.FromEnvelope(_host.CurrentEnvelope)
+                    : AssistContextPreviewModel.Empty;
             }
             catch
             {
                 _context = null;
+                _host.ClearContext();
+                ContextPreview = AssistContextPreviewModel.Empty;
             }
 
             if (!AssistContextPolicy.IsMeaningful(_context, DateTimeOffset.UtcNow))
             {
                 _context = null;
+                _host.ClearContext();
+                ContextPreview = AssistContextPreviewModel.Empty;
                 Prompt = string.Empty;
                 State = AssistPillState.SpotlightPrompt;
                 StatusText = "Ask AEDA";
@@ -303,30 +360,49 @@ public sealed partial class AssistPillViewModel : ObservableObject
             StatusText = "Copy failed";
         }
 
-        var restorationRequest = _host.RequestFocusRestoration(
-            FocusRestorationTrigger.CopyResponse);
-        if (restorationRequest.ShouldRestore)
-        {
-            _pendingFocusRestoration = restorationRequest;
-            OnPropertyChanged(nameof(PendingFocusRestoration));
-        }
+        SetPendingFocusRestoration(FocusRestorationTrigger.CopyResponse);
     }
 
     [RelayCommand]
     public async Task OpenInAedaAsync()
     {
-        await _host.OpenInAedaAsync();
+        SetPendingFocusRestoration(FocusRestorationTrigger.AppOpen);
+        if (_lastPrompt is not null && HasResponse)
+        {
+            await _host.HandoffToModuleAsync(
+                _lastPrompt,
+                _safeFullResponse,
+                AssistHandoffDestination.Chat);
+        }
+        else
+        {
+            await _host.OpenInAedaAsync();
+        }
+
         State = AssistPillState.Hidden;
     }
 
-    public void HandoffToModule(AssistHandoffDestination destination)
+    [RelayCommand(CanExecute = nameof(CanClearContext))]
+    public void ClearContext()
+    {
+        _context = null;
+        _host.ClearContext();
+        ContextPreview = AssistContextPreviewModel.Empty;
+        StatusText = "Context removed";
+    }
+
+    public async Task HandoffToModuleAsync(AssistHandoffDestination destination)
     {
         if (_lastPrompt is null || !HasResponse)
         {
             return;
         }
 
-        _host.HandoffToModule(_lastPrompt, destination);
+        SetPendingFocusRestoration(destination == AssistHandoffDestination.Chat
+            ? FocusRestorationTrigger.AppOpen
+            : FocusRestorationTrigger.ModuleOpen);
+        await _host.HandoffToModuleAsync(_lastPrompt, _safeFullResponse, destination);
+        State = AssistPillState.Hidden;
     }
 
     public void Collapse()
@@ -343,13 +419,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
             return;
         }
 
-        var restorationRequest = _host.RequestFocusRestoration(
-            FocusRestorationTrigger.Dismiss);
-        if (restorationRequest.ShouldRestore)
-        {
-            _pendingFocusRestoration = restorationRequest;
-            OnPropertyChanged(nameof(PendingFocusRestoration));
-        }
+        SetPendingFocusRestoration(FocusRestorationTrigger.Dismiss);
 
         ShowIdle();
     }
@@ -368,13 +438,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
             return;
         }
 
-        var restorationRequest = _host.RequestFocusRestoration(
-            FocusRestorationTrigger.Dismiss);
-        if (restorationRequest.ShouldRestore)
-        {
-            _pendingFocusRestoration = restorationRequest;
-            OnPropertyChanged(nameof(PendingFocusRestoration));
-        }
+        SetPendingFocusRestoration(FocusRestorationTrigger.Dismiss);
 
         State = AssistPillState.Hidden;
     }
@@ -393,6 +457,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCopy));
         OnPropertyChanged(nameof(CanShowResponseActions));
         CopyResponseCommand.NotifyCanExecuteChanged();
+        NotifyContextActionsChanged();
     }
 
     partial void OnStateChanged(AssistPillState value)
@@ -407,9 +472,26 @@ public sealed partial class AssistPillViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(CanShowResponseActions));
         OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanClearContext));
         SubmitCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
         RetryCommand.NotifyCanExecuteChanged();
+        ClearContextCommand.NotifyCanExecuteChanged();
+        NotifyContextActionsChanged();
+    }
+
+    partial void OnContextPreviewChanged(AssistContextPreviewModel value)
+    {
+        OnPropertyChanged(nameof(HasContextPreview));
+        OnPropertyChanged(nameof(HasBlockedContext));
+        OnPropertyChanged(nameof(HasContextSurface));
+        OnPropertyChanged(nameof(CanClearContext));
+        OnPropertyChanged(nameof(ContextTypeText));
+        OnPropertyChanged(nameof(ContextCountText));
+        OnPropertyChanged(nameof(ContextApplicationText));
+        OnPropertyChanged(nameof(ContextStatusMessage));
+        ClearContextCommand.NotifyCanExecuteChanged();
+        NotifyContextActionsChanged();
     }
 
     private long PrepareForInvocation()
@@ -550,5 +632,18 @@ public sealed partial class AssistPillViewModel : ObservableObject
     {
         State = AssistPillState.Failed;
         StatusText = message;
+    }
+
+    private void SetPendingFocusRestoration(FocusRestorationTrigger trigger)
+    {
+        _pendingFocusRestoration = _host.RequestFocusRestoration(trigger);
+        OnPropertyChanged(nameof(PendingFocusRestoration));
+    }
+
+    private void NotifyContextActionsChanged()
+    {
+        OnPropertyChanged(nameof(CanHandoffToCode));
+        OnPropertyChanged(nameof(CanHandoffToResearch));
+        OnPropertyChanged(nameof(CanHandoffToMemory));
     }
 }
