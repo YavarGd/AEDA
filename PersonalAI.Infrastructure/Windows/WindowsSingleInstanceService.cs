@@ -1,13 +1,14 @@
-namespace PersonalAI.Desktop.WinUI.Services;
+#if WINDOWS
+namespace PersonalAI.Infrastructure.Windows;
 
-public sealed class WinUiSingleInstanceService : IDisposable
+public sealed class WindowsSingleInstanceService : IDisposable
 {
     public const string MutexName = "Local\\PersonalAI.WinUI.SingleInstance";
 
     private readonly Mutex _mutex;
     private bool _ownsMutex;
 
-    public WinUiSingleInstanceService()
+    public WindowsSingleInstanceService()
     {
         _mutex = new Mutex(
             initiallyOwned: true,
@@ -29,3 +30,4 @@ public sealed class WinUiSingleInstanceService : IDisposable
         _mutex.Dispose();
     }
 }
+#endif

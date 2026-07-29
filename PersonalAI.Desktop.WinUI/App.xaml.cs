@@ -9,6 +9,7 @@ using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.Hosting;
 using PersonalAI.Infrastructure.Ipc;
 using PersonalAI.Infrastructure.Modules;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Desktop.WinUI;
 
@@ -21,9 +22,9 @@ public partial class App : Application
     private MainViewModel? _viewModel;
     private IApplicationSettingsService? _settingsService;
     private IStartupRegistrationService? _startupRegistrationService;
-    private WinUiSingleInstanceService? _singleInstanceService;
+    private WindowsSingleInstanceService? _singleInstanceService;
     private WinUiTrayIconService? _trayIconService;
-    private WinUiGlobalHotKeyService? _hotKeyService;
+    private WindowsGlobalHotKeyService? _hotKeyService;
     private WinUiWindowActivationService? _activationService;
     private WinUiWindowPlacementService? _placementService;
     private WinUiWindowPlacementService? _assistPillPlacementService;
@@ -46,7 +47,7 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _singleInstanceService = new WinUiSingleInstanceService();
+        _singleInstanceService = new WindowsSingleInstanceService();
 
         if (!_singleInstanceService.IsPrimaryInstance)
         {
@@ -225,7 +226,7 @@ public partial class App : Application
     {
         var settings = _settingsService?.Current ?? ApplicationSettings.CreateDefault();
 
-        if (!WinUiHotkeyMapper.TryMap(
+        if (!WindowsHotkeyMapper.TryMap(
                 settings.Hotkey,
                 out var hotkey,
                 out var errorMessage))
@@ -236,7 +237,7 @@ public partial class App : Application
             return;
         }
 
-        _hotKeyService = new WinUiGlobalHotKeyService(
+        _hotKeyService = new WindowsGlobalHotKeyService(
             id: 1,
             modifiers: hotkey.Modifiers,
             virtualKey: hotkey.VirtualKey);
@@ -280,7 +281,7 @@ public partial class App : Application
     private async Task<SettingsApplyResult> ApplyHotkeyAsync(
         ApplicationSettings settings)
     {
-        if (!WinUiHotkeyMapper.TryMap(
+        if (!WindowsHotkeyMapper.TryMap(
                 settings.Hotkey,
                 out var hotkey,
                 out var errorMessage))

@@ -1,10 +1,11 @@
+#if WINDOWS
 using PersonalAI.Core.Settings;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Infrastructure.Windows;
 
-public readonly record struct WinUiHotkey(uint Modifiers, uint VirtualKey);
+public readonly record struct WindowsHotkey(uint Modifiers, uint VirtualKey);
 
-public static class WinUiHotkeyMapper
+public static class WindowsHotkeyMapper
 {
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
@@ -13,7 +14,7 @@ public static class WinUiHotkeyMapper
 
     public static bool TryMap(
         HotkeySettings settings,
-        out WinUiHotkey hotkey,
+        out WindowsHotkey hotkey,
         out string errorMessage)
     {
         var validation = HotkeySettingsValidator.Validate(settings);
@@ -37,7 +38,7 @@ public static class WinUiHotkeyMapper
         modifiers |= validation.Normalized.Control ? ModControl : 0;
         modifiers |= validation.Normalized.Shift ? ModShift : 0;
         modifiers |= validation.Normalized.Windows ? ModWin : 0;
-        hotkey = new WinUiHotkey(modifiers, virtualKey);
+        hotkey = new WindowsHotkey(modifiers, virtualKey);
         errorMessage = string.Empty;
         return true;
     }
@@ -68,3 +69,4 @@ public static class WinUiHotkeyMapper
         return false;
     }
 }
+#endif

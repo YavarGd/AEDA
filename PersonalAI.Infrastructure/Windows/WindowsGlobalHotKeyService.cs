@@ -1,8 +1,9 @@
+#if WINDOWS
 using System.Runtime.InteropServices;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Infrastructure.Windows;
 
-public sealed class WinUiGlobalHotKeyService : NativeMessageWindow
+public sealed class WindowsGlobalHotKeyService : NativeMessageWindow
 {
     private const uint WmHotKey = 0x0312;
     private int _id;
@@ -10,7 +11,7 @@ public sealed class WinUiGlobalHotKeyService : NativeMessageWindow
     private uint _virtualKey;
     private bool _isRegistered;
 
-    public WinUiGlobalHotKeyService(int id, uint modifiers, uint virtualKey)
+    public WindowsGlobalHotKeyService(int id, uint modifiers, uint virtualKey)
         : base("PersonalAI.WinUI.MessageWindow")
     {
         _id = id;
@@ -101,3 +102,4 @@ public sealed class WinUiGlobalHotKeyService : NativeMessageWindow
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(nint hWnd, int id);
 }
+#endif
