@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PersonalAI.Core\PersonalAI.Core.csproj" />
     <ProjectReference Include="..\PersonalAI.Desktop.WinUI\PersonalAI.Desktop.WinUI.csproj" />
+    <ProjectReference Include="..\PersonalAI.Desktop.Avalonia\PersonalAI.Desktop.Avalonia.csproj" />
     <ProjectReference Include="..\PersonalAI.Infrastructure\PersonalAI.Infrastructure.csproj" />
     <ProjectReference Include="..\PersonalAI.Providers\PersonalAI.Providers.csproj" />
   </ItemGroup>
