@@ -40,6 +40,20 @@ public sealed class AppLifecycleSourceTests
         Assert.Equal(1, Count(dispose, "_assistPillWindow?.Close();"));
     }
 
+    [Fact]
+    public void StartupCreatesOneSharedRuntimeAndShutdownDisposesIt()
+    {
+        var source = LoadAppSource();
+        var dispose = Between(
+            source,
+            "private void DisposeShellResources()",
+            "private static class NativeMessageBox");
+
+        Assert.Equal(1, Count(source, "AedaRuntime.CreateAsync(_permissionBroker)"));
+        Assert.Contains("_settingsService = _runtime.Settings;", source);
+        Assert.Contains("_runtime?.DisposeAsync().GetAwaiter().GetResult();", dispose);
+    }
+
     private static string LoadAppSource()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

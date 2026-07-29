@@ -2,28 +2,13 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using PersonalAI.Core.Settings;
-using PersonalAI.Core.Tasks;
-using PersonalAI.Core.Tools;
-using PersonalAI.Core.Tools.Reference;
-using PersonalAI.Core.Workspaces;
-using PersonalAI.Core.Approvals;
-using PersonalAI.Core.Capabilities;
-using PersonalAI.Core.Memory;
-using PersonalAI.Infrastructure.Coding;
-using PersonalAI.Infrastructure.Memory;
-using PersonalAI.Infrastructure.Research;
 using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.WinUI.Views;
-using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
+using PersonalAI.Infrastructure.Hosting;
 using PersonalAI.Infrastructure.Ipc;
 using PersonalAI.Infrastructure.Modules;
-using PersonalAI.Infrastructure.Settings;
-using PersonalAI.Infrastructure.Tasks;
-using PersonalAI.Infrastructure.Tools;
-using PersonalAI.Infrastructure.Tools.Workspace;
-using PersonalAI.Infrastructure.Workspaces;
 
 namespace PersonalAI.Desktop.WinUI;
 
@@ -46,6 +31,7 @@ public partial class App : Application
     private ExternalForegroundWindowMonitor? _foregroundMonitor;
     private PersonalAiPipeServer? _pipeServer;
     private WinUiPermissionBroker? _permissionBroker;
+    private AedaRuntime? _runtime;
     private TaskTimelineViewModel? _taskTimeline;
     private bool _isExiting;
     private bool _isWindowVisible;
@@ -71,38 +57,13 @@ public partial class App : Application
             return;
         }
 
-        var conversationRepository = ConversationRepositoryFactory.CreateDefaultRepository();
-        await conversationRepository.InitializeAsync();
-        var taskEventStore = new SqliteTaskEventStore(
-            PersonalAI.Infrastructure.Persistence.ConversationDatabasePaths.GetDefaultDatabasePath());
-        await taskEventStore.InitializeAsync();
-        _settingsService = new JsonApplicationSettingsService();
-        await _settingsService.InitializeAsync();
+        _permissionBroker = new WinUiPermissionBroker(
+            DispatcherQueue.GetForCurrentThread(),
+            () => _mainWindow?.ApprovalXamlRoot);
+        _runtime = await AedaRuntime.CreateAsync(_permissionBroker);
+        _settingsService = _runtime.Settings;
         AedaThemeManager.Apply(_settingsService.Current.Appearance.Theme);
-        var providerFactory = new ProviderFactory(secretStore: new DpapiSecretStore());
-        var providerCatalog = providerFactory.CreateCatalog(_settingsService.Current);
-        async Task<IReadOnlyList<string>> ListCurrentModelsAsync(
-            CancellationToken cancellationToken)
-        {
-            var catalog = providerFactory.CreateCatalog(_settingsService.Current);
-            var providerId = new PersonalAI.Core.Providers.ProviderId(
-                _settingsService.Current.ProviderRouting.SelectedChatProvider);
-            return catalog.ChatProviders.TryGetValue(providerId, out var provider) &&
-                provider is PersonalAI.Core.Chat.IChatModelCatalog modelCatalog
-                    ? await modelCatalog.ListModelsAsync(cancellationToken)
-                    : [];
-        }
-        async Task<PersonalAI.Core.Providers.ProviderHealth> CheckCurrentProviderAsync(
-            CancellationToken cancellationToken)
-        {
-            var catalog = providerFactory.CreateCatalog(_settingsService.Current);
-            return await catalog.Registry.GetHealthAsync(
-                new PersonalAI.Core.Providers.ProviderId(
-                    _settingsService.Current.ProviderRouting.SelectedChatProvider),
-                cancellationToken);
-        }
         _startupRegistrationService = new WindowsStartupRegistrationService();
-        var chatSession = new ChatSessionService(providerFactory, _settingsService);
         var activeContextProvider =
             ActiveContextProviderFactory.CreateDefaultProvider();
         _foregroundWindowTracker = new ForegroundWindowTracker(
@@ -125,213 +86,25 @@ public partial class App : Application
                 _foregroundWindowTracker,
                 GetWindowHandle,
                 () => _settingsService.Current.Context));
-        var taskEventBus = new DurableTaskEventBus(
-            new TaskEventBus(),
-            taskEventStore);
-        var taskRuntime = new TaskRuntime(taskEventStore, taskEventBus);
-        var taskQueryService = new TaskQueryService(taskEventStore);
-        var approvalCheckpointStore = new InMemoryApprovalCheckpointStore();
-        var taskCenterService = new AedaTaskCenterService(
-            taskQueryService,
-            taskRuntime,
-            approvalCheckpointStore);
-        var toolRegistry = new TypedToolRegistry();
-        toolRegistry.Register(new GetCurrentUtcTimeTool());
-        IWorkspaceRegistry workspaceRegistry = new WorkspaceRegistry();
-        var workspaceOptions = new WorkspaceToolOptions();
-        var workspaceResolver = new WorkspacePathResolver(workspaceRegistry);
-        var workspaceReader = new FileSystemWorkspaceReader(
-            workspaceRegistry,
-            workspaceResolver,
-            workspaceOptions);
-        toolRegistry.Register(new GetWorkspaceInfoTool(
-            workspaceReader,
-            workspaceResolver,
-            workspaceOptions));
-        toolRegistry.Register(new ListDirectoryTool(
-            workspaceReader,
-            workspaceResolver,
-            workspaceOptions));
-        toolRegistry.Register(new ReadTextFileTool(
-            workspaceReader,
-            workspaceResolver,
-            workspaceOptions));
-        toolRegistry.Register(new SearchWorkspaceTextTool(
-            workspaceReader,
-            workspaceResolver,
-            workspaceOptions));
-        var databasePath =
-            PersonalAI.Infrastructure.Persistence.ConversationDatabasePaths.GetDefaultDatabasePath();
-        var patchProposalRepository = new SqlitePatchProposalRepository(databasePath);
-        await patchProposalRepository.InitializeAsync();
-        var patchApplyRepository = new SqlitePatchApplyRepository(databasePath);
-        await patchApplyRepository.InitializeAsync();
-        var validationRunRepository = new SqliteValidationRunRepository(databasePath);
-        await validationRunRepository.InitializeAsync();
-        var memoryRepository = new SqliteMemoryRepository(databasePath);
-        await memoryRepository.InitializeAsync();
-        var knowledgeRepository = new SqliteKnowledgeRepository(databasePath);
-        await knowledgeRepository.InitializeAsync();
-        var memoryPolicy = new MemoryPolicy(
-            _settingsService.Current.MemoryRag.MemoryEnabled,
-            _settingsService.Current.MemoryRag.ExplicitMemoryEnabled,
-            _settingsService.Current.MemoryRag.AutomaticMemoryEnabled,
-            _settingsService.Current.MemoryRag.ProjectMemoryEnabled,
-            _settingsService.Current.MemoryRag.TaskOutcomeMemoryEnabled,
-            _settingsService.Current.MemoryRag.SensitiveMemoryRequiresApproval,
-            _settingsService.Current.MemoryRag.LocalOnlyMemoryMode,
-            _settingsService.Current.MemoryRag.RetentionDays,
-            AllowSourceText: true,
-            ExclusionRules: []);
-        var memoryService = new MemoryService(
-            memoryRepository,
-            new MemoryPolicyEvaluator(),
-            memoryPolicy);
-        _permissionBroker = new WinUiPermissionBroker(
-            DispatcherQueue.GetForCurrentThread(),
-            () => _mainWindow?.ApprovalXamlRoot);
-        var toolRuntime = new TypedToolRuntime(
-            toolRegistry,
-            taskEventBus,
-            _permissionBroker,
-            approvalCheckpointStore: approvalCheckpointStore);
-        var conversationSession = new ConversationSessionService(
-            conversationRepository,
-            chatSession,
-            toolRegistry,
-            toolRuntime,
-            workspaceRegistry,
-            taskRuntime);
-        var codeContextService = new CodeContextService(workspaceReader);
-        var validationPlanService = new ValidationPlanService();
-        var codeProposalDraftService = new CodeProposalDraftService(
-            new PersonalAI.Core.Providers.LocalFirstModelRoutingPolicy(providerCatalog.Registry),
-            new PersonalAI.Core.Providers.ContextPrivacyFilter(),
-            providerCatalog.ChatProviders,
-            () => _settingsService.Current.ProviderRouting);
-        var patchProposalService = new PatchProposalService(
-            patchProposalRepository,
-            new UnifiedDiffBuilder(),
-            new PatchRiskClassifier(),
-            validationPlanService,
-            workspaceReader,
-            approvalCheckpointStore,
-            taskRuntime);
-        var patchApplyService = new PatchApplyService(
-            patchProposalRepository,
-            patchApplyRepository,
-            new PatchApplyValidator(
-                patchProposalRepository,
-                workspaceReader,
-                workspaceResolver),
-            workspaceReader,
-            approvalCheckpointStore,
-            taskRuntime);
-        var validationCommandAllowlist = new ValidationCommandAllowlist();
-        var validationRunnerService = new ValidationRunnerService(
-            validationRunRepository,
-            validationCommandAllowlist,
-            new ControlledProcessRunner(),
-            workspaceReader,
-            approvalCheckpointStore,
-            taskRuntime);
-        var backendCapabilities = BackendCapabilityRegistry.CreateDefault(
-            hasTaskRuntime: true,
-            hasDurableTaskHistory: true,
-            hasWorkflowManifestLoader: false,
-            hasSpeechToTextProvider: false,
-            hasTextToSpeechProvider: false,
-            hasLocalWorkerSupervisor: false,
-            hasStructuredToolRuntime: true,
-            hasMemoryRepository: true,
-            explicitMemoryEnabled: _settingsService.Current.MemoryRag.ExplicitMemoryEnabled,
-            projectMemoryEnabled: _settingsService.Current.MemoryRag.ProjectMemoryEnabled,
-            taskOutcomeMemoryEnabled: _settingsService.Current.MemoryRag.TaskOutcomeMemoryEnabled,
-            retrievalEnabled: _settingsService.Current.MemoryRag.RagEnabled,
-            workspaceIndexingEnabled: _settingsService.Current.MemoryRag.WorkspaceIndexingEnabled,
-            hasEmbeddingProvider: false,
-            hasVectorIndex: false,
-            localOnlyRag: _settingsService.Current.MemoryRag.LocalOnlyMemoryMode,
-            hasCodeContextRead: true,
-            hasCodeChangePlanning: true,
-            hasPatchProposal: true,
-            hasPatchReview: true,
-            hasPatchApply: true,
-            hasPatchRollback: true,
-            hasControlledValidation: true,
-            hasAedaModules: true,
-            hasAedaCodeModule: true,
-            hasAedaMemoryModule: true,
-            hasAedaResearchModule: true,
-            hasModuleDashboard: true,
-            hasModuleRouting: true,
-            hasCodeTaskTimeline: true,
-            hasTaskCenter: true,
-            hasActivityTimeline: true,
-            hasApprovalInbox: true,
-            hasTaskArtifactLinks: true,
-            hasModuleTaskSummaries: true);
-        var moduleRegistry = new AedaModuleRegistry(
-            [
-                AedaCodeModuleDescriptorFactory.Create(backendCapabilities),
-                AedaTaskCenterModuleDescriptorFactory.Create(backendCapabilities),
-                AedaMemoryModuleDescriptorFactory.Create(backendCapabilities),
-                AedaResearchModuleDescriptorFactory.Create(backendCapabilities),
-                .. AedaDeferredModuleDescriptorFactory.CreateAll()
-            ]);
-        var retrievalService = new RetrievalService(memoryRepository, knowledgeRepository);
-        var aedaResearchModule = new AedaResearchModuleService(
-            new DeterministicClaimExtractionService(),
-            [
-                new LocalRagEvidenceProvider(retrievalService),
-                new DisabledExternalSearchEvidenceProvider()
-            ],
-            new InMemoryVerificationReportRepository(),
-            backendCapabilities,
-            taskRuntime);
-        var aedaMemoryModule = new AedaMemoryModuleService(
-            memoryRepository,
-            memoryService,
-            backendCapabilities,
-            memoryPolicy,
-            knowledgeRepository,
-            retrievalService);
-        var aedaCodeModule = new AedaCodeModuleService(
-            workspaceReader,
-            codeContextService,
-            new CodeChangePlanningService(validationPlanService),
-            codeProposalDraftService,
-            patchProposalService,
-            patchApplyService,
-            validationRunnerService,
-            validationCommandAllowlist,
-            taskQueryService,
-            taskRuntime);
         var aedaCodeViewModel = new AedaCodeModuleViewModel(
-            aedaCodeModule,
-            moduleRegistry,
-            workspaceRegistry,
-            taskCenterService,
-            approvalCheckpointStore);
+            _runtime.CodeModule,
+            _runtime.ModuleRegistry,
+            _runtime.WorkspaceRegistry,
+            _runtime.TaskCenter,
+            _runtime.ApprovalCheckpointStore);
         var aedaMemoryViewModel = new AedaMemoryModuleViewModel(
-            aedaMemoryModule,
-            moduleRegistry);
+            _runtime.MemoryModule,
+            _runtime.ModuleRegistry);
         var aedaResearchViewModel = new AedaResearchModuleViewModel(
-            aedaResearchModule,
-            moduleRegistry);
-        var workspaceRepository = WorkspaceRepositoryFactory.CreateDefaultRepository();
-        var workspaceRegistrationService = new WorkspaceRegistrationService(
-            workspaceRepository,
-            workspaceRegistry,
-            toolRuntime);
-        await workspaceRegistrationService.InitializeAsync();
+            _runtime.ResearchModule,
+            _runtime.ModuleRegistry);
         var workspaceManagement = new WorkspaceManagementViewModel(
-            workspaceRegistrationService,
+            _runtime.WorkspaceRegistration,
             new WinUiFolderPickerService(
                 () => _mainWindow?.AppWindow.Id));
         await workspaceManagement.RefreshAsync();
         _taskTimeline = new TaskTimelineViewModel(
-            taskEventBus,
+            _runtime.TaskEventBus,
             DispatcherQueue.GetForCurrentThread());
         var settingsViewModel = new SettingsViewModel(
             _settingsService,
@@ -343,37 +116,33 @@ public partial class App : Application
                 _placementService?.ResetRememberedPosition();
                 _assistPillPlacementService?.ResetRememberedPosition();
             },
-            ListCurrentModelsAsync,
+            _runtime.ListCurrentModelsAsync,
             workspaceManagement);
-        var editorCodeResponder = new EditorCodeChatResponder(
-            chatSession,
-            _settingsService,
-            ListCurrentModelsAsync);
         var clipboardWriter = new WinUiClipboardWriter();
         var viewModel = new MainViewModel(
-            conversationSession,
+            _runtime.ConversationSession,
             clipboardContextService,
             activeWindowContextService,
             screenshotAttachmentService,
             _settingsService,
             settingsViewModel,
             new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
-            toolRuntime,
-            moduleRegistry,
+            _runtime.ToolRuntime,
+            _runtime.ModuleRegistry,
             new ModuleSuggestionService(),
             new AedaModuleDashboardViewModel(
-                moduleRegistry,
-                taskQueryService,
-                workspaceRegistry,
+                _runtime.ModuleRegistry,
+                _runtime.TaskQueryService,
+                _runtime.WorkspaceRegistry,
                 descriptor => _viewModel?.OpenModule(descriptor)),
-            new AedaTaskCenterViewModel(taskCenterService),
+            new AedaTaskCenterViewModel(_runtime.TaskCenter),
             aedaCodeViewModel,
             aedaMemoryViewModel,
             aedaResearchViewModel,
             _taskTimeline,
-            workspaceRegistry,
+            _runtime.WorkspaceRegistry,
             clipboardWriter,
-            ListCurrentModelsAsync);
+            _runtime.ListCurrentModelsAsync);
         _viewModel = viewModel;
         await viewModel.InitializeAsync();
         _ = settingsViewModel.RefreshModelsAsync();
@@ -394,11 +163,11 @@ public partial class App : Application
             AssistPillWindow.IdleHeight);
         _assistPillViewModel = new AssistPillViewModel(
             new AssistPillHost(
-                conversationSession,
+                _runtime.ConversationSession,
                 _settingsService,
                 new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
-                CheckCurrentProviderAsync,
-                ListCurrentModelsAsync,
+                _runtime.CheckCurrentProviderAsync,
+                _runtime.ListCurrentModelsAsync,
                 activeWindowContextService,
                 new ScreenTextCaptureService(),
                 () => viewModel.AttachedContexts.LastOrDefault(context =>
@@ -427,7 +196,7 @@ public partial class App : Application
         StartEditorIpc(
             viewModel,
             DispatcherQueue.GetForCurrentThread(),
-            editorCodeResponder);
+            _runtime.EditorResponder);
         StartForegroundTracking();
         StartTrayIcon();
         RegisterHotKey();
@@ -712,6 +481,8 @@ public partial class App : Application
         _trayIconService = null;
         _taskTimeline?.Dispose();
         _taskTimeline = null;
+        _runtime?.DisposeAsync().GetAwaiter().GetResult();
+        _runtime = null;
         _permissionBroker?.Dispose();
         _permissionBroker = null;
         _singleInstanceService?.Dispose();
