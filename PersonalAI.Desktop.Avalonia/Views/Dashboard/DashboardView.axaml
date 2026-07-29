@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PersonalAI.Desktop.Avalonia.ViewModels.Chat"
+             x:Class="PersonalAI.Desktop.Avalonia.Views.Dashboard.DashboardView"
+             x:DataType="vm:AvaloniaChatViewModel">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="28" Spacing="20" MaxWidth="720" HorizontalAlignment="Left">
+
+      <StackPanel Spacing="4">
+        <TextBlock Text="AEDA" FontSize="26" FontWeight="SemiBold" />
+        <TextBlock Classes="metadata"
+                   TextWrapping="Wrap"
+                   Text="Local-first assistant. Start in General chat; other modules arrive in later steps." />
+      </StackPanel>
+
+      <!-- Bounded status summary -->
+      <Border BorderBrush="{DynamicResource AedaBorderBrush}"
+              BorderThickness="1"
+              CornerRadius="8"
+              Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Status" Classes="sectionHeading" />
+
+          <!-- These values change at runtime, so neither AutomationProperties.Name nor
+               LabeledBy is set on them; either would override the live text UIA should
+               report. The adjacent heading text carries the meaning visually. -->
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="6">
+            <TextBlock Text="Assistant" Classes="metadata" />
+            <TextBlock x:Name="AssistantStatusText"
+                       Grid.Column="1"
+                       TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite" />
+
+            <TextBlock Grid.Row="1" Text="Conversations" Classes="metadata" />
+            <TextBlock Grid.Row="1"
+                       Grid.Column="1"
+                       Text="{Binding Conversations.Count}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Entry point -->
+      <Button x:Name="OpenChatButton"
+              Click="OnOpenChatClick"
+              Content="Open General chat"
+              MinWidth="200"
+              ToolTip.Tip="Go to General chat"
+              AutomationProperties.Name="Open General chat" />
+
+      <!-- Modules that are deliberately not implemented yet -->
+      <StackPanel Spacing="8">
+        <TextBlock Text="Coming later" Classes="sectionHeading" />
+        <TextBlock Classes="metadata"
+                   TextWrapping="Wrap"
+                   Text="These modules are not available in this build." />
+        <StackPanel Spacing="4">
+          <TextBlock Text="Code — not available yet" IsEnabled="False" />
+          <TextBlock Text="Memory — not available yet" IsEnabled="False" />
+          <TextBlock Text="Research — not available yet" IsEnabled="False" />
+          <TextBlock Text="Task Center — not available yet" IsEnabled="False" />
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,25 +1,68 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PersonalAI.Desktop.Avalonia.ViewModels.Chat"
+        xmlns:chat="using:PersonalAI.Desktop.Avalonia.Views.Chat"
+        xmlns:dashboard="using:PersonalAI.Desktop.Avalonia.Views.Dashboard"
         x:Class="PersonalAI.Desktop.Avalonia.MainWindow"
-        Title="PersonalAI"
-        Width="760"
-        Height="440"
-        MinWidth="480"
-        MinHeight="320"
+        x:DataType="vm:AvaloniaChatViewModel"
+        Title="AEDA"
+        Width="1080"
+        Height="760"
+        MinWidth="880"
+        MinHeight="560"
         Icon="/Assets/AedaAppIcon.ico"
-        AutomationProperties.Name="PersonalAI main window">
-  <Grid Margin="32" RowDefinitions="Auto,*,Auto">
-    <TextBlock Text="AEDA" FontSize="28" FontWeight="SemiBold" />
-    <TextBlock Grid.Row="1"
-               Margin="0,24"
-               VerticalAlignment="Center"
-               Text="The Avalonia desktop shell is ready."
-               TextWrapping="Wrap"
-               AutomationProperties.Name="Avalonia desktop shell status" />
-    <Button x:Name="ReadyButton"
-            Grid.Row="2"
-            HorizontalAlignment="Right"
-            Content="Ready"
-            AutomationProperties.Name="AEDA is ready" />
+        AutomationProperties.Name="AEDA main window">
+
+  <Window.Styles>
+    <StyleInclude Source="avares://PersonalAI.Desktop.Avalonia/Themes/AedaTheme.axaml" />
+  </Window.Styles>
+
+  <Grid ColumnDefinitions="232,*">
+
+    <!-- Navigation rail: a ListBox gives native keyboard selection without a
+         navigation framework. -->
+    <Border Grid.Column="0"
+            Background="{DynamicResource AedaNavBackgroundBrush}"
+            BorderBrush="{DynamicResource AedaBorderBrush}"
+            BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="Auto,*">
+        <StackPanel Margin="16,18,16,12" Spacing="2">
+          <TextBlock Text="AEDA" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="Local-first assistant" Classes="metadata" />
+        </StackPanel>
+
+        <ListBox x:Name="NavigationList"
+                 Grid.Row="1"
+                 Margin="8,0,8,12"
+                 Background="Transparent"
+                 SelectionChanged="OnNavigationSelectionChanged"
+                 AutomationProperties.Name="Main navigation">
+          <ListBoxItem x:Name="DashboardNavItem"
+                       Content="Dashboard"
+                       AutomationProperties.Name="Dashboard" />
+          <ListBoxItem x:Name="ChatNavItem"
+                       Content="General chat"
+                       AutomationProperties.Name="General chat" />
+          <ListBoxItem Content="Code — not available yet"
+                       IsEnabled="False"
+                       AutomationProperties.Name="Code, not available yet" />
+          <ListBoxItem Content="Memory — not available yet"
+                       IsEnabled="False"
+                       AutomationProperties.Name="Memory, not available yet" />
+          <ListBoxItem Content="Research — not available yet"
+                       IsEnabled="False"
+                       AutomationProperties.Name="Research, not available yet" />
+          <ListBoxItem Content="Task Center — not available yet"
+                       IsEnabled="False"
+                       AutomationProperties.Name="Task Center, not available yet" />
+        </ListBox>
+      </Grid>
+    </Border>
+
+    <!-- One content host; routes are plain visibility so no navigation stack is needed. -->
+    <Grid Grid.Column="1">
+      <dashboard:DashboardView x:Name="DashboardRoute" />
+      <chat:ChatView x:Name="ChatRoute" IsVisible="False" />
+    </Grid>
   </Grid>
 </Window>
