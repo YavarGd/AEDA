@@ -47,6 +47,7 @@ jobs:
       FACTORY_TARGET_REF: ${{ inputs.target_ref }}
       FACTORY_TEST_FILTER: ${{ inputs.test_filter }}
       FACTORY_CONFIGURATION: ${{ inputs.configuration }}
+      SOLUTION_FILE: PersonalAI.slnx
       TEST_PROJECT: PersonalAI.Tests/PersonalAI.Tests.csproj
       DOTNET_TEST_TIMEOUT_SECONDS: 600
 
@@ -93,8 +94,18 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          dotnet restore $env:TEST_PROJECT --nologo 2>&1 |
+          dotnet restore $env:SOLUTION_FILE --nologo 2>&1 |
             Tee-Object -FilePath TestResults/restore.log
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet build $env:SOLUTION_FILE --configuration $env:FACTORY_CONFIGURATION --no-restore --nologo 2>&1 |
+            Tee-Object -FilePath TestResults/build.log
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

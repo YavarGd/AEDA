@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PersonalAI.Desktop.Avalonia.MainWindow"
+        Title="PersonalAI"
+        Width="760"
+        Height="440"
+        MinWidth="480"
+        MinHeight="320"
+        Icon="/Assets/AedaAppIcon.ico"
+        AutomationProperties.Name="PersonalAI main window">
+  <Grid Margin="32" RowDefinitions="Auto,*,Auto">
+    <TextBlock Text="AEDA" FontSize="28" FontWeight="SemiBold" />
+    <TextBlock Grid.Row="1"
+               Margin="0,24"
+               VerticalAlignment="Center"
+               Text="The Avalonia desktop shell is ready."
+               TextWrapping="Wrap"
+               AutomationProperties.Name="Avalonia desktop shell status" />
+    <Button x:Name="ReadyButton"
+            Grid.Row="2"
+            HorizontalAlignment="Right"
+            Content="Ready"
+            AutomationProperties.Name="AEDA is ready" />
+  </Grid>
+</Window>
