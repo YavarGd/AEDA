@@ -2,9 +2,9 @@ using System.Text;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Editor;
 using PersonalAI.Core.Settings;
-using PersonalAI.Infrastructure.Ipc;
+using PersonalAI.Infrastructure.Chat;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Infrastructure.Ipc;
 
 public sealed class EditorCodeChatResponder(
     ChatSessionService chatSession,

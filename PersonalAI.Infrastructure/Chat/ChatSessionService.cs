@@ -2,7 +2,7 @@ using PersonalAI.Core.Chat;
 using PersonalAI.Core.Providers;
 using PersonalAI.Core.Settings;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Infrastructure.Chat;
 
 public sealed class ChatSessionService
 {

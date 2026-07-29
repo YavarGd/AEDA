@@ -1,7 +1,7 @@
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Editor;
 using PersonalAI.Core.Settings;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Ipc;
 
 namespace PersonalAI.Tests.Editor;

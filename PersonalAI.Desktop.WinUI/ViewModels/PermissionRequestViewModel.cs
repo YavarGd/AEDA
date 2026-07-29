@@ -1,4 +1,5 @@
 using PersonalAI.Core.Permissions;
+using PersonalAI.Infrastructure.Chat;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;
 

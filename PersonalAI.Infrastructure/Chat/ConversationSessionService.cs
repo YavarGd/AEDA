@@ -8,10 +8,8 @@ using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Workspace;
 using PersonalAI.Core.Workspaces;
-using PersonalAI.Desktop.WinUI.Models;
-using PersonalAI.Desktop.WinUI.ViewModels;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Infrastructure.Chat;
 
 public sealed class ConversationSessionService
 {

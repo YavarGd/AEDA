@@ -3,7 +3,7 @@ using PersonalAI.Core.Chat;
 using PersonalAI.Core.Permissions;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
-using PersonalAI.Desktop.WinUI.ViewModels;
+using PersonalAI.Infrastructure.Chat;
 
 namespace PersonalAI.Tests.Chat;
 

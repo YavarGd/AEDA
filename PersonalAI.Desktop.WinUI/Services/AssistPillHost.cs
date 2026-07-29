@@ -2,7 +2,7 @@ using PersonalAI.Core.Chat;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
 using PersonalAI.Core.Providers;
-using PersonalAI.Desktop.WinUI.Models;
+using PersonalAI.Infrastructure.Chat;
 
 namespace PersonalAI.Desktop.WinUI.Services;
 

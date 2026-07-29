@@ -16,6 +16,7 @@ using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Reference;
 using PersonalAI.Core.Tools.Workspace;
 using PersonalAI.Core.Workspaces;
+using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Tools.Workspace;
 using PersonalAI.Desktop.WinUI.Models;
 using PersonalAI.Desktop.WinUI.Services;

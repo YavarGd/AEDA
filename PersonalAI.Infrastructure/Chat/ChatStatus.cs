@@ -1,4 +1,4 @@
-namespace PersonalAI.Desktop.WinUI.Models;
+namespace PersonalAI.Infrastructure.Chat;
 
 public enum ChatStatus
 {

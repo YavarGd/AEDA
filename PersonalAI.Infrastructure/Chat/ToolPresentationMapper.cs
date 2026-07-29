@@ -5,7 +5,7 @@ using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Workspaces;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Infrastructure.Chat;
 
 public sealed record ToolPermissionPresentation(
     string Title,

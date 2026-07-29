@@ -6,7 +6,7 @@ using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Tools;
 using PersonalAI.Core.Tools.Workspace;
 using PersonalAI.Core.Workspaces;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Tasks;
 using PersonalAI.Infrastructure.Tools;
 using PersonalAI.Infrastructure.Tools.Workspace;

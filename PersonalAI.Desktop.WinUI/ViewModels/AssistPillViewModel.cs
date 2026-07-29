@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Settings;
-using PersonalAI.Desktop.WinUI.Models;
+using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;

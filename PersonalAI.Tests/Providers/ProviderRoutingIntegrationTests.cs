@@ -5,7 +5,6 @@ using PersonalAI.Core.Chat;
 using PersonalAI.Core.Memory;
 using PersonalAI.Core.Providers;
 using PersonalAI.Core.Settings;
-using PersonalAI.Desktop.WinUI.Services;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Memory;
 using PersonalAI.Infrastructure.Settings;

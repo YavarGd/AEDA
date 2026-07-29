@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Settings;
-using PersonalAI.Desktop.WinUI.Models;
+using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Desktop.WinUI.Services;
 
 namespace PersonalAI.Tests.Chat;

@@ -1,4 +1,5 @@
 using PersonalAI.Core.Tasks;
+using PersonalAI.Infrastructure.Chat;
 
 namespace PersonalAI.Desktop.WinUI.ViewModels;
 
