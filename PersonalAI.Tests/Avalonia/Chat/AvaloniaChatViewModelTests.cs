@@ -121,13 +121,18 @@ public sealed class AvaloniaChatViewModelTests
     }
 
     [Fact]
-    public void Lifecycle_AcquiresSharedMutexBeforeComposition_AndSecondaryExits()
+    public void Lifecycle_ShowsMainWindowAfterAsyncComposition_AndSecondaryExits()
     {
         var source = File.ReadAllText(Find("PersonalAI.Desktop.Avalonia", "App.axaml.cs"));
         var acquire = source.IndexOf("new WindowsSingleInstanceService()", StringComparison.Ordinal);
+        var startInitialization = source.IndexOf("_ = InitializeCompositionAsync(desktop, window);", StringComparison.Ordinal);
         var create = source.IndexOf("AvaloniaAppComposition.CreateAsync", StringComparison.Ordinal);
+        var assignWindow = source.IndexOf("desktop.MainWindow = window;", StringComparison.Ordinal);
+        var showWindow = source.IndexOf("window.Show();", StringComparison.Ordinal);
 
-        Assert.True(acquire >= 0 && acquire < create);
+        Assert.True(acquire >= 0 && acquire < startInitialization);
+        Assert.True(create >= 0 && create < assignWindow && assignWindow < showWindow);
+        Assert.DoesNotContain("override async void OnFrameworkInitializationCompleted", source);
         Assert.Contains("if (!_singleInstanceService.IsPrimaryInstance)", source);
         Assert.Contains("desktop.Shutdown();", source);
     }

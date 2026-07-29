@@ -13,7 +13,7 @@ public partial class App : Application
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
-    public override async void OnFrameworkInitializationCompleted()
+    public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -32,13 +32,9 @@ public partial class App : Application
                 return;
             }
 
-            _composition = await AvaloniaAppComposition.CreateAsync(
-                action => global::Avalonia.Threading.Dispatcher.UIThread.Post(action));
-            await _composition.Chat.InitializeAsync();
             var window = new MainWindow();
-            window.DataContext = _composition.Chat;
-            desktop.MainWindow = window;
             desktop.Exit += (_, _) => DisposeComposition();
+            _ = InitializeCompositionAsync(desktop, window);
         }
         catch
         {
@@ -48,6 +44,30 @@ public partial class App : Application
         finally
         {
             base.OnFrameworkInitializationCompleted();
+        }
+    }
+
+    private async Task InitializeCompositionAsync(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        MainWindow window)
+    {
+        try
+        {
+            _composition = await AvaloniaAppComposition.CreateAsync(
+                action => global::Avalonia.Threading.Dispatcher.UIThread.Post(action));
+            await _composition.Chat.InitializeAsync();
+            await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                () =>
+                {
+                    window.DataContext = _composition.Chat;
+                    desktop.MainWindow = window;
+                    window.Show();
+                });
+        }
+        catch
+        {
+            DisposeComposition();
+            desktop.Shutdown(1);
         }
     }
 
