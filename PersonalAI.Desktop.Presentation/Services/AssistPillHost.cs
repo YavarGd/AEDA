@@ -6,7 +6,7 @@ using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.ScreenCapture;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Desktop.Presentation.Services;
 
 public interface IAssistPillHost
 {
