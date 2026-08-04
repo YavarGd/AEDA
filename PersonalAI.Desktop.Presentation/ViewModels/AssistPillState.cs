@@ -1,4 +1,4 @@
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public enum AssistPillState
 {
