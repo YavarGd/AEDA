@@ -1,0 +1,225 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="using:PersonalAI.Core.Memory"
+             xmlns:vm="using:PersonalAI.Desktop.Presentation.ViewModels"
+             x:Class="PersonalAI.Desktop.Avalonia.Views.Memory.MemoryView"
+             x:DataType="vm:AedaMemoryModuleViewModel"
+             AutomationProperties.Name="Memory">
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="MemorySummaryTemplate" x:DataType="core:AedaMemoryRecordSummary">
+      <Border Margin="0,0,0,8"
+              Padding="12"
+              BorderBrush="{DynamicResource AedaBorderBrush}"
+              BorderThickness="1"
+              CornerRadius="8">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding PreviewText}"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     MaxLines="2" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBlock Text="{Binding Kind.Label}" Classes="metadata" />
+            <TextBlock Grid.Column="1" Text="{Binding SensitivityStatus}" Classes="metadata" />
+          </Grid>
+          <TextBlock Text="{Binding SourceLabel}" Classes="metadata" TextWrapping="Wrap" />
+          <WrapPanel>
+            <Button Margin="0,4,8,0"
+                    Content="Open"
+                    Click="OnOpenMemoryClick"
+                    AutomationProperties.Name="Open memory detail" />
+            <Button Margin="0,4,8,0"
+                    Content="Archive"
+                    Click="OnArchiveMemoryClick"
+                    AutomationProperties.Name="Archive memory" />
+            <Button Margin="0,4,0,0"
+                    Content="Delete"
+                    Click="OnDeleteMemoryClick"
+                    AutomationProperties.Name="Delete memory" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="DocumentSummaryTemplate" x:DataType="core:AedaKnowledgeDocumentSummary">
+      <TextBlock Text="{Binding Title}"
+                 TextTrimming="CharacterEllipsis"
+                 Margin="0,0,0,4" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="RetrievalPreviewTemplate" x:DataType="core:AedaRetrievalPreviewItem">
+      <Border Margin="0,0,0,8"
+              Padding="12"
+              BorderBrush="{DynamicResource AedaBorderBrush}"
+              BorderThickness="1"
+              CornerRadius="8">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding SourceLabel}" FontWeight="SemiBold" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" MaxLines="3" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBlock Text="{Binding MatchType}" Classes="metadata" />
+            <TextBlock Grid.Column="1" Text="{Binding Score}" Classes="metadata" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <Grid Margin="28" RowDefinitions="Auto,Auto,*" RowSpacing="18">
+    <StackPanel Spacing="4">
+      <TextBlock Text="Memory" FontSize="26" FontWeight="SemiBold" />
+      <TextBlock Text="{Binding PrivacyStatusText}"
+                 Classes="metadata"
+                 TextWrapping="Wrap" />
+      <TextBlock Text="{Binding SafeStatusMessage}"
+                 Classes="metadata"
+                 TextWrapping="Wrap"
+                 AutomationProperties.LiveSetting="Polite" />
+    </StackPanel>
+
+    <WrapPanel Grid.Row="1" Orientation="Horizontal">
+      <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
+        <TextBlock Text="{Binding TotalMemoryCountText}" />
+      </Border>
+      <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
+        <TextBlock Text="{Binding IndexedKnowledgeText}" />
+      </Border>
+      <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
+        <TextBlock Text="{Binding RetrievalStatusText}" />
+      </Border>
+    </WrapPanel>
+
+    <Grid Grid.Row="2"
+          ColumnDefinitions="2*,3*"
+          ColumnSpacing="18">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="18">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Search memories" Classes="sectionHeading" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBox x:Name="MemorySearchTextBox"
+                       PlaceholderText="Search memories"
+                       Text="{Binding SearchText}"
+                       AutomationProperties.Name="Search memories" />
+              <Button Grid.Column="1"
+                      Content="Search"
+                      Command="{Binding SearchMemoriesCommand}"
+                      AutomationProperties.Name="Run memory search" />
+            </Grid>
+            <TextBlock Text="No memories matched your search."
+                       Classes="metadata"
+                       IsVisible="{Binding !HasSearchResults}" />
+            <ItemsControl ItemsSource="{Binding SearchResults}"
+                          ItemTemplate="{StaticResource MemorySummaryTemplate}"
+                          AutomationProperties.Name="Search results"
+                          IsVisible="{Binding HasSearchResults}" />
+          </StackPanel>
+
+          <StackPanel Spacing="8">
+            <TextBlock Text="Recent memories" Classes="sectionHeading" />
+            <TextBlock Text="No explicit memories saved yet."
+                       Classes="metadata"
+                       IsVisible="{Binding HasNoRecentMemories}" />
+            <ItemsControl ItemsSource="{Binding Dashboard.RecentMemories}"
+                          ItemTemplate="{StaticResource MemorySummaryTemplate}"
+                          AutomationProperties.Name="Recent memories" />
+          </StackPanel>
+
+          <StackPanel Spacing="8">
+            <TextBlock Text="Task outcomes" Classes="sectionHeading" />
+            <TextBlock Text="No task outcomes stored yet."
+                       Classes="metadata"
+                       IsVisible="{Binding HasNoTaskOutcomes}" />
+            <ItemsControl ItemsSource="{Binding Dashboard.RecentTaskOutcomes}"
+                          ItemTemplate="{StaticResource MemorySummaryTemplate}"
+                          AutomationProperties.Name="Task outcomes" />
+          </StackPanel>
+
+          <StackPanel Spacing="8">
+            <TextBlock Text="Indexed knowledge" Classes="sectionHeading" />
+            <TextBlock Text="No indexed documents yet."
+                       Classes="metadata"
+                       IsVisible="{Binding HasNoDocuments}" />
+            <ItemsControl ItemsSource="{Binding Dashboard.RecentDocuments}"
+                          ItemTemplate="{StaticResource DocumentSummaryTemplate}"
+                          AutomationProperties.Name="Indexed documents" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="18">
+          <Border Padding="16"
+                  BorderBrush="{DynamicResource AedaBorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="8">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Add explicit memory" Classes="sectionHeading" />
+              <TextBox PlaceholderText="What should AEDA remember?"
+                        AcceptsReturn="True"
+                        MinHeight="76"
+                        TextWrapping="Wrap"
+                        Text="{Binding NewMemoryText}"
+                        AutomationProperties.Name="Explicit memory content" />
+              <TextBox PlaceholderText="Why are you saving this?"
+                        Text="{Binding NewMemorySourceReason}"
+                        AutomationProperties.Name="Memory source reason" />
+              <Button HorizontalAlignment="Left"
+                      Content="Add memory"
+                      Command="{Binding CreateExplicitMemoryCommand}"
+                      AutomationProperties.Name="Add explicit memory" />
+            </StackPanel>
+          </Border>
+
+          <Border Padding="16"
+                  BorderBrush="{DynamicResource AedaBorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="8">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Retrieval preview" Classes="sectionHeading" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox PlaceholderText="Preview query"
+                         Text="{Binding RetrievalQuery}"
+                         AutomationProperties.Name="Retrieval preview query" />
+                <Button Grid.Column="1"
+                        Content="Preview"
+                        Command="{Binding PreviewRetrievalCommand}"
+                        AutomationProperties.Name="Run retrieval preview" />
+              </Grid>
+              <TextBlock Text="No retrieval preview results yet."
+                         Classes="metadata"
+                         IsVisible="{Binding !HasRetrievalPreview}" />
+              <ItemsControl ItemsSource="{Binding RetrievalPreview}"
+                            ItemTemplate="{StaticResource RetrievalPreviewTemplate}"
+                            AutomationProperties.Name="Retrieval preview results" />
+            </StackPanel>
+          </Border>
+
+          <Border Padding="16"
+                  BorderBrush="{DynamicResource AedaBorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="8">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Selected memory" Classes="sectionHeading" />
+              <TextBlock Text="Select a memory to view its safe detail."
+                         Classes="metadata"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasNoSelectedMemory}" />
+              <StackPanel Spacing="4" IsVisible="{Binding HasSelectedMemory}">
+                <TextBlock Text="{Binding SelectedMemory.Text}"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           MaxLines="6" />
+                <TextBlock Text="{Binding SelectedMemory.Visibility}" Classes="metadata" />
+                <TextBlock Text="{Binding SelectedMemory.SensitivityStatus}" Classes="metadata" />
+                <TextBlock Text="{Binding SelectedMemory.Confidence}" Classes="metadata" />
+                <TextBlock Text="{Binding SelectedMemory.Source.DisplayName}" Classes="metadata" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SelectedMemory.Source.RelativePath}" Classes="metadata" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
+</UserControl>

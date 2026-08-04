@@ -1,5 +1,7 @@
 using PersonalAI.Core.Permissions;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
+using PersonalAI.Desktop.Avalonia.Views.Memory;
+using PersonalAI.Desktop.Avalonia.Views.Research;
 using PersonalAI.Desktop.Avalonia.Views.Tasks;
 using PersonalAI.Desktop.Presentation.ViewModels;
 using PersonalAI.Infrastructure.Hosting;
@@ -19,7 +21,19 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
                 "Task Center",
                 new AedaTaskCenterViewModel(runtime.TaskCenter),
                 () => new TaskCenterView(),
-                content => ((TaskCenterView)content).FocusPrimaryAction())
+                content => ((TaskCenterView)content).FocusPrimaryAction()),
+            new AvaloniaPresentationScreen(
+                "aeda-memory",
+                "Memory",
+                new AedaMemoryModuleViewModel(runtime.MemoryModule, runtime.ModuleRegistry),
+                () => new MemoryView(),
+                content => ((MemoryView)content).FocusPrimaryAction()),
+            new AvaloniaPresentationScreen(
+                "aeda-research",
+                "Research",
+                new AedaResearchModuleViewModel(runtime.ResearchModule, runtime.ModuleRegistry),
+                () => new ResearchView(),
+                content => ((ResearchView)content).FocusPrimaryAction())
         ];
     }
 
