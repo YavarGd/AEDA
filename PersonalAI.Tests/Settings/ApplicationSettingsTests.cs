@@ -542,6 +542,37 @@ public sealed class ApplicationSettingsTests
     }
 
     [Fact]
+    public async Task JsonSettingsServiceSerializesOverlappingSaves()
+    {
+        var path = Path.Combine(
+            Path.GetTempPath(),
+            "PersonalAI.Tests",
+            Guid.NewGuid().ToString("N"),
+            "settings.json");
+        var service = new JsonApplicationSettingsService(path);
+        await service.InitializeAsync();
+
+        var saves = Enumerable.Range(1, 20)
+            .Select(index => service.SaveAsync(
+                ApplicationSettings.CreateDefault() with
+                {
+                    AssistPill = AssistPillSettings.Default with
+                    {
+                        ResponsePreviewCharacters = 1_200 + index
+                    }
+                }))
+            .ToArray();
+
+        await Task.WhenAll(saves);
+
+        var reloaded = new JsonApplicationSettingsService(path);
+        await reloaded.InitializeAsync();
+
+        Assert.Equal(1_220, reloaded.Current.AssistPill.ResponsePreviewCharacters);
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
     public void AedaThemes_AreNamedAndInvalidValuesFallBackSafely()
     {
         Assert.Equal(

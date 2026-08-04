@@ -1,6 +1,6 @@
 using PersonalAI.Core.Tasks;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed class TaskSummaryItemViewModel(TaskRun taskRun)
 {

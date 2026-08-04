@@ -4,9 +4,9 @@ using System.Collections.ObjectModel;
 using PersonalAI.Core.Chat;
 using PersonalAI.Core.Settings;
 using PersonalAI.Core.Voice;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Desktop.Presentation.Services;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class SettingsViewModel : ObservableObject
 {

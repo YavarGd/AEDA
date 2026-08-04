@@ -10,6 +10,7 @@ public sealed class JsonApplicationSettingsService(string settingsPath)
     {
         WriteIndented = true
     };
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
 
     public JsonApplicationSettingsService()
         : this(ApplicationSettingsPaths.GetDefaultSettingsPath())
@@ -31,31 +32,35 @@ public sealed class JsonApplicationSettingsService(string settingsPath)
         ApplicationSettings settings,
         CancellationToken cancellationToken = default)
     {
-        Current = ApplicationSettingsValidator.Normalize(settings);
-
-        var directory = Path.GetDirectoryName(SettingsPath);
-
-        if (!string.IsNullOrWhiteSpace(directory))
+        await _saveLock.WaitAsync(cancellationToken);
+        try
         {
-            Directory.CreateDirectory(directory);
-        }
+            var normalized = ApplicationSettingsValidator.Normalize(settings);
 
-        var tempPath = SettingsPath + ".tmp";
-        await using (var stream = File.Create(tempPath))
+            var directory = Path.GetDirectoryName(SettingsPath);
+
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var tempPath = SettingsPath + ".tmp";
+            await using (var stream = File.Create(tempPath))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    normalized,
+                    JsonOptions,
+                    cancellationToken);
+            }
+
+            File.Move(tempPath, SettingsPath, overwrite: true);
+            Current = normalized;
+        }
+        finally
         {
-            await JsonSerializer.SerializeAsync(
-                stream,
-                Current,
-                JsonOptions,
-                cancellationToken);
+            _saveLock.Release();
         }
-
-        if (File.Exists(SettingsPath))
-        {
-            File.Delete(SettingsPath);
-        }
-
-        File.Move(tempPath, SettingsPath);
     }
 
     public Task ResetAsync(CancellationToken cancellationToken = default)

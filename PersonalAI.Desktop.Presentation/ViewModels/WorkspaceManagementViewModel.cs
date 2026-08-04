@@ -2,9 +2,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Workspaces;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Desktop.Presentation.Services;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class WorkspaceManagementViewModel(
     IWorkspaceRegistrationService registrationService,

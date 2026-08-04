@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using PersonalAI.Core.Workspaces;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class WorkspaceItemViewModel(PersistedWorkspace workspace)
     : ObservableObject

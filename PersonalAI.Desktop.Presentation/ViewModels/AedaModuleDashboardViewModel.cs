@@ -4,7 +4,7 @@ using PersonalAI.Core.Modules;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class AedaModuleDashboardViewModel : ObservableObject
 {

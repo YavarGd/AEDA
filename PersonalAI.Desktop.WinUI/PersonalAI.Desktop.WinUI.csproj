@@ -2,7 +2,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PersonalAI.Core\PersonalAI.Core.csproj" />
+    <ProjectReference Include="..\PersonalAI.Desktop.Presentation\PersonalAI.Desktop.Presentation.csproj" />
     <ProjectReference Include="..\PersonalAI.Infrastructure\PersonalAI.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="PersonalAI.Desktop.Presentation.Services" />
+    <Using Include="PersonalAI.Desktop.Presentation.ViewModels" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,6 +5,7 @@ using PersonalAI.Core.Memory;
 using PersonalAI.Core.Modules;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
+using PersonalAI.Desktop.Presentation.ViewModels;
 using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Infrastructure.Modules;
 using PersonalAI.Infrastructure.Workspaces;
