@@ -1,10 +1,10 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using PersonalAI.Core.Tasks;
+using PersonalAI.Desktop.Avalonia.Composition;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Views.Chat;
-using PersonalAI.Desktop.Presentation.ViewModels;
 
 namespace PersonalAI.Desktop.Avalonia;
 
@@ -13,12 +13,16 @@ public enum ShellRoute
 {
     Dashboard,
     Chat,
-    TaskCenter
+    Presentation
 }
 
 public partial class MainWindow : Window
 {
+    private readonly Dictionary<ListBoxItem, MountedPresentationScreen> _screenByNavItem = [];
+    private readonly Dictionary<string, MountedPresentationScreen> _screenByRoute =
+        new(StringComparer.Ordinal);
     private bool _suppressNavigationSelection;
+    private MountedPresentationScreen? _activePresentationScreen;
 
     public MainWindow()
     {
@@ -34,8 +38,52 @@ public partial class MainWindow : Window
     /// <summary>The route currently shown. Shell state stays in the view.</summary>
     public ShellRoute CurrentRoute { get; private set; } = ShellRoute.Dashboard;
 
-    public void AttachTaskCenter(IAedaTaskCenterService taskCenterService) =>
-        TaskCenterRoute.DataContext = new AedaTaskCenterViewModel(taskCenterService);
+    public void AttachComposition(
+        AvaloniaChatViewModel chat,
+        IReadOnlyList<AvaloniaPresentationScreen> screens)
+    {
+        ArgumentNullException.ThrowIfNull(chat);
+        ArgumentNullException.ThrowIfNull(screens);
+        if (_screenByRoute.Count > 0)
+        {
+            throw new InvalidOperationException("Presentation composition is already attached.");
+        }
+
+        DataContext = chat;
+        foreach (var screen in screens)
+        {
+            if (string.IsNullOrWhiteSpace(screen.Route) ||
+                string.IsNullOrWhiteSpace(screen.Label))
+            {
+                throw new ArgumentException("Presentation screens require a route and label.");
+            }
+
+            var content = screen.CreateContent();
+            content.DataContext = screen.ViewModel;
+            var navItem = new ListBoxItem { Content = screen.Label };
+            AutomationProperties.SetName(navItem, screen.Label);
+            var mounted = new MountedPresentationScreen(screen, content, navItem);
+            if (!_screenByRoute.TryAdd(screen.Route, mounted))
+            {
+                throw new ArgumentException($"Duplicate presentation route: {screen.Route}");
+            }
+
+            _screenByNavItem.Add(navItem, mounted);
+            NavigationList.Items.Add(navItem);
+        }
+    }
+
+    public bool NavigateToPresentation(string route, bool focusContent = true)
+    {
+        if (!_screenByRoute.TryGetValue(route, out var screen))
+        {
+            return false;
+        }
+
+        _activePresentationScreen = screen;
+        Navigate(ShellRoute.Presentation, focusContent);
+        return true;
+    }
 
     /// <summary>
     /// Routes the shell. <paramref name="focusContent"/> must stay false for
@@ -47,12 +95,15 @@ public partial class MainWindow : Window
         CurrentRoute = route;
         DashboardRoute.IsVisible = route == ShellRoute.Dashboard;
         ChatRoute.IsVisible = route == ShellRoute.Chat;
-        TaskCenterRoute.IsVisible = route == ShellRoute.TaskCenter;
+        PresentationRoute.IsVisible = route == ShellRoute.Presentation;
+        PresentationRoute.Content = route == ShellRoute.Presentation
+            ? _activePresentationScreen?.Content
+            : null;
 
         var navItem = route switch
         {
             ShellRoute.Chat => ChatNavItem,
-            ShellRoute.TaskCenter => TaskCenterNavItem,
+            ShellRoute.Presentation => _activePresentationScreen?.NavItem,
             _ => DashboardNavItem
         };
         if (!ReferenceEquals(NavigationList.SelectedItem, navItem))
@@ -77,9 +128,10 @@ public partial class MainWindow : Window
         {
             ChatRoute.FocusComposer();
         }
-        else if (route == ShellRoute.TaskCenter)
+        else if (route == ShellRoute.Presentation &&
+            _activePresentationScreen is { } presentation)
         {
-            TaskCenterRoute.FocusPrimaryAction();
+            presentation.Definition.Focus?.Invoke(presentation.Content);
         }
         else
         {
@@ -106,9 +158,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (ReferenceEquals(NavigationList.SelectedItem, TaskCenterNavItem))
+        if (NavigationList.SelectedItem is ListBoxItem item &&
+            _screenByNavItem.TryGetValue(item, out var screen))
         {
-            Navigate(ShellRoute.TaskCenter, focusContent: false);
+            _activePresentationScreen = screen;
+            Navigate(ShellRoute.Presentation, focusContent: false);
         }
     }
 
@@ -134,4 +188,9 @@ public partial class MainWindow : Window
         ChatRoute.ApplyKeyAction(action);
         e.Handled = true;
     }
+
+    private sealed record MountedPresentationScreen(
+        AvaloniaPresentationScreen Definition,
+        Control Content,
+        ListBoxItem NavItem);
 }

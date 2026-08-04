@@ -21,14 +21,14 @@ public sealed class AvaloniaAedaTaskCenterViewTests
     }
 
     [Fact]
-    public void ShellExposesOneAccessibleTaskCenterRoute()
+    public void CompositionRegistersOneAccessibleTaskCenterRoute()
     {
-        var source = ReadSource("MainWindow.axaml");
+        var source = ReadSource("Composition", "AvaloniaAppComposition.cs");
 
-        Assert.Contains("x:Name=\"TaskCenterNavItem\"", source);
-        Assert.Contains("x:Name=\"TaskCenterRoute\"", source);
-        Assert.Contains("AutomationProperties.Name=\"Task Center\"", source);
-        Assert.DoesNotContain("Task Center — not available yet", source);
+        Assert.Contains("\"aeda-task-center\"", source);
+        Assert.Contains("\"Task Center\"", source);
+        Assert.Contains("new AedaTaskCenterViewModel(runtime.TaskCenter)", source);
+        Assert.Contains("() => new TaskCenterView()", source);
     }
 
     private static string ReadSource(

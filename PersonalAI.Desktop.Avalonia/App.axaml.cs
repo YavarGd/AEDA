@@ -59,8 +59,7 @@ public partial class App : Application
             await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
                 () =>
                 {
-                    window.DataContext = _composition.Chat;
-                    window.AttachTaskCenter(_composition.Runtime.TaskCenter);
+                    window.AttachComposition(_composition.Chat, _composition.Screens);
                     desktop.MainWindow = window;
                     window.Show();
                 });

@@ -3,7 +3,6 @@
         xmlns:vm="using:PersonalAI.Desktop.Avalonia.ViewModels.Chat"
         xmlns:chat="using:PersonalAI.Desktop.Avalonia.Views.Chat"
         xmlns:dashboard="using:PersonalAI.Desktop.Avalonia.Views.Dashboard"
-        xmlns:tasks="using:PersonalAI.Desktop.Avalonia.Views.Tasks"
         x:Class="PersonalAI.Desktop.Avalonia.MainWindow"
         x:DataType="vm:AvaloniaChatViewModel"
         Title="AEDA"
@@ -53,9 +52,6 @@
           <ListBoxItem Content="Research — not available yet"
                        IsEnabled="False"
                        AutomationProperties.Name="Research, not available yet" />
-          <ListBoxItem x:Name="TaskCenterNavItem"
-                       Content="Task Center"
-                       AutomationProperties.Name="Task Center" />
         </ListBox>
       </Grid>
     </Border>
@@ -64,7 +60,7 @@
     <Grid Grid.Column="1">
       <dashboard:DashboardView x:Name="DashboardRoute" />
       <chat:ChatView x:Name="ChatRoute" IsVisible="False" />
-      <tasks:TaskCenterView x:Name="TaskCenterRoute" IsVisible="False" />
+      <ContentControl x:Name="PresentationRoute" IsVisible="False" />
     </Grid>
   </Grid>
 </Window>
