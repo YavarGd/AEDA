@@ -8,7 +8,7 @@ using PersonalAI.Core.Modules;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class AedaCodeModuleViewModel : ObservableObject
 {
@@ -599,8 +599,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             LoadRegisteredWorkspaces();
             RecentSessions = await _moduleService.ListRecentSessionsAsync(
                 SummaryLimit,
-                cancellationToken).ConfigureAwait(false);
-            await LoadRecentCodeTasksAsync(cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+            await LoadRecentCodeTasksAsync(cancellationToken);
             if (SelectedWorkspace is null)
             {
                 SelectedWorkspace = Workspaces.FirstOrDefault();
@@ -640,8 +640,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             Session = await _moduleService.StartSessionAsync(
                 SelectedWorkspace.WorkspaceId,
                 "Supervised Code workflow",
-                cancellationToken).ConfigureAwait(false);
-            await RefreshDashboardAsync(cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+            await RefreshDashboardAsync(cancellationToken);
             SafeStatusMessage = "AEDA Code session ready.";
         }
         catch (OperationCanceledException)
@@ -665,14 +665,14 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         LoadRegisteredWorkspaces();
         if (Session is not null)
         {
-            await RefreshDashboardAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshDashboardAsync(cancellationToken);
         }
         else if (SelectedWorkspace is not null)
         {
-            await LoadWorkspaceWorkflowAsync(cancellationToken).ConfigureAwait(false);
+            await LoadWorkspaceWorkflowAsync(cancellationToken);
         }
 
-        await LoadRecentCodeTasksAsync(cancellationToken).ConfigureAwait(false);
+        await LoadRecentCodeTasksAsync(cancellationToken);
         SafeStatusMessage = "AEDA Code workflow refreshed.";
         NotifyAll();
     }
@@ -688,7 +688,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
         Dashboard = await _moduleService.GetDashboardAsync(
             Session.Id,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         ApplyDashboard(Dashboard);
         SafeStatusMessage = "AEDA Code dashboard refreshed.";
     }
@@ -714,7 +714,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
-        await LoadWorkspaceWorkflowAsync(cancellationToken).ConfigureAwait(false);
+        await LoadWorkspaceWorkflowAsync(cancellationToken);
         SafeStatusMessage = "Workspace workflow loaded.";
         NotifyAll();
     }
@@ -740,7 +740,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             var detail = await _moduleService.GetProposalAsync(
                 proposal.ProposalId,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             if (detail is null)
             {
                 SafeStatusMessage = "Selected proposal is no longer available.";
@@ -884,7 +884,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                     SelectedWorkspace.WorkspaceId,
                     ContextFileSearchQuery,
                     SelectedContextFiles.Select(file => file.RelativePath).ToArray()),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             foreach (var candidate in result.Candidates)
             {
                 ContextFileCandidates.Add(candidate);
@@ -939,7 +939,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             var pack = await _moduleService.ReadFilesAsync(
                 SelectedWorkspace.WorkspaceId,
                 [candidate.RelativePath],
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             var file = pack.Files.SingleOrDefault();
             if (file is null)
             {
@@ -960,7 +960,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 file.IsTruncated,
                 file.Content.Length,
                 file.IsTruncated ? "file_truncated" : null));
-            await RefreshTargetSnippetCandidatesAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshTargetSnippetCandidatesAsync(cancellationToken);
             SafeStatusMessage = "Context file selected. No files changed.";
         }
         catch (OperationCanceledException)
@@ -1056,7 +1056,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 new PatchApplyRequest(
                     SelectedProposal.ProposalId,
                     SelectedWorkspace.WorkspaceId),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             if (DryRunPlan.Status != PatchApplyStatus.DryRunPassed)
             {
                 ClearApplyApprovalState();
@@ -1067,7 +1067,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 : DryRunPlan.Status == PatchApplyStatus.DryRunPassed
                     ? "Dry run passed."
                     : "Dry run completed with safe blockers.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1097,10 +1097,10 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ApplyApprovalRequest = await _moduleService.RequestApplyApprovalAsync(
                 SelectedProposal.ProposalId,
                 SelectedWorkspace.WorkspaceId,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             ApplyApprovalDecision = null;
             SafeStatusMessage = "Apply approval requested.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1128,9 +1128,9 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ApplyApprovalRequest,
             ApprovalDecisionKind.AllowOnce,
             "Allowed from AEDA Code workflow.",
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         SafeStatusMessage = "Apply approved once.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         NotifyAll();
     }
 
@@ -1146,9 +1146,9 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ApplyApprovalRequest,
             ApprovalDecisionKind.Deny,
             "Denied from AEDA Code workflow.",
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         SafeStatusMessage = "Apply approval denied.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         NotifyAll();
     }
 
@@ -1172,12 +1172,12 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                     SelectedWorkspace.WorkspaceId,
                     ApplyApprovalRequest,
                     ApplyApprovalDecision),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             AddOrUpdateApplyResult(ApplyResult);
             SafeStatusMessage = ApplyResult.Status == PatchApplyStatus.Applied
                 ? "Proposal applied."
                 : "Apply completed with safe blockers.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1211,13 +1211,13 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                     ".",
                     SelectedProposal?.ProposalId,
                     ApplyResult?.Id),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             AddOrUpdateValidationRun(ValidationRun);
             ValidationApprovalRequest = null;
             ValidationApprovalDecision = null;
             ValidationOutputPreview = "Validation run created. Request approval before running it.";
             SafeStatusMessage = "Validation run created.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1245,10 +1245,10 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             ValidationApprovalRequest = await _moduleService.RequestValidationApprovalAsync(
                 ValidationRun.Id,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             ValidationApprovalDecision = null;
             SafeStatusMessage = "Validation approval requested.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1276,9 +1276,9 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ValidationApprovalRequest,
             ApprovalDecisionKind.AllowOnce,
             "Allowed from AEDA Code workflow.",
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         SafeStatusMessage = "Validation approved once.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         NotifyAll();
     }
 
@@ -1294,9 +1294,9 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ValidationApprovalRequest,
             ApprovalDecisionKind.Deny,
             "Denied from AEDA Code workflow.",
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         SafeStatusMessage = "Validation approval denied.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         NotifyAll();
     }
 
@@ -1317,11 +1317,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 ValidationRun.Id,
                 ValidationApprovalRequest,
                 ValidationApprovalDecision,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             AddOrUpdateValidationRun(ValidationRun);
             ValidationOutputPreview = BuildValidationOutput(ValidationRun);
             SafeStatusMessage = "Validation run completed.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1353,11 +1353,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 new PatchRollbackRequest(
                     ApplyResult.Id,
                     SelectedWorkspace.WorkspaceId),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             SafeStatusMessage = RollbackResult.Status == PatchApplyStatus.RolledBack
                 ? "Rollback completed."
                 : "Rollback completed with safe blockers.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1392,7 +1392,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         var groups = await _taskCenterService.GetTimelineAsync(
             task.Id,
             SummaryLimit,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         foreach (var group in groups)
         {
             SelectedTaskTimeline.Add(group);
@@ -1575,7 +1575,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             new AedaCodeTargetSnippetRequest(
                 SelectedWorkspace.WorkspaceId,
                 SelectedContextFiles.Select(file => file.RelativePath).ToArray()),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         foreach (var candidate in candidates)
         {
             TargetSnippetCandidates.Add(candidate);
@@ -1615,7 +1615,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         var proposals = await _moduleService.ListProposalSummariesAsync(
             SelectedWorkspace.WorkspaceId,
             SummaryLimit,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         Proposals.Clear();
         foreach (var proposal in proposals
                      .OrderByDescending(proposal => proposal.UpdatedAtUtc)
@@ -1627,7 +1627,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ValidationTemplates.Clear();
         var templates = await _moduleService.ListValidationTemplatesAsync(
             SelectedWorkspace.WorkspaceId,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         foreach (var template in templates)
         {
             ValidationTemplates.Add(AedaCodeValidationTemplateItem.From(template));
@@ -1645,7 +1645,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         var tasks = await _taskCenterService.ListTasksByModuleAsync(
             AedaTaskCenterModule.Code,
             SummaryLimit,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         foreach (var task in tasks)
         {
             RecentCodeTasks.Add(task);
@@ -1658,15 +1658,14 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         if (SelectedTask is not null &&
             (refreshSelectedTimeline || SelectedTaskTimeline.Count == 0))
         {
-            await SelectTaskAsync(SelectedTask, cancellationToken).ConfigureAwait(false);
+            await SelectTaskAsync(SelectedTask, cancellationToken);
         }
     }
 
     private async Task RefreshCodeTasksPreservingStatusAsync(CancellationToken cancellationToken)
     {
         var status = SafeStatusMessage;
-        await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true)
-            .ConfigureAwait(false);
+        await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
         SafeStatusMessage = status;
     }
 
