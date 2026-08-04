@@ -17,7 +17,6 @@ namespace PersonalAI.Desktop.Avalonia;
 
 public partial class App : Application
 {
-    private WindowsSingleInstanceService? _singleInstanceService;
     private AvaloniaAppComposition? _composition;
     private MainWindow? _mainWindow;
     private AvaloniaAssistWindow? _assistWindow;
@@ -44,15 +43,6 @@ public partial class App : Application
         desktop.Exit += (_, _) => DisposeResources();
         try
         {
-            _singleInstanceService = new WindowsSingleInstanceService();
-            if (!_singleInstanceService.IsPrimaryInstance)
-            {
-                _singleInstanceService.Dispose();
-                _singleInstanceService = null;
-                desktop.Shutdown();
-                return;
-            }
-
             var window = new MainWindow();
             _ = InitializeCompositionAsync(desktop, window);
         }
@@ -307,7 +297,5 @@ public partial class App : Application
         _assistWindow = null;
         _mainWindow = null;
         _mainWindowActivation = null;
-        _singleInstanceService?.Dispose();
-        _singleInstanceService = null;
     }
 }

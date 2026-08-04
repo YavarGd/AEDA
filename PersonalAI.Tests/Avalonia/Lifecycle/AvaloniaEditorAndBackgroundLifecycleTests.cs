@@ -1,9 +1,38 @@
 using System.Runtime.CompilerServices;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Tests.Avalonia.Lifecycle;
 
 public sealed class AvaloniaEditorAndBackgroundLifecycleTests
 {
+    [Fact]
+    public void SingleInstanceAcquisitionHasOneControlledOwner()
+    {
+        var mutexName = $"Local\\AEDA.Tests.{Guid.NewGuid():N}";
+
+        using var first = new WindowsSingleInstanceService(mutexName);
+        using var second = new WindowsSingleInstanceService(mutexName);
+
+        Assert.True(first.IsPrimaryInstance);
+        Assert.False(second.IsPrimaryInstance);
+    }
+
+    [Fact]
+    public void SecondaryExitPrecedesAvaloniaAndUnexpectedFailuresAreNotSwallowed()
+    {
+        var app = ReadSource("App.axaml.cs");
+        var program = ReadSource("Program.cs");
+        var acquire = program.IndexOf("new WindowsSingleInstanceService()", StringComparison.Ordinal);
+        var secondary = program.IndexOf("if (!singleInstance.IsPrimaryInstance)", StringComparison.Ordinal);
+        var controlledExit = program.IndexOf("return 0;", secondary, StringComparison.Ordinal);
+        var initializeAvalonia = program.IndexOf("BuildAvaloniaApp()", controlledExit, StringComparison.Ordinal);
+
+        Assert.True(acquire >= 0 && acquire < secondary);
+        Assert.True(secondary < controlledExit && controlledExit < initializeAvalonia);
+        Assert.DoesNotContain("catch", program);
+        Assert.DoesNotContain("WindowsSingleInstanceService", app);
+    }
+
     [Fact]
     public void AppOwnsOneBackgroundShellAndDisposesNativeResources()
     {

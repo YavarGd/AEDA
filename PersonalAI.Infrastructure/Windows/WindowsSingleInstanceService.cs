@@ -8,11 +8,16 @@ public sealed class WindowsSingleInstanceService : IDisposable
     private readonly Mutex _mutex;
     private bool _ownsMutex;
 
-    public WindowsSingleInstanceService()
+    public WindowsSingleInstanceService() : this(MutexName)
     {
+    }
+
+    internal WindowsSingleInstanceService(string mutexName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mutexName);
         _mutex = new Mutex(
             initiallyOwned: true,
-            name: MutexName,
+            name: mutexName,
             createdNew: out var createdNew);
         _ownsMutex = createdNew;
     }
