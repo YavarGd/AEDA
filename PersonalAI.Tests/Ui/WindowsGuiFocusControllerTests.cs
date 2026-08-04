@@ -1,5 +1,5 @@
 using PersonalAI.Core.Context;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Tests.Ui;
 

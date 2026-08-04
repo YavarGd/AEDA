@@ -607,7 +607,10 @@ public sealed class ShellLayoutTests
     [Fact]
     public void UiaSelectionCaptureHasNoClipboardOrKeystrokePath()
     {
-        var source = LoadProjectText("Services", "WindowsUiaSelectedTextProvider.cs");
+        var source = LoadRepositoryText(
+            "PersonalAI.Infrastructure",
+            "Windows",
+            "WindowsUiaSelectedTextProvider.cs");
 
         Assert.Contains("AutomationElement.FocusedElement", source);
         Assert.Contains("Current.IsPassword", source);
@@ -659,11 +662,18 @@ public sealed class ShellLayoutTests
 
     private static string LoadProjectText(params string[] segments)
     {
+        return LoadRepositoryText("PersonalAI.Desktop.WinUI", segments);
+    }
+
+    private static string LoadRepositoryText(
+        string project,
+        params string[] segments)
+    {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
             var candidate = Path.Combine(
-                [directory.FullName, "PersonalAI.Desktop.WinUI", .. segments]);
+                [directory.FullName, project, .. segments]);
             if (File.Exists(candidate))
             {
                 return File.ReadAllText(candidate);

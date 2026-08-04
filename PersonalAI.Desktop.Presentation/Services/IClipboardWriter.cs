@@ -1,4 +1,4 @@
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Desktop.Presentation.Services;
 
 public interface IClipboardWriter
 {

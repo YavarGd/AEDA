@@ -29,7 +29,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private readonly ConversationSessionService _conversationSession;
     private readonly ClipboardContextService _clipboardContextService;
-    private readonly ActiveWindowContextService _activeWindowContextService;
+    private readonly IActiveWindowContextService _activeWindowContextService;
     private readonly ScreenshotAttachmentService _screenshotAttachmentService;
     private readonly IApplicationSettingsService _settingsService;
     private readonly IChatModelRouter _modelRouter;
@@ -55,7 +55,7 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(
         ConversationSessionService conversationSession,
         ClipboardContextService clipboardContextService,
-        ActiveWindowContextService activeWindowContextService,
+        IActiveWindowContextService activeWindowContextService,
         ScreenshotAttachmentService screenshotAttachmentService,
         IApplicationSettingsService settingsService,
         SettingsViewModel settings,

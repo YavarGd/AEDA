@@ -1,61 +1,9 @@
-using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
+using PersonalAI.Infrastructure.Context;
 
-namespace PersonalAI.Desktop.WinUI.Services;
-
-public enum SelectedTextCaptureSource
-{
-    None,
-    ExplicitIntegration,
-    UiAutomationTextPattern,
-    LegacyAccessibility,
-    ClipboardCopyFallback
-}
-
-public enum SelectedTextCaptureFailure
-{
-    None,
-    NoSelection,
-    UnsupportedControl,
-    PrivacyBlocked,
-    ProtectedControl,
-    PasswordControl,
-    ElevatedTarget,
-    ClipboardBusy,
-    ClipboardDidNotChange,
-    ClipboardRestoreFailed,
-    Timeout,
-    Cancelled,
-    SafeFailure
-}
-
-public sealed record SelectedTextCaptureRequest(
-    ActiveWindowReference Foreground,
-    PrivacySettings Privacy,
-    int MaxCharacters,
-    bool AllowClipboardFallback,
-    AttachedContextItem? ExplicitContext = null);
-
-public sealed record SelectedTextCaptureResult(
-    bool Success,
-    string? Text,
-    SelectedTextCaptureSource Source,
-    string? ApplicationIdentity,
-    DateTimeOffset CapturedAtUtc,
-    SelectedTextCaptureFailure FailureReason,
-    bool ClipboardFallbackUsed,
-    bool ClipboardRestorationSucceeded,
-    string DiagnosticCode,
-    AttachedContextItem? ExplicitContext = null);
+namespace PersonalAI.Desktop.Presentation.Services;
 
 public interface IUniversalSelectedTextService
-{
-    Task<SelectedTextCaptureResult> CaptureAsync(
-        SelectedTextCaptureRequest request,
-        CancellationToken cancellationToken);
-}
-
-public interface IClipboardCopySelectedTextProvider
 {
     Task<SelectedTextCaptureResult> CaptureAsync(
         SelectedTextCaptureRequest request,

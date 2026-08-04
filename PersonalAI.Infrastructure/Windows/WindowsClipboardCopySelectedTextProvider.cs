@@ -1,11 +1,13 @@
+#if WINDOWS
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
+using PersonalAI.Infrastructure.Context;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Infrastructure.Windows;
 
 public sealed record ClipboardCaptureSnapshot(uint SequenceNumber, object State);
 
@@ -891,3 +893,4 @@ public sealed class WindowsGuiFocusController(IGuiFocusNative? native = null)
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
     }
 }
+#endif

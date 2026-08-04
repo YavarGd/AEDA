@@ -1,26 +1,10 @@
+#if WINDOWS
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
+using PersonalAI.Infrastructure.Context;
 using System.Windows.Automation;
 
-namespace PersonalAI.Desktop.WinUI.Services;
-
-public interface ISelectedTextContextProvider
-{
-    Task<SelectedTextContextResult> TryGetSelectedTextAsync(
-        ActiveWindowReference foreground,
-        PrivacySettings privacy,
-        int maxCharacters,
-        CancellationToken cancellationToken);
-}
-
-public sealed record SelectedTextContextResult(
-    bool IsAvailable,
-    string? Text,
-    string SourceType,
-    string? ApplicationIdentity,
-    DateTimeOffset CapturedAtUtc,
-    string? SafeFailureReason,
-    bool IsTrustedForImmediateSubmission);
+namespace PersonalAI.Infrastructure.Windows;
 
 public sealed class WindowsUiaSelectedTextProvider(
     Func<ActiveWindowReference, int, string?>? readSelection = null) :
@@ -143,3 +127,4 @@ public sealed class WindowsUiaSelectedTextProvider(
             reason,
             false);
 }
+#endif

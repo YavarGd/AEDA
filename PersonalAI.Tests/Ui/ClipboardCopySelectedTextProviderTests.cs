@@ -1,6 +1,7 @@
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Infrastructure.Context;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Tests.Ui;
 

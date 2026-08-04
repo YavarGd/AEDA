@@ -1,5 +1,6 @@
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
+using PersonalAI.Desktop.Presentation.Services;
 using PersonalAI.Infrastructure.Context;
 
 namespace PersonalAI.Desktop.WinUI.Services;
@@ -12,6 +13,7 @@ public sealed class ActiveWindowContextService(
     IUniversalSelectedTextService? selectedTextService = null,
     Func<int>? getSelectionCharacterLimit = null,
     Func<bool>? allowClipboardFallback = null)
+    : IActiveWindowContextService
 {
     public SelectedTextCaptureResult? LastCaptureResult { get; private set; }
 

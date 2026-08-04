@@ -1,6 +1,7 @@
+#if WINDOWS
 using PersonalAI.Infrastructure.Context;
 
-namespace PersonalAI.Desktop.WinUI.Services;
+namespace PersonalAI.Infrastructure.Context;
 
 public sealed class ExternalForegroundWindowMonitor(
     ForegroundWindowTracker foregroundWindowTracker,
@@ -37,3 +38,4 @@ public sealed class ExternalForegroundWindowMonitor(
         }
     }
 }
+#endif
