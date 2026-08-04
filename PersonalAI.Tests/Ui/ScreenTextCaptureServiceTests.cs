@@ -1,5 +1,7 @@
 using System.Drawing;
 using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Infrastructure.ScreenCapture;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Tests.Ui;
 
@@ -125,12 +127,12 @@ public sealed class ScreenTextCaptureServiceTests
     {
         var lines = Enumerable.Range(0, 2_100).Select(index => $"  line {index}  ");
 
-        var value = WindowsOcrTextRecognizer.Normalize(lines, 75);
+        var value = ScreenTextNormalizer.Normalize(lines, 75);
 
         Assert.NotNull(value);
         Assert.True(value.Length <= 75);
         Assert.DoesNotContain("  ", value);
-        Assert.Null(WindowsOcrTextRecognizer.Normalize([" ", null], 100));
+        Assert.Null(ScreenTextNormalizer.Normalize([" ", null], 100));
     }
 
     [Fact]
@@ -138,7 +140,7 @@ public sealed class ScreenTextCaptureServiceTests
     {
         var lines = Enumerable.Range(0, 2_100).Select(index => $"line {index}");
 
-        var value = WindowsOcrTextRecognizer.Normalize(lines, 100_000);
+        var value = ScreenTextNormalizer.Normalize(lines, 100_000);
 
         Assert.NotNull(value);
         Assert.Contains($"line 0{Environment.NewLine}line 1", value);
@@ -169,6 +171,86 @@ public sealed class ScreenTextCaptureServiceTests
         Assert.Equal(Size.Empty, recognizer.ReceivedSize);
     }
 
+    [Fact]
+    public async Task ConcurrentCaptureReturnsBusy()
+    {
+        var started = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new ScreenTextCaptureService(
+            new FakeRecognizer(new(ScreenTextCaptureStatus.Success, "unused")),
+            async _ =>
+            {
+                started.TrySetResult();
+                await release.Task;
+                return null;
+            });
+
+        var first = service.CaptureAsync(1_000, CancellationToken.None);
+        await started.Task;
+        var second = await service.CaptureAsync(1_000, CancellationToken.None);
+        release.TrySetResult();
+        await first;
+
+        Assert.Equal(ScreenTextCaptureStatus.Busy, second.Status);
+    }
+
+    [Fact]
+    public async Task InvalidCropBoundsAreRejected()
+    {
+        var recognizer = new FakeRecognizer(new(
+            ScreenTextCaptureStatus.Success,
+            "unused"));
+        var service = new ScreenTextCaptureService(
+            recognizer,
+            _ => Task.FromResult<ScreenRegionCapture?>(new(
+                new Bitmap(20, 20),
+                new Rectangle(-1, 0, 20, 20))));
+
+        var result = await service.CaptureAsync(1_000, CancellationToken.None);
+
+        Assert.Equal(ScreenTextCaptureStatus.Failed, result.Status);
+        Assert.Equal(Size.Empty, recognizer.ReceivedSize);
+    }
+
+    [Fact]
+    public async Task PayloadLimitRejectsOversizedCrop()
+    {
+        var recognizer = new FakeRecognizer(new(
+            ScreenTextCaptureStatus.Success,
+            "unused"));
+        var service = new ScreenTextCaptureService(
+            recognizer,
+            _ => Task.FromResult<ScreenRegionCapture?>(new(
+                new Bitmap(20, 20),
+                new Rectangle(0, 0, 20, 20))));
+
+        var result = await service.CaptureAsync(
+            1_000,
+            maxPayloadBytes: 1_599,
+            CancellationToken.None);
+
+        Assert.Equal(ScreenTextCaptureStatus.Failed, result.Status);
+        Assert.Contains("too large", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Size.Empty, recognizer.ReceivedSize);
+    }
+
+    [Fact]
+    public async Task OcrTimeoutReturnsSafeStatus()
+    {
+        var service = new ScreenTextCaptureService(
+            new WaitingRecognizer(),
+            _ => Task.FromResult<ScreenRegionCapture?>(new(
+                new Bitmap(20, 20),
+                new Rectangle(0, 0, 20, 20))),
+            TimeSpan.FromMilliseconds(20));
+
+        var result = await service.CaptureAsync(1_000, CancellationToken.None);
+
+        Assert.Equal(ScreenTextCaptureStatus.TimedOut, result.Status);
+    }
+
     private sealed class FakeRecognizer(ScreenTextCaptureResult result) :
         IWindowsOcrTextRecognizer
     {
@@ -197,6 +279,18 @@ public sealed class ScreenTextCaptureServiceTests
             {
                 return true;
             }
+        }
+    }
+
+    private sealed class WaitingRecognizer : IWindowsOcrTextRecognizer
+    {
+        public async Task<ScreenTextCaptureResult> RecognizeAsync(
+            Bitmap bitmap,
+            int maxCharacters,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new(ScreenTextCaptureStatus.Success, "unused");
         }
     }
 }

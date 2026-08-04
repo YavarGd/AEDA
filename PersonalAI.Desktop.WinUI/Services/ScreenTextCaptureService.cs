@@ -1,130 +1,42 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml.Media.Imaging;
+using PersonalAI.Desktop.Presentation.Services;
 using PersonalAI.Desktop.WinUI.Views;
-using Windows.Globalization;
-using Windows.Graphics.Imaging;
-using Windows.Media.Ocr;
+using PersonalAI.Infrastructure.ScreenCapture;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Desktop.WinUI.Services;
 
-public enum ScreenTextCaptureStatus
+public sealed class ScreenTextCaptureService : IScreenTextCaptureService
 {
-    Success,
-    Cancelled,
-    NoText,
-    OcrUnavailable,
-    TimedOut,
-    Failed,
-    Busy
-}
+    private readonly ScreenTextCaptureEngine _engine;
 
-public sealed record ScreenTextCaptureResult(
-    ScreenTextCaptureStatus Status,
-    string? Text = null,
-    string? Message = null);
-
-public interface IWindowsOcrTextRecognizer
-{
-    Task<ScreenTextCaptureResult> RecognizeAsync(
-        Bitmap bitmap,
-        int maxCharacters,
-        CancellationToken cancellationToken);
-}
-
-public sealed record ScreenRegionCapture(Bitmap Bitmap, Rectangle Region) : IDisposable
-{
-    public void Dispose() => Bitmap.Dispose();
-}
-
-public static class ScreenRegionGeometry
-{
-    public static Rectangle? FromDrag(
-        Rectangle monitorBounds,
-        double rasterizationScale,
-        PointF startDip,
-        PointF endDip,
-        double minimumDip = 8)
+    public ScreenTextCaptureService(
+        IWindowsOcrTextRecognizer? recognizer = null,
+        Func<CancellationToken, Task<ScreenRegionCapture?>>? captureRegion = null,
+        TimeSpan? recognitionTimeout = null)
     {
-        if (monitorBounds.Width <= 0 || monitorBounds.Height <= 0 ||
-            rasterizationScale <= 0)
-        {
-            return null;
-        }
-
-        var left = (int)Math.Floor(Math.Min(startDip.X, endDip.X) * rasterizationScale) +
-            monitorBounds.Left;
-        var top = (int)Math.Floor(Math.Min(startDip.Y, endDip.Y) * rasterizationScale) +
-            monitorBounds.Top;
-        var right = (int)Math.Ceiling(Math.Max(startDip.X, endDip.X) * rasterizationScale) +
-            monitorBounds.Left;
-        var bottom = (int)Math.Ceiling(Math.Max(startDip.Y, endDip.Y) * rasterizationScale) +
-            monitorBounds.Top;
-        var normalized = Rectangle.FromLTRB(left, top, right, bottom);
-        normalized.Intersect(monitorBounds);
-        var minimumPixels = Math.Max(1, (int)Math.Ceiling(minimumDip * rasterizationScale));
-        return normalized.Width >= minimumPixels && normalized.Height >= minimumPixels
-            ? normalized
-            : null;
+        _engine = new ScreenTextCaptureEngine(
+            recognizer ?? new WindowsOcrTextRecognizer(),
+            captureRegion ?? CaptureRegionAsync,
+            recognitionTimeout);
     }
-}
 
-public sealed class ScreenTextCaptureService(
-    IWindowsOcrTextRecognizer? recognizer = null,
-    Func<CancellationToken, Task<ScreenRegionCapture?>>? captureRegion = null)
-{
-    private readonly IWindowsOcrTextRecognizer _recognizer =
-        recognizer ?? new WindowsOcrTextRecognizer();
-    private readonly Func<CancellationToken, Task<ScreenRegionCapture?>> _captureRegion =
-        captureRegion ?? CaptureRegionAsync;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-
-    public async Task<ScreenTextCaptureResult> CaptureAsync(
+    public Task<ScreenTextCaptureResult> CaptureAsync(
         int maxCharacters,
-        CancellationToken cancellationToken)
-    {
-        if (!await _gate.WaitAsync(0, cancellationToken))
-        {
-            return new(ScreenTextCaptureStatus.Busy, Message: "Screen selection is already open.");
-        }
+        CancellationToken cancellationToken) =>
+        CaptureAsync(
+            maxCharacters,
+            ScreenTextCaptureEngine.DefaultMaxPayloadBytes,
+            cancellationToken);
 
-        try
-        {
-            using var capture = await _captureRegion(cancellationToken);
-            if (capture is null)
-            {
-                return new(ScreenTextCaptureStatus.Cancelled);
-            }
-
-            if (capture.Region.Width <= 0 || capture.Region.Height <= 0 ||
-                capture.Region.Left < 0 || capture.Region.Top < 0 ||
-                capture.Region.Right > capture.Bitmap.Width ||
-                capture.Region.Bottom > capture.Bitmap.Height)
-            {
-                return new(ScreenTextCaptureStatus.Failed, Message: "The selected screen area was invalid.");
-            }
-
-            using var cropped = capture.Bitmap.Clone(capture.Region, PixelFormat.Format32bppArgb);
-            return await _recognizer.RecognizeAsync(
-                cropped,
-                maxCharacters,
-                cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            return new(ScreenTextCaptureStatus.Cancelled);
-        }
-        catch
-        {
-            return new(ScreenTextCaptureStatus.Failed, Message: "Screen text capture failed.");
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+    public Task<ScreenTextCaptureResult> CaptureAsync(
+        int maxCharacters,
+        int maxPayloadBytes,
+        CancellationToken cancellationToken) =>
+        _engine.CaptureAsync(maxCharacters, maxPayloadBytes, cancellationToken);
 
     private static async Task<ScreenRegionCapture?> CaptureRegionAsync(
         CancellationToken cancellationToken)
@@ -199,7 +111,8 @@ public sealed class ScreenTextCaptureService(
                 return null;
             }
 
-            var capture = captures.Single(item => item.Monitor.Bounds == selected.MonitorBounds);
+            var capture = captures.Single(item =>
+                item.Monitor.Bounds == selected.MonitorBounds);
             captures.Remove(capture);
             var local = selected.Region;
             local.Offset(-capture.Monitor.Bounds.X, -capture.Monitor.Bounds.Y);
@@ -231,108 +144,6 @@ public sealed class ScreenTextCaptureService(
 
     private sealed record MonitorCapture(ScreenMonitor Monitor, Bitmap Bitmap);
     private sealed record SelectedRegion(Rectangle MonitorBounds, Rectangle Region);
-}
-
-public sealed class WindowsOcrTextRecognizer : IWindowsOcrTextRecognizer
-{
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(8);
-
-    public async Task<ScreenTextCaptureResult> RecognizeAsync(
-        Bitmap bitmap,
-        int maxCharacters,
-        CancellationToken cancellationToken)
-    {
-        var engine = OcrEngine.TryCreateFromUserProfileLanguages() ??
-            (OcrEngine.AvailableRecognizerLanguages
-                .FirstOrDefault(language => language.LanguageTag.StartsWith(
-                    "en", StringComparison.OrdinalIgnoreCase)) is { } english
-                ? OcrEngine.TryCreateFromLanguage(english)
-                : null);
-        if (engine is null)
-        {
-            return new(
-                ScreenTextCaptureStatus.OcrUnavailable,
-                Message: "Install a Windows OCR language to select text on screen.");
-        }
-
-        Bitmap? prepared = null;
-        try
-        {
-            prepared = Prepare(bitmap, checked((int)OcrEngine.MaxImageDimension));
-            var source = prepared ?? bitmap;
-            using var stream = new MemoryStream();
-            source.Save(stream, ImageFormat.Bmp);
-            stream.Position = 0;
-            using var randomAccess = stream.AsRandomAccessStream();
-            var decoder = await BitmapDecoder.CreateAsync(randomAccess);
-            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
-                BitmapPixelFormat.Bgra8,
-                BitmapAlphaMode.Ignore);
-            var result = await engine.RecognizeAsync(softwareBitmap)
-                .AsTask(cancellationToken)
-                .WaitAsync(Timeout, cancellationToken);
-            var text = Normalize(result.Lines.Select(line => line.Text), maxCharacters);
-            return string.IsNullOrWhiteSpace(text)
-                ? new(ScreenTextCaptureStatus.NoText, Message: "No text was found in that area.")
-                : new(ScreenTextCaptureStatus.Success, text);
-        }
-        catch (TimeoutException)
-        {
-            return new(ScreenTextCaptureStatus.TimedOut, Message: "Screen text recognition timed out.");
-        }
-        finally
-        {
-            prepared?.Dispose();
-        }
-    }
-
-    public static string? Normalize(IEnumerable<string?> lines, int maxCharacters)
-    {
-        if (maxCharacters <= 0)
-        {
-            return null;
-        }
-
-        var value = string.Join(
-            Environment.NewLine,
-            lines.Select(line => line?.Trim())
-                .Where(line => !string.IsNullOrWhiteSpace(line))
-                .Take(2_000));
-        value = value.Trim();
-        return value.Length switch
-        {
-            0 => null,
-            _ when value.Length > maxCharacters => value[..maxCharacters].TrimEnd(),
-            _ => value
-        };
-    }
-
-    private static Bitmap? Prepare(Bitmap bitmap, int maximumDimension)
-    {
-        var scale = Math.Min(
-            1d,
-            Math.Min(
-                (double)maximumDimension / bitmap.Width,
-                (double)maximumDimension / bitmap.Height));
-        var width = Math.Max(64, (int)Math.Floor(bitmap.Width * scale));
-        var height = Math.Max(64, (int)Math.Floor(bitmap.Height * scale));
-        if (width == bitmap.Width && height == bitmap.Height)
-        {
-            return null;
-        }
-
-        var result = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using var graphics = Graphics.FromImage(result);
-        graphics.Clear(Color.White);
-        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        graphics.DrawImage(
-            bitmap,
-            0,
-            0,
-            Math.Max(1, (int)Math.Floor(bitmap.Width * scale)),
-            Math.Max(1, (int)Math.Floor(bitmap.Height * scale)));
-        return result;
-    }
 }
 
 public sealed record ScreenMonitor(Rectangle Bounds, double Scale);

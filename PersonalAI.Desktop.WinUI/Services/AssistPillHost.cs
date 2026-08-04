@@ -4,6 +4,7 @@ using PersonalAI.Core.Settings;
 using PersonalAI.Core.Providers;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Infrastructure.Context;
+using PersonalAI.Infrastructure.ScreenCapture;
 
 namespace PersonalAI.Desktop.WinUI.Services;
 
@@ -37,7 +38,7 @@ public sealed class AssistPillHost(
     Func<CancellationToken, Task<ProviderHealth>> checkProviderHealthAsync,
     Func<CancellationToken, Task<IReadOnlyList<string>>> listModelsAsync,
     IActiveWindowContextService contextService,
-    ScreenTextCaptureService screenTextCaptureService,
+    IScreenTextCaptureService screenTextCaptureService,
     Func<AttachedContextItem?> getExplicitContext,
     IClipboardWriter clipboardWriter,
     Func<Guid?, Task> openConversationAsync) : IAssistPillHost
@@ -71,6 +72,7 @@ public sealed class AssistPillHost(
     {
         var result = await screenTextCaptureService.CaptureAsync(
             settingsService.Current.Context.MaxIndividualClipboardCharacters,
+            settingsService.Current.Context.ScreenshotMaxPayloadBytes,
             cancellationToken);
         LastCaptureFailureMessage = result.Message;
         if (result.Status != ScreenTextCaptureStatus.Success ||

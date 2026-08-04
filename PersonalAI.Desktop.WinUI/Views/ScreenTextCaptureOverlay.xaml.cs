@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Infrastructure.ScreenCapture;
 using Windows.Graphics;
 
 namespace PersonalAI.Desktop.WinUI.Views;

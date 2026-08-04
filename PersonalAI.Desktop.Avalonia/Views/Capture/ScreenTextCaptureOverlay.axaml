@@ -1,0 +1,46 @@
+<Window
+    x:Class="PersonalAI.Desktop.Avalonia.Views.Capture.ScreenTextCaptureOverlay"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="AEDA screen text selection"
+    AutomationProperties.Name="AEDA screen text selection"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowDecorations="None"
+    Topmost="True"
+    WindowStartupLocation="Manual">
+
+  <Grid x:Name="Root"
+        Background="Black"
+        Focusable="True"
+        KeyDown="OnKeyDown"
+        PointerCaptureLost="OnPointerCaptureLost"
+        PointerMoved="OnPointerMoved"
+        PointerPressed="OnPointerPressed"
+        PointerReleased="OnPointerReleased">
+    <Image x:Name="BackgroundImage" Stretch="Fill" />
+
+    <Canvas IsHitTestVisible="False">
+      <Border x:Name="TopShade" Background="#99000000" />
+      <Border x:Name="BottomShade" Background="#99000000" />
+      <Border x:Name="LeftShade" Background="#99000000" />
+      <Border x:Name="RightShade" Background="#99000000" />
+      <Border x:Name="SelectionBorder"
+              BorderBrush="#FF6FD8FF"
+              BorderThickness="2"
+              CornerRadius="3"
+              IsVisible="False" />
+    </Canvas>
+
+    <Border Margin="0,28,0,0"
+            Padding="14,8"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Background="#D9202020"
+            CornerRadius="8"
+            IsHitTestVisible="False">
+      <TextBlock Foreground="White"
+                 Text="Drag around text · Esc or right-click to cancel" />
+    </Border>
+  </Grid>
+</Window>

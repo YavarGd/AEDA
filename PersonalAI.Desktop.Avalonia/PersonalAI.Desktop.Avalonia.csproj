@@ -19,7 +19,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PersonalAI.Core\PersonalAI.Core.csproj" />
+    <ProjectReference Include="..\PersonalAI.Desktop.Presentation\PersonalAI.Desktop.Presentation.csproj" />
     <ProjectReference Include="..\PersonalAI.Infrastructure\PersonalAI.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
   </ItemGroup>
 
   <ItemGroup>
