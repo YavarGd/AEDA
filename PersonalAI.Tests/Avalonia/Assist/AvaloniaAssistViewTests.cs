@@ -56,7 +56,9 @@ public sealed class AvaloniaAssistViewTests
         Assert.Contains("\"Assist\"", source);
         Assert.Contains("new AssistPillHost(", source);
         Assert.Contains("new AssistPillViewModel(", source);
-        Assert.Contains("new AvaloniaAssistContextService()", source);
+        Assert.Contains("new AvaloniaAssistContextService(", source);
+        Assert.Contains("new WindowsUiaSelectedTextProvider()", source);
+        Assert.Contains("new WindowsClipboardCopySelectedTextProvider(GetAedaWindowHandle)", source);
         Assert.Contains("new AvaloniaScreenTextCaptureService(", source);
         // Assist reuses the shared Windows clipboard adapter from W3 rather than shipping
         // its own; the adapter takes a TopLevel provider.
@@ -98,12 +100,14 @@ public sealed class AvaloniaAssistViewTests
     }
 
     [Fact]
-    public void ContextAdapterDeliberatelyCapturesNoContext()
+    public void ContextAdapterUsesGuardedWindowsCapture()
     {
         var source = ReadSource("Views", "Assist", "AvaloniaAssistContextService.cs");
 
         Assert.Contains("IActiveWindowContextService", source);
-        Assert.Contains("intentionally not wired", source);
+        Assert.Contains("selectedTextService.CaptureAsync", source);
+        Assert.Contains("ValidateTarget", source);
+        Assert.Contains("CaptureScreenshot: false", source);
     }
 
     private static string ReadSource(

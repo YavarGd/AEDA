@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls;
 using PersonalAI.Desktop.Avalonia.Platform.Windows;
+using PersonalAI.Desktop.Avalonia.Platform.Windows.Assist;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Themes;
 using PersonalAI.Desktop.Avalonia.Views.Assist;
@@ -13,7 +14,9 @@ using PersonalAI.Desktop.Avalonia.Views.Settings;
 using PersonalAI.Desktop.Avalonia.Views.Tasks;
 using PersonalAI.Desktop.Presentation.Services;
 using PersonalAI.Desktop.Presentation.ViewModels;
+using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.Hosting;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Desktop.Avalonia.Composition;
 
@@ -21,6 +24,9 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
 {
     private readonly AvaloniaThemeManager _themeManager;
     private readonly AvaloniaPermissionBroker _permissionBroker;
+    private readonly ForegroundWindowTracker _foregroundWindowTracker;
+    private readonly ExternalForegroundWindowMonitor _foregroundWindowMonitor;
+    private nint _assistWindowHandle;
 
     private AvaloniaAppComposition(
         AedaRuntime runtime,
@@ -31,6 +37,25 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
         _permissionBroker = permissionBroker;
         Chat = new AvaloniaChatViewModel(runtime.ConversationSession, runtime.Settings, dispatch);
         _themeManager = new AvaloniaThemeManager(runtime.Settings.Current.Appearance.Theme);
+        nint GetMainWindowHandle()
+        {
+            var mainWindow = (Application.Current?.ApplicationLifetime as
+                IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+            return mainWindow is not null &&
+                AvaloniaWindowsProcessIdentity.TryGetWindowIdentity(mainWindow, out var identity)
+                    ? identity.WindowHandle
+                    : 0;
+        }
+
+        nint GetAedaWindowHandle() => _assistWindowHandle != 0
+            ? _assistWindowHandle
+            : GetMainWindowHandle();
+
+        _foregroundWindowTracker = new ForegroundWindowTracker(
+            () => runtime.Settings.Current.Privacy);
+        _foregroundWindowMonitor = new ExternalForegroundWindowMonitor(
+            _foregroundWindowTracker,
+            GetAedaWindowHandle);
         SettingsView? settingsView = null;
         var folderPicker = new AvaloniaFolderPickerService(() =>
             settingsView is null ? null : TopLevel.GetTopLevel(settingsView));
@@ -58,7 +83,14 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
             runtime.CheckCurrentProviderAsync,
             runtime.ListCurrentModelsAsync,
-            new AvaloniaAssistContextService(),
+            new AvaloniaAssistContextService(
+                ActiveContextProviderFactory.CreateDefaultProvider(),
+                _foregroundWindowTracker,
+                GetAedaWindowHandle,
+                runtime.Settings,
+                new UniversalSelectedTextService(
+                    new WindowsUiaSelectedTextProvider(),
+                    new WindowsClipboardCopySelectedTextProvider(GetAedaWindowHandle))),
             new AvaloniaScreenTextCaptureService(
                 () => TopLevel.GetTopLevel(assistView)?.Screens?.All ?? []),
             () => null,
@@ -67,7 +99,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             conversationId => conversationId is { } id
                 ? Chat.OpenConversationAsync(id)
                 : Task.CompletedTask);
-        var assistPillViewModel = new AssistPillViewModel(
+        Assist = new AssistPillViewModel(
             assistPillHost,
             runtime.Settings.Current.AssistPill);
 
@@ -111,17 +143,31 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             new AvaloniaPresentationScreen(
                 "aeda-assist",
                 "Assist",
-                assistPillViewModel,
+                Assist,
                 () => assistView ??= new AssistView(),
                 content => ((AssistView)content).FocusPrimaryAction())
         ];
+        _foregroundWindowMonitor.Start();
     }
 
     public AedaRuntime Runtime { get; }
 
     public AvaloniaChatViewModel Chat { get; }
 
+    public AssistPillViewModel Assist { get; }
+
     public IReadOnlyList<AvaloniaPresentationScreen> Screens { get; }
+
+    public AvaloniaAssistWindow CreateAssistWindow()
+    {
+        var window = new AvaloniaAssistWindow(Assist, _foregroundWindowTracker);
+        window.Opened += (_, _) => _assistWindowHandle =
+            AvaloniaWindowsProcessIdentity.TryGetWindowIdentity(window, out var identity)
+                ? identity.WindowHandle
+                : 0;
+        window.Closed += (_, _) => _assistWindowHandle = 0;
+        return window;
+    }
 
     public static async Task<AvaloniaAppComposition> CreateAsync(Action<Action> dispatch)
     {
@@ -143,6 +189,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Chat.Dispose();
+        _foregroundWindowMonitor.Dispose();
         _themeManager.Dispose();
         _permissionBroker.Dispose();
         await Runtime.DisposeAsync();
