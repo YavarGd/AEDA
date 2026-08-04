@@ -85,6 +85,16 @@ public partial class MainWindow : Window
         return true;
     }
 
+    public void OpenChat(bool newChat)
+    {
+        if (newChat && DataContext is AvaloniaChatViewModel chat)
+        {
+            chat.NewChat();
+        }
+
+        Navigate(ShellRoute.Chat, focusContent: true);
+    }
+
     /// <summary>
     /// Routes the shell. <paramref name="focusContent"/> must stay false for
     /// selection-driven routing so arrow-keying the navigation list does not eject focus

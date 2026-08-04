@@ -14,6 +14,7 @@ using PersonalAI.Desktop.Avalonia.Views.Settings;
 using PersonalAI.Desktop.Avalonia.Views.Tasks;
 using PersonalAI.Desktop.Presentation.Services;
 using PersonalAI.Desktop.Presentation.ViewModels;
+using PersonalAI.Core.Settings;
 using PersonalAI.Infrastructure.Context;
 using PersonalAI.Infrastructure.Hosting;
 using PersonalAI.Infrastructure.Windows;
@@ -155,6 +156,16 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     public AvaloniaChatViewModel Chat { get; }
 
     public AssistPillViewModel Assist { get; }
+
+    public HotkeySettings CurrentHotkey => Runtime.Settings.Current.Hotkey;
+
+    public bool StartMinimizedToTray => Runtime.Settings.Current.Window.StartMinimizedToTray;
+
+    public bool ExitOnMainWindowClose =>
+        Runtime.Settings.Current.Window.CloseBehavior == CloseBehavior.Exit;
+
+    public bool AskBeforeMainWindowExit =>
+        Runtime.Settings.Current.Window.CloseBehavior == CloseBehavior.AskEachTime;
 
     public IReadOnlyList<AvaloniaPresentationScreen> Screens { get; }
 
