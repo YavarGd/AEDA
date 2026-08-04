@@ -3,6 +3,8 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Themes;
+using PersonalAI.Desktop.Avalonia.Views.Assist;
+using PersonalAI.Desktop.Avalonia.Views.Capture;
 using PersonalAI.Desktop.Avalonia.Views.Memory;
 using PersonalAI.Desktop.Avalonia.Views.Research;
 using PersonalAI.Desktop.Avalonia.Views.Settings;
@@ -43,6 +45,29 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             () => { },
             runtime.ListCurrentModelsAsync,
             workspaces);
+
+        // The view is created lazily by the screen factory, which the shell invokes on the
+        // UI thread. Avalonia controls must not be constructed here, because composition
+        // runs before the dispatcher hand-off.
+        AssistView? assistView = null;
+        var assistPillHost = new AssistPillHost(
+            runtime.ConversationSession,
+            runtime.Settings,
+            new PersonalAI.Core.Chat.DeterministicChatModelRouter(),
+            runtime.CheckCurrentProviderAsync,
+            runtime.ListCurrentModelsAsync,
+            new AvaloniaAssistContextService(),
+            new AvaloniaScreenTextCaptureService(
+                () => TopLevel.GetTopLevel(assistView)?.Screens?.All ?? []),
+            () => null,
+            new AvaloniaClipboardWriter(() => assistView),
+            conversationId => conversationId is { } id
+                ? Chat.OpenConversationAsync(id)
+                : Task.CompletedTask);
+        var assistPillViewModel = new AssistPillViewModel(
+            assistPillHost,
+            runtime.Settings.Current.AssistPill);
+
         Screens =
         [
             new AvaloniaPresentationScreen(
@@ -68,7 +93,13 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
                 "Research",
                 new AedaResearchModuleViewModel(runtime.ResearchModule, runtime.ModuleRegistry),
                 () => new ResearchView(),
-                content => ((ResearchView)content).FocusPrimaryAction())
+                content => ((ResearchView)content).FocusPrimaryAction()),
+            new AvaloniaPresentationScreen(
+                "aeda-assist",
+                "Assist",
+                assistPillViewModel,
+                () => assistView ??= new AssistView(),
+                content => ((AssistView)content).FocusPrimaryAction())
         ];
     }
 

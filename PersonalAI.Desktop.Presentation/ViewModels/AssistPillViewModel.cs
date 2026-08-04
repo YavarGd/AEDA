@@ -4,9 +4,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Settings;
 using PersonalAI.Infrastructure.Chat;
-using PersonalAI.Desktop.WinUI.Services;
+using PersonalAI.Desktop.Presentation.Services;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class AssistPillViewModel : ObservableObject
 {
