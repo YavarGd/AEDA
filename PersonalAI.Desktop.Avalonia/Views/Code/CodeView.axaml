@@ -1,0 +1,276 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PersonalAI.Desktop.Presentation.ViewModels"
+             x:Class="PersonalAI.Desktop.Avalonia.Views.Code.CodeView"
+             x:DataType="vm:AedaCodeModuleViewModel"
+             AutomationProperties.Name="AEDA Code">
+  <Grid Margin="28" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="14">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel Spacing="3">
+        <TextBlock Text="AEDA Code" FontSize="26" FontWeight="SemiBold" />
+        <TextBlock Text="Supervised proposals, explicit approvals, bounded validation, and rollback."
+                   Classes="metadata"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+      <Button Grid.Column="1"
+              Content="Refresh"
+              Command="{Binding RefreshCommand}"
+              AutomationProperties.Name="Refresh AEDA Code" />
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel Spacing="4">
+        <TextBlock Text="Workspace" Classes="sectionHeading" />
+        <ComboBox x:Name="WorkspacePicker"
+                  ItemsSource="{Binding Workspaces}"
+                  SelectedItem="{Binding SelectedWorkspace, Mode=TwoWay}"
+                  DisplayMemberBinding="{Binding DisplayName}"
+                  SelectionChanged="OnWorkspaceSelectionChanged"
+                  AutomationProperties.Name="Code workspace" />
+        <TextBlock Text="{Binding WorkspaceSummary}" Classes="metadata" TextWrapping="Wrap" />
+      </StackPanel>
+      <Button Grid.Column="1"
+              VerticalAlignment="Bottom"
+              Content="Start session"
+              Command="{Binding StartSessionCommand}"
+              AutomationProperties.Name="Start supervised Code session" />
+    </Grid>
+
+    <Border Grid.Row="2"
+            Background="{DynamicResource AedaSurfaceBrush}"
+            Padding="8,5">
+      <TextBlock Text="{Binding SafeStatusMessage}"
+                 Classes="metadata"
+                 TextWrapping="Wrap"
+                 AutomationProperties.LiveSetting="Polite" />
+    </Border>
+
+    <TabControl Grid.Row="3">
+      <TabItem Header="Proposal">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <Grid Margin="0,14,0,0" ColumnDefinitions="2*,3*" ColumnSpacing="16">
+            <StackPanel Spacing="12">
+              <Border Padding="14" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="8">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Create a proposal" Classes="sectionHeading" />
+                  <TextBlock Text="{Binding ProposalCreationSafetyText}" Classes="metadata" TextWrapping="Wrap" />
+                  <TextBox PlaceholderText="Optional short title"
+                           Text="{Binding ProposalTitle}"
+                           MaxLength="120"
+                           AutomationProperties.Name="Proposal title" />
+                  <TextBlock Text="{Binding ProposalTitleLengthText}" Classes="metadata" />
+                  <TextBox x:Name="ProposalRequestBox"
+                           PlaceholderText="Describe one focused code change"
+                           Text="{Binding ProposalRequest}"
+                           MaxLength="4000"
+                           MinHeight="110"
+                           AcceptsReturn="True"
+                           TextWrapping="Wrap"
+                           AutomationProperties.Name="Code change request" />
+                  <TextBlock Text="{Binding ProposalRequestLengthText}" Classes="metadata" />
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <Button Content="Create proposal"
+                            Command="{Binding CreateProposalCommand}"
+                            AutomationProperties.Name="Create proposal without changing files" />
+                    <Button Grid.Column="1"
+                            Content="Cancel"
+                            Command="{Binding CancelProposalCreationCommand}"
+                            AutomationProperties.Name="Cancel proposal creation" />
+                  </Grid>
+                  <TextBlock Text="{Binding ProposalCreationProgressText}" Classes="metadata" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding ProposalCreationFailureText}"
+                             IsVisible="{Binding HasProposalCreationFailure}"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <StackPanel Spacing="6">
+                <TextBlock Text="Proposals" Classes="sectionHeading" />
+                <TextBlock Text="{Binding ProposalCountText}" Classes="metadata" />
+                <TextBlock Text="No proposals for this workspace."
+                           IsVisible="{Binding HasNoProposals}"
+                           Classes="metadata" />
+                <ItemsControl ItemsSource="{Binding Proposals}" AutomationProperties.Name="Code proposals">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:CompileBindings="False">
+                      <Button Margin="0,0,0,6"
+                              Padding="10"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              Click="OnProposalClick"
+                              AutomationProperties.Name="{Binding Title}">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding SafeSummary}" Classes="metadata" TextWrapping="Wrap" MaxLines="2" />
+                          <TextBlock Text="{Binding Status}" Classes="metadata" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Spacing="10">
+              <TextBlock Text="Proposal review" Classes="sectionHeading" />
+              <TextBlock Text="{Binding SelectedProposalMetadataText}" Classes="metadata" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding SelectedProposalSummaryText}" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding RiskSummary}" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding HashStatusText}" Classes="metadata" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding SourceSummaryText}" Classes="metadata" TextWrapping="Wrap" />
+              <ItemsControl ItemsSource="{Binding ProposalFiles}" AutomationProperties.Name="Affected files">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:CompileBindings="False">
+                    <TextBlock Text="{Binding RelativePath}" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBox Text="{Binding UnifiedDiffPreview, Mode=OneWay}"
+                       IsReadOnly="True"
+                       AcceptsReturn="True"
+                       TextWrapping="NoWrap"
+                       FontFamily="Consolas"
+                       MinHeight="250"
+                       MaxHeight="430"
+                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto"
+                       AutomationProperties.Name="Bounded unified diff preview" />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Review and apply">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="0,14,0,0" Spacing="10" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Review gates" Classes="sectionHeading" />
+            <TextBlock Text="{Binding ReviewGateOrderText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding DryRunStatusText}" Classes="metadata" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding DryRunDetailText}" TextWrapping="Wrap" />
+            <Border IsVisible="{Binding IsDryRunStale}"
+                    Padding="10"
+                    BorderBrush="{DynamicResource AedaBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+              <TextBlock Text="{Binding StaleProposalRecoveryText}" TextWrapping="Wrap" />
+            </Border>
+            <Button Content="1. Dry run"
+                    Command="{Binding DryRunSelectedProposalCommand}"
+                    HorizontalAlignment="Left" />
+            <TextBlock Text="{Binding ApplyApprovalStatusText}" Classes="metadata" TextWrapping="Wrap" />
+            <Button Content="2. Request apply approval"
+                    Command="{Binding RequestApplyApprovalCommand}"
+                    HorizontalAlignment="Left" />
+            <WrapPanel>
+              <Button Content="Allow once" Command="{Binding AllowApplyOnceCommand}" Margin="0,0,8,0" />
+              <Button Content="Deny" Command="{Binding DenyApplyApprovalCommand}" />
+            </WrapPanel>
+            <Button Content="3. Apply approved proposal"
+                    Command="{Binding ApplyApprovedProposalCommand}"
+                    HorizontalAlignment="Left" />
+            <TextBlock Text="{Binding ApplyResultText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding ApplyResultDetailText}" Classes="metadata" TextWrapping="Wrap" />
+            <StackPanel IsVisible="{Binding CanShowRollback}" Spacing="6">
+              <TextBlock Text="{Binding RollbackAvailabilityText}" TextWrapping="Wrap" />
+              <Button Content="Rollback apply result"
+                      Command="{Binding RollbackSelectedApplyResultCommand}"
+                      HorizontalAlignment="Left" />
+              <TextBlock Text="{Binding RollbackStatusText}" Classes="metadata" TextWrapping="Wrap" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Validation">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="0,14,0,0" Spacing="10" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Allowlisted validation" Classes="sectionHeading" />
+            <TextBlock Text="{Binding ValidationTemplateStatusText}" TextWrapping="Wrap" />
+            <ComboBox ItemsSource="{Binding ValidationTemplates}"
+                      SelectedItem="{Binding SelectedValidationTemplate, Mode=TwoWay}"
+                      DisplayMemberBinding="{Binding DisplayName}"
+                      AutomationProperties.Name="Validation template" />
+            <Button Content="Create validation run"
+                    Command="{Binding CreateValidationRunCommand}"
+                    HorizontalAlignment="Left" />
+            <TextBlock Text="{Binding ValidationApprovalStatusText}" Classes="metadata" TextWrapping="Wrap" />
+            <Button Content="Request validation approval"
+                    Command="{Binding RequestValidationApprovalCommand}"
+                    HorizontalAlignment="Left" />
+            <WrapPanel>
+              <Button Content="Allow once" Command="{Binding AllowValidationOnceCommand}" Margin="0,0,8,0" />
+              <Button Content="Deny" Command="{Binding DenyValidationApprovalCommand}" />
+            </WrapPanel>
+            <Button Content="Run approved validation"
+                    Command="{Binding RunApprovedValidationCommand}"
+                    HorizontalAlignment="Left" />
+            <TextBlock Text="{Binding ValidationResultText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding ValidationRunDetailText}" Classes="metadata" TextWrapping="Wrap" />
+            <TextBox Text="{Binding ValidationOutputPreview, Mode=OneWay}"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     FontFamily="Consolas"
+                     MinHeight="220"
+                     MaxHeight="360"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.Name="Sanitized validation output" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Timeline">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <Grid Margin="0,14,0,0" ColumnDefinitions="2*,3*" ColumnSpacing="16">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Recent Code tasks" Classes="sectionHeading" />
+              <TextBlock Text="No recent Code tasks." IsVisible="{Binding HasNoRecentCodeTasks}" Classes="metadata" />
+              <ItemsControl ItemsSource="{Binding RecentCodeTasks}" AutomationProperties.Name="Recent Code tasks">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:CompileBindings="False">
+                    <Button Margin="0,0,0,6"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Click="OnTaskClick">
+                      <StackPanel>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding SafeSummary}" Classes="metadata" TextWrapping="Wrap" MaxLines="2" />
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="8">
+              <TextBlock Text="Safe activity timeline" Classes="sectionHeading" />
+              <TextBlock Text="No safe timeline events loaded."
+                         IsVisible="{Binding HasNoTimelineItems}"
+                         Classes="metadata" />
+              <ItemsControl ItemsSource="{Binding CodeTimelineGroups}" AutomationProperties.Name="Code activity timeline">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:CompileBindings="False">
+                    <StackPanel Margin="0,0,0,10" Spacing="4">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:CompileBindings="False">
+                            <StackPanel Margin="8,0,0,6">
+                              <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                              <TextBlock Text="{Binding Detail}" Classes="metadata" TextWrapping="Wrap" />
+                              <TextBlock Text="{Binding UpdatedText}" Classes="metadata" />
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+
+  </Grid>
+</UserControl>

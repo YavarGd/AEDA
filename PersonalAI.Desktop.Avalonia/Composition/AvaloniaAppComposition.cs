@@ -6,6 +6,7 @@ using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Themes;
 using PersonalAI.Desktop.Avalonia.Views.Assist;
 using PersonalAI.Desktop.Avalonia.Views.Capture;
+using PersonalAI.Desktop.Avalonia.Views.Code;
 using PersonalAI.Desktop.Avalonia.Views.Memory;
 using PersonalAI.Desktop.Avalonia.Views.Research;
 using PersonalAI.Desktop.Avalonia.Views.Settings;
@@ -78,6 +79,17 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
                 new AedaTaskCenterViewModel(runtime.TaskCenter),
                 () => new TaskCenterView(),
                 content => ((TaskCenterView)content).FocusPrimaryAction()),
+            new AvaloniaPresentationScreen(
+                "aeda-code",
+                "Code",
+                new AedaCodeModuleViewModel(
+                    runtime.CodeModule,
+                    runtime.ModuleRegistry,
+                    runtime.WorkspaceRegistry,
+                    runtime.TaskCenter,
+                    runtime.ApprovalCheckpointStore),
+                () => new CodeView(),
+                content => ((CodeView)content).FocusPrimaryAction()),
             new AvaloniaPresentationScreen(
                 "settings",
                 "Settings",
