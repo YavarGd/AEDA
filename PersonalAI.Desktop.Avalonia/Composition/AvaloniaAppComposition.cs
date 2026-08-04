@@ -3,6 +3,8 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Themes;
+using PersonalAI.Desktop.Avalonia.Views.Memory;
+using PersonalAI.Desktop.Avalonia.Views.Research;
 using PersonalAI.Desktop.Avalonia.Views.Settings;
 using PersonalAI.Desktop.Avalonia.Views.Tasks;
 using PersonalAI.Desktop.Presentation.Services;
@@ -54,7 +56,19 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
                 "Settings",
                 settings,
                 () => settingsView = new SettingsView(_themeManager, runtime.Settings),
-                content => ((SettingsView)content).FocusPrimaryAction())
+                content => ((SettingsView)content).FocusPrimaryAction()),
+            new AvaloniaPresentationScreen(
+                "aeda-memory",
+                "Memory",
+                new AedaMemoryModuleViewModel(runtime.MemoryModule, runtime.ModuleRegistry),
+                () => new MemoryView(),
+                content => ((MemoryView)content).FocusPrimaryAction()),
+            new AvaloniaPresentationScreen(
+                "aeda-research",
+                "Research",
+                new AedaResearchModuleViewModel(runtime.ResearchModule, runtime.ModuleRegistry),
+                () => new ResearchView(),
+                content => ((ResearchView)content).FocusPrimaryAction())
         ];
     }
 
