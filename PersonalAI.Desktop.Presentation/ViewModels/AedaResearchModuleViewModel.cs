@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Modules;
 using PersonalAI.Core.Research;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class AedaResearchModuleViewModel : ObservableObject
 {
@@ -125,8 +125,7 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        Dashboard = await _moduleService.GetDashboardAsync(cancellationToken)
-            .ConfigureAwait(false);
+        Dashboard = await _moduleService.GetDashboardAsync(cancellationToken);
         SelectedReport = Dashboard.RecentReports.FirstOrDefault();
         SafeStatusMessage = Dashboard.SafeStatusMessage;
         NotifyDashboardChanged();
@@ -138,7 +137,7 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     {
         ExtractedClaims = await _moduleService.ExtractClaimsAsync(
             VerificationText,
-            SummaryLimit).ConfigureAwait(false);
+            SummaryLimit);
         SafeStatusMessage = ExtractedClaims.Count == 0
             ? "No claims extracted."
             : "Claims extracted.";
@@ -151,10 +150,9 @@ public sealed partial class AedaResearchModuleViewModel : ObservableObject
     public async Task VerifyWithLocalEvidenceAsync()
     {
         var report = await _moduleService.VerifyWithLocalEvidenceAsync(
-            new VerificationRequest(VerificationText, new ResearchScope(MaxClaims: SummaryLimit)))
-            .ConfigureAwait(false);
+            new VerificationRequest(VerificationText, new ResearchScope(MaxClaims: SummaryLimit)));
         SelectedReport = report;
-        Dashboard = await _moduleService.GetDashboardAsync().ConfigureAwait(false);
+        Dashboard = await _moduleService.GetDashboardAsync();
         SafeStatusMessage = report.Status == VerificationReportStatus.Completed
             ? "Local verification report created."
             : "Verification did not complete.";

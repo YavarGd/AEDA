@@ -4,7 +4,7 @@ using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Memory;
 using PersonalAI.Core.Modules;
 
-namespace PersonalAI.Desktop.WinUI.ViewModels;
+namespace PersonalAI.Desktop.Presentation.ViewModels;
 
 public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 {
@@ -155,8 +155,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        Dashboard = await _moduleService.GetDashboardAsync(cancellationToken)
-            .ConfigureAwait(false);
+        Dashboard = await _moduleService.GetDashboardAsync(cancellationToken);
         SafeStatusMessage = Dashboard.SafeStatusMessage;
         NotifyDashboardChanged();
     }
@@ -166,7 +165,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     {
         SearchResults = await _moduleService.SearchMemoriesAsync(
             SearchText,
-            SummaryLimit).ConfigureAwait(false);
+            SummaryLimit);
         SafeStatusMessage = SearchResults.Count == 0
             ? "No memories matched."
             : "Memory search complete.";
@@ -182,7 +181,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
                 MemoryKind.ExplicitUserPreference,
                 MemoryScope.Global,
                 NewMemoryText,
-                NewMemorySourceReason)).ConfigureAwait(false);
+                NewMemorySourceReason));
 
         if (!result.Succeeded)
         {
@@ -192,7 +191,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
         NewMemoryText = string.Empty;
         SafeStatusMessage = "Explicit memory saved.";
-        await InitializeAsync().ConfigureAwait(false);
+        await InitializeAsync();
     }
 
     [RelayCommand]
@@ -204,7 +203,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         }
 
         SelectedMemory = await _moduleService.GetMemoryDetailAsync(
-            new MemoryId(summary.Id)).ConfigureAwait(false);
+            new MemoryId(summary.Id));
         SafeStatusMessage = SelectedMemory is null
             ? "Memory not found."
             : "Memory detail loaded.";
@@ -219,11 +218,11 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         }
 
         var result = await _moduleService.ArchiveMemoryAsync(
-            new MemoryId(summary.Id)).ConfigureAwait(false);
+            new MemoryId(summary.Id));
         SafeStatusMessage = result.Succeeded
             ? "Memory archived."
             : result.SafeReasonCode ?? "Memory was not archived.";
-        await InitializeAsync().ConfigureAwait(false);
+        await InitializeAsync();
     }
 
     [RelayCommand]
@@ -235,11 +234,11 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         }
 
         var result = await _moduleService.DeleteMemoryAsync(
-            new MemoryId(summary.Id)).ConfigureAwait(false);
+            new MemoryId(summary.Id));
         SafeStatusMessage = result.Succeeded
             ? "Memory deleted."
             : result.SafeReasonCode ?? "Memory was not deleted.";
-        await InitializeAsync().ConfigureAwait(false);
+        await InitializeAsync();
     }
 
     [RelayCommand(CanExecute = nameof(CanPreviewRetrieval))]
@@ -247,7 +246,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     {
         RetrievalPreview = await _moduleService.PreviewRetrievalAsync(
             RetrievalQuery,
-            SummaryLimit).ConfigureAwait(false);
+            SummaryLimit);
         SafeStatusMessage = RetrievalPreview.Count == 0
             ? "No retrieval preview items."
             : "Retrieval preview loaded.";

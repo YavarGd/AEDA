@@ -4,7 +4,7 @@ using PersonalAI.Core.Coding;
 using PersonalAI.Core.Modules;
 using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
-using PersonalAI.Desktop.WinUI.ViewModels;
+using PersonalAI.Desktop.Presentation.ViewModels;
 using PersonalAI.Infrastructure.Modules;
 using PersonalAI.Infrastructure.Workspaces;
 
