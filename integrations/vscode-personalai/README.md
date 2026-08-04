@@ -15,10 +15,12 @@ Phase 1 sends explicit editor context from VS Code to the local PersonalAI deskt
 ## Privacy
 
 - The extension does not monitor editor changes.
+- Changing the selection or active editor sends nothing; only commands publish context.
 - The extension does not index the workspace.
 - The extension sends only explicit selected text, current line, or metadata when the user invokes a PersonalAI command.
 - It does not read terminals, environment variables, credentials, authentication sessions, or workspace files.
 - It does not modify source files.
+- Speech and voice capabilities are not advertised and remain unavailable.
 
 ## Protocol
 

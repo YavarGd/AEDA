@@ -38,7 +38,7 @@ test("serializeEnvelope rejects oversized messages", () => {
   assert.throws(() => serializeEnvelope(envelope), /2 MB/);
 });
 
-test("selection context updates use the production pipe contract", () => {
+test("legacy selection context updates remain protocol compatible", () => {
   const serialized = serializeEnvelope({
     protocolVersion,
     requestId: "request-2",
