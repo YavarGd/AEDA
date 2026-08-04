@@ -1,5 +1,6 @@
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls;
-using PersonalAI.Core.Permissions;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Themes;
 using PersonalAI.Desktop.Avalonia.Views.Settings;
@@ -13,10 +14,15 @@ namespace PersonalAI.Desktop.Avalonia.Composition;
 public sealed class AvaloniaAppComposition : IAsyncDisposable
 {
     private readonly AvaloniaThemeManager _themeManager;
+    private readonly AvaloniaPermissionBroker _permissionBroker;
 
-    private AvaloniaAppComposition(AedaRuntime runtime, Action<Action> dispatch)
+    private AvaloniaAppComposition(
+        AedaRuntime runtime,
+        Action<Action> dispatch,
+        AvaloniaPermissionBroker permissionBroker)
     {
         Runtime = runtime;
+        _permissionBroker = permissionBroker;
         Chat = new AvaloniaChatViewModel(runtime.ConversationSession, runtime.Settings, dispatch);
         _themeManager = new AvaloniaThemeManager(runtime.Settings.Current.Appearance.Theme);
         SettingsView? settingsView = null;
@@ -61,14 +67,25 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     public static async Task<AvaloniaAppComposition> CreateAsync(Action<Action> dispatch)
     {
         ArgumentNullException.ThrowIfNull(dispatch);
-        var runtime = await AedaRuntime.CreateAsync(new DenyingPermissionBroker());
-        return new AvaloniaAppComposition(runtime, dispatch);
+        var permissionBroker = new AvaloniaPermissionBroker(() =>
+            (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow);
+        try
+        {
+            var runtime = await AedaRuntime.CreateAsync(permissionBroker);
+            return new AvaloniaAppComposition(runtime, dispatch, permissionBroker);
+        }
+        catch
+        {
+            permissionBroker.Dispose();
+            throw;
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
         Chat.Dispose();
         _themeManager.Dispose();
+        _permissionBroker.Dispose();
         await Runtime.DisposeAsync();
     }
 }
