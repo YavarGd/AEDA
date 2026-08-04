@@ -60,6 +60,7 @@ public partial class App : Application
                 () =>
                 {
                     window.DataContext = _composition.Chat;
+                    window.AttachTaskCenter(_composition.Runtime.TaskCenter);
                     desktop.MainWindow = window;
                     window.Show();
                 });

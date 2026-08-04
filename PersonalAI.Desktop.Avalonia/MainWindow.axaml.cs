@@ -1,8 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using PersonalAI.Core.Tasks;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Views.Chat;
+using PersonalAI.Desktop.Presentation.ViewModels;
 
 namespace PersonalAI.Desktop.Avalonia;
 
@@ -10,7 +12,8 @@ namespace PersonalAI.Desktop.Avalonia;
 public enum ShellRoute
 {
     Dashboard,
-    Chat
+    Chat,
+    TaskCenter
 }
 
 public partial class MainWindow : Window
@@ -31,6 +34,9 @@ public partial class MainWindow : Window
     /// <summary>The route currently shown. Shell state stays in the view.</summary>
     public ShellRoute CurrentRoute { get; private set; } = ShellRoute.Dashboard;
 
+    public void AttachTaskCenter(IAedaTaskCenterService taskCenterService) =>
+        TaskCenterRoute.DataContext = new AedaTaskCenterViewModel(taskCenterService);
+
     /// <summary>
     /// Routes the shell. <paramref name="focusContent"/> must stay false for
     /// selection-driven routing so arrow-keying the navigation list does not eject focus
@@ -41,8 +47,14 @@ public partial class MainWindow : Window
         CurrentRoute = route;
         DashboardRoute.IsVisible = route == ShellRoute.Dashboard;
         ChatRoute.IsVisible = route == ShellRoute.Chat;
+        TaskCenterRoute.IsVisible = route == ShellRoute.TaskCenter;
 
-        var navItem = route == ShellRoute.Chat ? ChatNavItem : DashboardNavItem;
+        var navItem = route switch
+        {
+            ShellRoute.Chat => ChatNavItem,
+            ShellRoute.TaskCenter => TaskCenterNavItem,
+            _ => DashboardNavItem
+        };
         if (!ReferenceEquals(NavigationList.SelectedItem, navItem))
         {
             _suppressNavigationSelection = true;
@@ -64,6 +76,10 @@ public partial class MainWindow : Window
         if (route == ShellRoute.Chat)
         {
             ChatRoute.FocusComposer();
+        }
+        else if (route == ShellRoute.TaskCenter)
+        {
+            TaskCenterRoute.FocusPrimaryAction();
         }
         else
         {
@@ -87,6 +103,12 @@ public partial class MainWindow : Window
         if (ReferenceEquals(NavigationList.SelectedItem, DashboardNavItem))
         {
             Navigate(ShellRoute.Dashboard, focusContent: false);
+            return;
+        }
+
+        if (ReferenceEquals(NavigationList.SelectedItem, TaskCenterNavItem))
+        {
+            Navigate(ShellRoute.TaskCenter, focusContent: false);
         }
     }
 
