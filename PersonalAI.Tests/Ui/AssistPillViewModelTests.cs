@@ -1,9 +1,8 @@
 using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
 using PersonalAI.Infrastructure.Chat;
-using PersonalAI.Desktop.WinUI.Services;
-using PersonalAI.Desktop.WinUI.ViewModels;
 using PersonalAI.Desktop.Presentation.Services;
+using PersonalAI.Desktop.Presentation.ViewModels;
 
 namespace PersonalAI.Tests.Ui;
 
