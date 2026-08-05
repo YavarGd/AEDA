@@ -38,10 +38,14 @@
                  AutomationProperties.LiveSetting="Polite" />
     </StackPanel>
 
-    <StackPanel Grid.Row="1" Spacing="18">
+    <!-- The three states are mutually exclusive, so a Panel overlays them and passes the
+         finite available height straight through. A StackPanel here would measure each
+         child with infinite height, which is what pushed the response action row outside
+         the bounded Assist window. -->
+    <Panel Grid.Row="1">
 
       <!-- Idle state -->
-      <StackPanel Spacing="8" IsVisible="{Binding IsIdle}">
+      <StackPanel Spacing="8" VerticalAlignment="Top" IsVisible="{Binding IsIdle}">
         <TextBlock Text="Ready" Classes="sectionHeading" />
         <TextBlock Text="Ask AEDA to explain selected content or answer a question."
                    Classes="metadata"
@@ -55,7 +59,7 @@
       </StackPanel>
 
       <!-- Spotlight prompt state -->
-      <StackPanel Spacing="8" IsVisible="{Binding IsFallbackInput}">
+      <StackPanel Spacing="8" VerticalAlignment="Top" IsVisible="{Binding IsFallbackInput}">
         <TextBlock Text="Ask AEDA" Classes="sectionHeading" />
         <TextBox x:Name="PromptBox"
                  Text="{Binding Prompt, Mode=TwoWay}"
@@ -79,10 +83,16 @@
         </StackPanel>
       </StackPanel>
 
-      <!-- Response / status surface -->
-      <StackPanel Spacing="8" IsVisible="{Binding IsResponseSurface}">
+      <!-- Response / status surface.
+           Auto heading, Star scrollable content, Auto actions. The Star row absorbs the
+           leftover height, so the response can never grow past the window and hide the
+           action row: Copy and Open in AEDA stay inside the host at any response length. -->
+      <Grid x:Name="ResponseSurface"
+            RowDefinitions="Auto,*,Auto"
+            RowSpacing="8"
+            IsVisible="{Binding IsResponseSurface}">
         <TextBlock Text="Response" Classes="sectionHeading" />
-        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="420">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
           <SelectableTextBlock x:Name="ResponseText"
                                 Text="{Binding Response}"
                                 TextWrapping="Wrap"
@@ -90,7 +100,8 @@
                                 AutomationProperties.LiveSetting="Polite" />
         </ScrollViewer>
 
-        <StackPanel Orientation="Horizontal" Spacing="8">
+        <!-- Outside the ScrollViewer, in a fixed Auto row: never scrolls away. -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
           <Button x:Name="CancelButton"
                   Content="Cancel"
                   Command="{Binding CancelCommand}"
@@ -116,9 +127,9 @@
                   ToolTip.Tip="Open this reply in AEDA"
                   AutomationProperties.Name="Open in AEDA" />
         </StackPanel>
-      </StackPanel>
+      </Grid>
 
-    </StackPanel>
+    </Panel>
   </Grid>
   </Panel>
 </UserControl>

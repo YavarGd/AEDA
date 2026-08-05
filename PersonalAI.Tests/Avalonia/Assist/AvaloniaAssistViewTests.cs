@@ -44,7 +44,14 @@ public sealed class AvaloniaAssistViewTests
         var source = ReadSource("Views", "Assist", "AssistView.axaml");
 
         Assert.Contains("ScrollViewer", source);
-        Assert.Contains("MaxHeight=", source);
+
+        // The response region is bounded by the Star row of the ResponseSurface grid, not by
+        // a fixed MaxHeight. A fixed height made the surface demand more room than the
+        // Assist window had, pushing the action row outside the window where a pointer could
+        // not reach it.
+        Assert.Contains("RowDefinitions=\"Auto,*,Auto\"", source);
+        Assert.Contains("<ScrollViewer Grid.Row=\"1\"", source);
+        Assert.DoesNotContain("MaxHeight=\"420\"", source);
     }
 
     [Fact]
