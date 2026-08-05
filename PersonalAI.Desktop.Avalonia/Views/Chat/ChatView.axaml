@@ -35,6 +35,14 @@
                  ItemsSource="{Binding Conversations}"
                  SelectionChanged="OnConversationSelectionChanged"
                  AutomationProperties.Name="Conversation list">
+          <!-- The generated ListBoxItem container, not the template content, supplies the
+               ListItem automation name. Without this it falls back to Conversation.ToString(),
+               so a screen reader reads the GUID and timestamps instead of the title. -->
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem" x:DataType="core:Conversation">
+              <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+            </Style>
+          </ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="core:Conversation">
               <StackPanel Spacing="2">
@@ -102,7 +110,6 @@
                  MinHeight="72"
                  MaxHeight="160"
                  PlaceholderText="Ask AEDA. Enter sends, Shift+Enter adds a line."
-                 KeyDown="OnComposerKeyDown"
                  AutomationProperties.Name="Message composer" />
         <Button x:Name="SendButton"
                 Grid.Column="1"

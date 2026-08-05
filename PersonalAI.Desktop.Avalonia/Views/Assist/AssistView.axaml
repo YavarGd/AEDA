@@ -6,8 +6,30 @@
              KeyDown="OnViewKeyDown"
              AutomationProperties.Name="Assist">
 
-  <Grid Margin="28" RowDefinitions="Auto,*" RowSpacing="18">
-    <StackPanel Spacing="4">
+  <Panel>
+
+    <!-- Compact host, idle: the 52x52 Pill. One surface, no module chrome. -->
+    <Button x:Name="CompactPill"
+            IsVisible="False"
+            Padding="0"
+            Margin="0"
+            CornerRadius="26"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            VerticalContentAlignment="Center"
+            Click="OnAskClick"
+            ToolTip.Tip="Ask AEDA"
+            AutomationProperties.Name="Ask AEDA">
+      <TextBlock Text="AEDA"
+                 FontSize="11"
+                 FontWeight="SemiBold"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center" />
+    </Button>
+
+  <Grid x:Name="FullSurface" Margin="28" RowDefinitions="Auto,*" RowSpacing="18">
+    <StackPanel x:Name="ModuleHeader" Spacing="4">
       <TextBlock Text="Assist" FontSize="26" FontWeight="SemiBold" />
       <TextBlock Text="{Binding StatusText}"
                  Classes="metadata"
@@ -98,4 +120,5 @@
 
     </StackPanel>
   </Grid>
+  </Panel>
 </UserControl>

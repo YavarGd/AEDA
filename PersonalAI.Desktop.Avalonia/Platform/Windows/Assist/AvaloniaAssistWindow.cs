@@ -29,7 +29,13 @@ public sealed class AvaloniaAssistWindow : Window
     {
         _viewModel = viewModel;
         _foregroundWindowTracker = foregroundWindowTracker;
-        _view = new AssistView { DataContext = viewModel };
+        // This window shrinks to 52x52 while idle, so the view must use its compact
+        // presentation rather than the full in-app module layout.
+        _view = new AssistView
+        {
+            HostMode = AssistViewHostMode.CompactWindow,
+            DataContext = viewModel
+        };
         _integration = new AvaloniaAssistWindowIntegration(GetWindowHandle);
 
         DataContext = viewModel;
