@@ -27,6 +27,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     private readonly AvaloniaPermissionBroker _permissionBroker;
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly ExternalForegroundWindowMonitor _foregroundWindowMonitor;
+    private AvaloniaAssistWindow? _assistWindow;
     private nint _assistWindowHandle;
 
     private AvaloniaAppComposition(
@@ -96,7 +97,10 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
                 () => TopLevel.GetTopLevel(assistView)?.Screens?.All ?? []),
             () => null,
             new AvaloniaClipboardWriter(() =>
-                assistView is null ? null : TopLevel.GetTopLevel(assistView)),
+                (_assistWindow is { IsVisible: true } ? _assistWindow : null) ??
+                (assistView is null ? null : TopLevel.GetTopLevel(assistView)) ??
+                (Application.Current?.ApplicationLifetime as
+                    IClassicDesktopStyleApplicationLifetime)?.MainWindow),
             OpenAssistConversationInShellAsync);
         Assist = new AssistPillViewModel(
             assistPillHost,
@@ -196,11 +200,19 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     public AvaloniaAssistWindow CreateAssistWindow()
     {
         var window = new AvaloniaAssistWindow(Assist, _foregroundWindowTracker);
+        _assistWindow = window;
         window.Opened += (_, _) => _assistWindowHandle =
             AvaloniaWindowsProcessIdentity.TryGetWindowIdentity(window, out var identity)
                 ? identity.WindowHandle
                 : 0;
-        window.Closed += (_, _) => _assistWindowHandle = 0;
+        window.Closed += (_, _) =>
+        {
+            _assistWindowHandle = 0;
+            if (ReferenceEquals(_assistWindow, window))
+            {
+                _assistWindow = null;
+            }
+        };
         return window;
     }
 

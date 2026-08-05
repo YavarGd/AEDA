@@ -485,11 +485,31 @@ public sealed class AssistPillViewModelTests
         await viewModel.SubmitAsync();
 
         await viewModel.CopyResponseAsync();
+        Assert.Equal("Copied", viewModel.StatusText);
         await viewModel.OpenInAedaAsync();
 
         Assert.Equal("Visible", host.CopiedText);
         Assert.Equal(1, host.OpenCalls);
         Assert.Equal(AssistPillState.Hidden, viewModel.State);
+    }
+
+    [Fact]
+    public async Task CopyFailureKeepsExistingFailureStatus()
+    {
+        var host = new FakeHost
+        {
+            Chunks = ["Visible"],
+            CopyFailure = new InvalidOperationException("clipboard unavailable")
+        };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Answer";
+        await viewModel.SubmitAsync();
+
+        await viewModel.CopyResponseAsync();
+
+        Assert.Equal("Copy failed", viewModel.StatusText);
+        Assert.Empty(host.CopiedText);
     }
 
     [Fact]
@@ -574,6 +594,8 @@ public sealed class AssistPillViewModelTests
         public bool WaitForCapture { get; set; }
         public bool WaitForScreenCapture { get; init; }
         public bool WaitForCancellation { get; set; }
+
+        public Exception? CopyFailure { get; set; }
         public bool GenerationWasCancelled { get; private set; }
         public int CaptureCalls { get; private set; }
         public int ScreenCaptureCalls { get; private set; }
@@ -661,6 +683,11 @@ public sealed class AssistPillViewModelTests
 
         public Task CopyTextAsync(string text, CancellationToken cancellationToken)
         {
+            if (CopyFailure is not null)
+            {
+                return Task.FromException(CopyFailure);
+            }
+
             CopiedText = text;
             return Task.CompletedTask;
         }

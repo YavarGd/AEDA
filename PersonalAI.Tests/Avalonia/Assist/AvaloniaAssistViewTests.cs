@@ -81,6 +81,43 @@ public sealed class AvaloniaAssistViewTests
     }
 
     [Fact]
+    public void ClipboardOwnerPrefersVisibleFloatingAssistAndFallsBackSafely()
+    {
+        var source = ReadSource("Composition", "AvaloniaAppComposition.cs");
+        var resolver = Between(
+            source,
+            "new AvaloniaClipboardWriter(() =>",
+            "OpenAssistConversationInShellAsync);");
+
+        var floating = resolver.IndexOf(
+            "_assistWindow is { IsVisible: true }",
+            StringComparison.Ordinal);
+        var inApp = resolver.IndexOf("TopLevel.GetTopLevel(assistView)", StringComparison.Ordinal);
+        var main = resolver.IndexOf("IClassicDesktopStyleApplicationLifetime)?.MainWindow", StringComparison.Ordinal);
+
+        Assert.True(floating >= 0, "visible floating Assist owner missing");
+        Assert.True(inApp > floating, "in-app Assist must be the second owner");
+        Assert.True(main > inApp, "main window must be the final fallback");
+        Assert.Contains("AssistView? assistView = null;", source);
+        Assert.Contains("() => assistView ??= new AssistView()", source);
+    }
+
+    [Fact]
+    public void ClosedFloatingAssistIsNotRetainedAsClipboardOwner()
+    {
+        var source = ReadSource("Composition", "AvaloniaAppComposition.cs");
+        var factory = Between(
+            source,
+            "public AvaloniaAssistWindow CreateAssistWindow()",
+            "public static async Task<AvaloniaAppComposition> CreateAsync");
+
+        Assert.Contains("_assistWindow = window;", factory);
+        Assert.Contains("window.Closed +=", factory);
+        Assert.Contains("ReferenceEquals(_assistWindow, window)", factory);
+        Assert.Contains("_assistWindow = null;", factory);
+    }
+
+    [Fact]
     public void AssistDoesNotShipItsOwnClipboardAdapter()
     {
         // W3 owns the shared implementation at Platform/Windows/AvaloniaClipboardWriter.cs.
@@ -125,6 +162,14 @@ public sealed class AvaloniaAssistViewTests
             [repositoryRoot, "PersonalAI.Desktop.Avalonia", .. relativePath]);
         Assert.True(File.Exists(path), $"Avalonia source not found at {path}");
         return File.ReadAllText(path);
+    }
+
+    private static string Between(string source, string start, string end)
+    {
+        var startIndex = source.IndexOf(start, StringComparison.Ordinal);
+        Assert.True(startIndex >= 0, $"'{start}' not found");
+        var endIndex = source.IndexOf(end, startIndex + start.Length, StringComparison.Ordinal);
+        return endIndex < 0 ? source[startIndex..] : source[startIndex..endIndex];
     }
 
     private static string GetRepositoryRoot(
