@@ -97,9 +97,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             () => null,
             new AvaloniaClipboardWriter(() =>
                 assistView is null ? null : TopLevel.GetTopLevel(assistView)),
-            conversationId => conversationId is { } id
-                ? Chat.OpenConversationAsync(id)
-                : Task.CompletedTask);
+            OpenAssistConversationInShellAsync);
         Assist = new AssistPillViewModel(
             assistPillHost,
             runtime.Settings.Current.AssistPill);
@@ -156,6 +154,32 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     public AvaloniaChatViewModel Chat { get; }
 
     public AssistPillViewModel Assist { get; }
+
+    /// <summary>
+    /// Surfaces an Assist-generated conversation in the shell: restore and activate the main
+    /// window, then route to General chat. Set by the app root, which owns the windows.
+    /// <para>
+    /// This is deliberately specific to "Open in AEDA". Reacting to every
+    /// <c>ActiveConversation</c> change would steal focus whenever an ordinary conversation
+    /// is selected.
+    /// </para>
+    /// </summary>
+    public Action<Guid>? SurfaceAssistConversationInShell { get; set; }
+
+    /// <summary>
+    /// Loads the conversation into the chat view model, then asks the shell to surface it.
+    /// A null id (no conversation was generated) loads nothing and surfaces nothing.
+    /// </summary>
+    private async Task OpenAssistConversationInShellAsync(Guid? conversationId)
+    {
+        if (conversationId is not { } id)
+        {
+            return;
+        }
+
+        await Chat.OpenConversationAsync(id);
+        SurfaceAssistConversationInShell?.Invoke(id);
+    }
 
     public HotkeySettings CurrentHotkey => Runtime.Settings.Current.Hotkey;
 

@@ -91,7 +91,7 @@ public partial class App : Application
         _mainWindowActivation = new AvaloniaWindowActivationService(window);
         _assistWindow = _composition.CreateAssistWindow();
         window.Closing += OnMainWindowClosing;
-        _composition.Chat.PropertyChanged += OnChatPropertyChanged;
+        _composition.SurfaceAssistConversationInShell = SurfaceAssistConversation;
 
         _trayIcon = new AvaloniaTrayIconService(
             ShowMainWindow,
@@ -183,15 +183,25 @@ public partial class App : Application
         _pipeServer.Start();
     }
 
-    private void OnChatPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(AvaloniaChatViewModel.ActiveConversation) &&
-            _mainWindow?.IsVisible == false)
-        {
-            ShowMainWindow();
-            _mainWindow.OpenChat(newChat: false);
-        }
-    }
+    /// <summary>
+    /// Completes an "Open in AEDA" hand-off.
+    /// <para>
+    /// Ordering matters. <c>AssistPillViewModel</c> awaits the host callback and only then
+    /// sets <c>State = Hidden</c>; hiding the Assist window makes Windows restore focus to
+    /// whatever was previously foreground (Notepad in the reported repro). Activating the
+    /// main window inline would therefore be undone moments later. Posting at
+    /// <see cref="DispatcherPriority.Background"/> defers this until after the Hidden
+    /// transition and its focus restoration have run, so AEDA ends up foreground.
+    /// </para>
+    /// </summary>
+    private void SurfaceAssistConversation(Guid conversationId) =>
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                ShowMainWindow();
+                _mainWindow?.OpenChat(newChat: false);
+            },
+            DispatcherPriority.Background);
 
     private void ShowMainWindow() => _mainWindowActivation?.ShowRestoreAndActivate();
 
@@ -289,7 +299,7 @@ public partial class App : Application
         _trayIcon = null;
         if (_composition is not null)
         {
-            _composition.Chat.PropertyChanged -= OnChatPropertyChanged;
+            _composition.SurfaceAssistConversationInShell = null;
             _composition.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _composition = null;
         }
