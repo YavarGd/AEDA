@@ -283,6 +283,8 @@ public sealed class WorkspaceRegistrationPersistenceTests : IDisposable
     {
         var root = Path.Combine(_directory, "workspace");
         Directory.CreateDirectory(root);
+        var file = Path.Combine(root, "keep.txt");
+        await File.WriteAllTextAsync(file, "keep");
         var repository = new SqliteWorkspaceRepository(_databasePath);
         var registry = new WorkspaceRegistry();
         var invalidator = new RecordingInvalidator();
@@ -295,6 +297,21 @@ public sealed class WorkspaceRegistrationPersistenceTests : IDisposable
         Assert.False(registry.TryGet(workspace.Id, out _));
         Assert.Contains(workspace.Id, invalidator.Invalidated);
         Assert.Empty(await repository.ListAsync());
+        var removed = await repository.GetAsync(workspace.Id);
+        Assert.NotNull(removed);
+        Assert.False(removed.IsActive);
+        Assert.Equal(WorkspaceRegistrationStatus.Removed, removed.Status);
+        Assert.NotNull(removed.RemovedAtUtc);
+        Assert.Equal("keep", await File.ReadAllTextAsync(file));
+
+        var restartedRegistry = new WorkspaceRegistry();
+        var restartedService = new WorkspaceRegistrationService(
+            repository,
+            restartedRegistry);
+        await restartedService.InitializeAsync();
+
+        Assert.Empty(await restartedService.ListAsync());
+        Assert.False(restartedRegistry.TryGet(workspace.Id, out _));
     }
 
     [Fact]
