@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -5,11 +7,90 @@ using PersonalAI.Desktop.Presentation.ViewModels;
 
 namespace PersonalAI.Desktop.Avalonia.Views.Assist;
 
+/// <summary>How an <see cref="AssistView"/> is being hosted.</summary>
+public enum AssistViewHostMode
+{
+    /// <summary>The in-app Assist screen: a full-size module page.</summary>
+    FullModule,
+
+    /// <summary>
+    /// The floating Assist window, which is only 52x52 while idle. The module chrome
+    /// (28px root margin, 26pt heading, status line) cannot fit there, so idle renders a
+    /// single Pill surface instead.
+    /// </summary>
+    CompactWindow
+}
+
 public partial class AssistView : UserControl
 {
+    private AssistViewHostMode _hostMode = AssistViewHostMode.FullModule;
+
+    private AssistPillViewModel? _viewModel;
+
     public AssistView()
     {
         InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
+        ApplyHostMode();
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        }
+
+        _viewModel = DataContext as AssistPillViewModel;
+
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        }
+
+        ApplyHostMode();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Idle drives whether the compact window shows the Pill or the expanded surface.
+        if (e.PropertyName is nameof(AssistPillViewModel.IsIdle) or
+            nameof(AssistPillViewModel.State))
+        {
+            ApplyHostMode();
+        }
+    }
+
+    /// <summary>
+    /// Selected explicitly by the host. Compactness is deliberately NOT inferred from
+    /// <c>IsIdle</c>, because the in-app Assist screen is idle too and must stay full size.
+    /// </summary>
+    public AssistViewHostMode HostMode
+    {
+        get => _hostMode;
+        set
+        {
+            if (_hostMode == value)
+            {
+                return;
+            }
+
+            _hostMode = value;
+            ApplyHostMode();
+        }
+    }
+
+    private void ApplyHostMode()
+    {
+        var compact = _hostMode == AssistViewHostMode.CompactWindow;
+
+        // Idle in the compact window shows only the Pill; every other state expands the
+        // window, so the surface is shown with compact margins rather than module spacing.
+        var idle = DataContext is AssistPillViewModel { IsIdle: true };
+        CompactPill.IsVisible = compact && idle;
+        FullSurface.IsVisible = !(compact && idle);
+        FullSurface.Margin = compact ? new Thickness(12) : new Thickness(28);
+        ModuleHeader.IsVisible = !compact;
     }
 
     /// <summary>

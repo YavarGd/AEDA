@@ -43,15 +43,8 @@
           <ListBoxItem x:Name="ChatNavItem"
                        Content="General chat"
                        AutomationProperties.Name="General chat" />
-          <ListBoxItem Content="Code — not available yet"
-                       IsEnabled="False"
-                       AutomationProperties.Name="Code, not available yet" />
-          <ListBoxItem Content="Memory — not available yet"
-                       IsEnabled="False"
-                       AutomationProperties.Name="Memory, not available yet" />
-          <ListBoxItem Content="Research — not available yet"
-                       IsEnabled="False"
-                       AutomationProperties.Name="Research, not available yet" />
+          <!-- Code, Memory, Research, Task Center and Assist are appended at runtime by
+               AttachComposition from the registered presentation screens. -->
         </ListBox>
       </Grid>
     </Border>

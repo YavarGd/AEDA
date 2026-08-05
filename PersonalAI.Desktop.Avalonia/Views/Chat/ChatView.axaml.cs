@@ -22,6 +22,12 @@ public partial class ChatView : UserControl
         InitializeComponent();
         MessageScroll.ScrollChanged += OnMessageScrollChanged;
         DataContextChanged += OnDataContextChanged;
+
+        // A multiline TextBox consumes Enter internally to insert a newline, so a plain
+        // bubbling KeyDown handler never sees it and Enter could not send. Handling the
+        // tunnelling (preview) phase lets the composer decide first; Shift+Enter is left
+        // unhandled so the TextBox still inserts the newline itself.
+        Composer.AddHandler(KeyDownEvent, OnComposerKeyDown, RoutingStrategies.Tunnel);
     }
 
     /// <summary>Moves focus to the composer, used when the shell routes to chat.</summary>

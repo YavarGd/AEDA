@@ -47,17 +47,19 @@
               ToolTip.Tip="Go to General chat"
               AutomationProperties.Name="Open General chat" />
 
-      <!-- Modules that are deliberately not implemented yet -->
-      <StackPanel Spacing="8">
-        <TextBlock Text="Coming later" Classes="sectionHeading" />
+      <!-- Modules reachable from the navigation list. -->
+      <StackPanel Spacing="8"
+                  AutomationProperties.Name="Available modules">
+        <TextBlock Text="Modules" Classes="sectionHeading" />
         <TextBlock Classes="metadata"
                    TextWrapping="Wrap"
-                   Text="These modules are not available in this build." />
+                   Text="Choose a module from the navigation list to open it." />
         <StackPanel Spacing="4">
-          <TextBlock Text="Code — not available yet" IsEnabled="False" />
-          <TextBlock Text="Memory — not available yet" IsEnabled="False" />
-          <TextBlock Text="Research — not available yet" IsEnabled="False" />
-          <TextBlock Text="Task Center — not available yet" IsEnabled="False" />
+          <TextBlock Text="Code" />
+          <TextBlock Text="Memory" />
+          <TextBlock Text="Research" />
+          <TextBlock Text="Task Center" />
+          <TextBlock Text="Assist" />
         </StackPanel>
       </StackPanel>
     </StackPanel>
