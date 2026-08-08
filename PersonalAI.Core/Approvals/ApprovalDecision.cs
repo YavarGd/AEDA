@@ -1,6 +1,7 @@
 namespace PersonalAI.Core.Approvals;
 
 public sealed record ApprovalDecision(
+    Guid DecisionId,
     Guid RequestId,
     ApprovalDecisionKind Kind,
     DateTimeOffset DecidedAtUtc,
@@ -31,6 +32,7 @@ public sealed record ApprovalDecision(
         ArgumentNullException.ThrowIfNull(request);
 
         return new ApprovalDecision(
+            Guid.NewGuid(),
             request.RequestId,
             kind,
             DateTimeOffset.UtcNow,

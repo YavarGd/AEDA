@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Coding;
+using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
 using PersonalAI.Infrastructure.Coding;
 using PersonalAI.Infrastructure.Workspaces;
@@ -120,6 +121,94 @@ public sealed class PatchApplyFoundationTests : IDisposable
         Assert.Contains(PatchApplyFailureReason.ApprovalMissing, missing.FailureReasons);
         Assert.Contains(PatchApplyFailureReason.ApprovalDenied, deniedResult.FailureReasons);
         Assert.Equal("old\n", Read("src/App.cs"));
+    }
+
+    [Fact]
+    public async Task Apply_BindsApprovalToRequestActionTaskWorkspaceAndConsumesItOnce()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var validationApproval = await _approvals.RequestAsync(ApprovalRequest.Create(
+            new ApprovalScope(TaskId.NewId(), ApprovalKind.ValidationRun, $"validation-run:{_workspace.Id}:{ValidationRunId.NewId()}"),
+            "Wrong action",
+            "Wrong action"));
+        var validationDecision = await _approvals.DecideAsync(
+            validationApproval,
+            ApprovalDecisionKind.AllowOnce);
+
+        var blocked = new[]
+        {
+            await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval with { RequestId = Guid.NewGuid() },
+                decision)),
+            await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval,
+                decision with { DecisionId = Guid.NewGuid() })),
+            await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval with { Scope = approval.Scope with { Kind = ApprovalKind.ValidationRun } },
+                decision)),
+            await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval with { Scope = approval.Scope with { TaskId = TaskId.NewId() } },
+                decision)),
+            await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval with { Scope = approval.Scope with { ResourceScope = $"patch-apply:{WorkspaceId.NewId()}:{proposal.Id}" } },
+                decision)),
+            await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                validationApproval,
+                validationDecision))
+        };
+        var denied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            ApprovalDecision.Deny(approval)));
+
+        Assert.All(blocked, result => Assert.Contains(
+            PatchApplyFailureReason.ApprovalMissing,
+            result.FailureReasons));
+        Assert.Contains(PatchApplyFailureReason.ApprovalDenied, denied.FailureReasons);
+        Assert.Equal("old\n", Read("src/App.cs"));
+
+        var replacement = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var replacementDecision = await _approvals.DecideAsync(
+            replacement,
+            ApprovalDecisionKind.AllowOnce);
+        var stale = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            replacement,
+            replacementDecision));
+        var replay = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            replacement,
+            replacementDecision));
+
+        Assert.Contains(PatchApplyFailureReason.ApprovalMissing, stale.FailureReasons);
+        Assert.Equal(PatchApplyStatus.Applied, applied.Status);
+        Assert.Contains(PatchApplyFailureReason.ApprovalMissing, replay.FailureReasons);
+        Assert.Equal("new\n", Read("src/App.cs"));
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
 using PersonalAI.Core.Coding;
+using PersonalAI.Core.Tasks;
 using PersonalAI.Core.Workspaces;
 using PersonalAI.Infrastructure.Coding;
 using PersonalAI.Infrastructure.Workspaces;
@@ -87,20 +88,140 @@ public sealed class ValidationRunnerFoundationTests : IDisposable
             "dotnet-build-debug"));
         var approval = await service.RequestApprovalAsync(run.Id);
         var denied = await _approvals.DecideAsync(approval, ApprovalDecisionKind.Deny);
+        var otherRun = await service.CreateRunAsync(new ValidationRunRequest(
+            _workspace.Id,
+            "dotnet-build-debug"));
+        var otherApproval = await service.RequestApprovalAsync(otherRun.Id);
         var wrongApproval = ApprovalRequest.Create(
             new ApprovalScope(PersonalAI.Core.Tasks.TaskId.NewId(), ApprovalKind.ValidationRun, "validation-run:other"),
             "Wrong",
             "Wrong");
-        var allowed = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var allowed = await _approvals.DecideAsync(otherApproval, ApprovalDecisionKind.AllowOnce);
 
         var deniedResult = await service.ExecuteAsync(run.Id, approval, denied);
-        var missingResult = await service.ExecuteAsync(run.Id, wrongApproval, allowed);
+        var missingResult = await service.ExecuteAsync(otherRun.Id, wrongApproval, allowed);
 
         Assert.Equal(ValidationRunStatus.Rejected, deniedResult.Status);
         Assert.Contains(ValidationFailureReason.ApprovalDenied, deniedResult.FailureReasons);
         Assert.Equal(ValidationRunStatus.Blocked, missingResult.Status);
         Assert.Contains(ValidationFailureReason.ApprovalMissing, missingResult.FailureReasons);
         Assert.Equal(0, _runner.RunCount);
+    }
+
+    [Fact]
+    public async Task Approval_RejectsIdentityActionTaskWorkspaceCrossActionAndStaleDecision()
+    {
+        await _repository.InitializeAsync();
+        var service = CreateService();
+
+        async Task<(ValidationRun Run, ApprovalRequest Request, ApprovalDecision Decision)> CreateApprovedAsync()
+        {
+            var run = await service.CreateRunAsync(new ValidationRunRequest(
+                _workspace.Id,
+                "dotnet-build-debug"));
+            var request = await service.RequestApprovalAsync(run.Id);
+            var decision = await _approvals.DecideAsync(request, ApprovalDecisionKind.AllowOnce);
+            return (run, request, decision);
+        }
+
+        var wrongRequestId = await CreateApprovedAsync();
+        var wrongDecisionId = await CreateApprovedAsync();
+        var wrongKind = await CreateApprovedAsync();
+        var wrongTask = await CreateApprovedAsync();
+        var wrongWorkspace = await CreateApprovedAsync();
+        var crossAction = await CreateApprovedAsync();
+        var applyProposalId = PatchProposalId.NewId();
+        var applyRequest = await _approvals.RequestAsync(ApprovalRequest.Create(
+            new ApprovalScope(
+                new TaskId(applyProposalId.Value),
+                ApprovalKind.ApproveFutureApply,
+                $"patch-apply:{_workspace.Id}:{applyProposalId}"),
+            "Apply",
+            "Apply"));
+        var applyDecision = await _approvals.DecideAsync(
+            applyRequest,
+            ApprovalDecisionKind.AllowOnce);
+
+        var blocked = new[]
+        {
+            await service.ExecuteAsync(
+                wrongRequestId.Run.Id,
+                wrongRequestId.Request with { RequestId = Guid.NewGuid() },
+                wrongRequestId.Decision),
+            await service.ExecuteAsync(
+                wrongDecisionId.Run.Id,
+                wrongDecisionId.Request,
+                wrongDecisionId.Decision with { DecisionId = Guid.NewGuid() }),
+            await service.ExecuteAsync(
+                wrongKind.Run.Id,
+                wrongKind.Request with { Scope = wrongKind.Request.Scope with { Kind = ApprovalKind.ApproveFutureApply } },
+                wrongKind.Decision),
+            await service.ExecuteAsync(
+                wrongTask.Run.Id,
+                wrongTask.Request with { Scope = wrongTask.Request.Scope with { TaskId = TaskId.NewId() } },
+                wrongTask.Decision),
+            await service.ExecuteAsync(
+                wrongWorkspace.Run.Id,
+                wrongWorkspace.Request with { Scope = wrongWorkspace.Request.Scope with { ResourceScope = $"validation-run:{WorkspaceId.NewId()}:{wrongWorkspace.Run.Id}" } },
+                wrongWorkspace.Decision),
+            await service.ExecuteAsync(
+                crossAction.Run.Id,
+                applyRequest,
+                applyDecision)
+        };
+
+        var deniedRun = await service.CreateRunAsync(new ValidationRunRequest(
+            _workspace.Id,
+            "dotnet-build-debug"));
+        var deniedRequest = await service.RequestApprovalAsync(deniedRun.Id);
+        var deniedDecision = await _approvals.DecideAsync(
+            deniedRequest,
+            ApprovalDecisionKind.Deny);
+        var denied = await service.ExecuteAsync(
+            deniedRun.Id,
+            deniedRequest,
+            deniedDecision);
+
+        var staleRun = await service.CreateRunAsync(new ValidationRunRequest(
+            _workspace.Id,
+            "dotnet-build-debug"));
+        var staleRequest = await service.RequestApprovalAsync(staleRun.Id);
+        var staleDecision = await _approvals.DecideAsync(
+            staleRequest,
+            ApprovalDecisionKind.AllowOnce);
+        _ = await service.RequestApprovalAsync(staleRun.Id);
+        var stale = await service.ExecuteAsync(
+            staleRun.Id,
+            staleRequest,
+            staleDecision);
+
+        Assert.All(blocked, result => Assert.Contains(
+            ValidationFailureReason.ApprovalMissing,
+            result.FailureReasons));
+        Assert.Contains(ValidationFailureReason.ApprovalDenied, denied.FailureReasons);
+        Assert.Contains(ValidationFailureReason.ApprovalMissing, stale.FailureReasons);
+        Assert.Equal(0, _runner.RunCount);
+    }
+
+    [Fact]
+    public async Task AllowOnce_ConcurrentExecutionRunsProcessExactlyOnce()
+    {
+        await _repository.InitializeAsync();
+        _runner.Next = Success("ok");
+        var service = CreateService();
+        var run = await service.CreateRunAsync(new ValidationRunRequest(
+            _workspace.Id,
+            "dotnet-build-debug"));
+        var approval = await service.RequestApprovalAsync(run.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        var results = await Task.WhenAll(
+            service.ExecuteAsync(run.Id, approval, decision),
+            service.ExecuteAsync(run.Id, approval, decision));
+
+        Assert.Single(results, result => result.Status == ValidationRunStatus.Succeeded);
+        Assert.Single(results, result => result.Status == ValidationRunStatus.Blocked);
+        Assert.Equal(1, _runner.RunCount);
     }
 
     [Fact]
@@ -120,6 +241,8 @@ public sealed class ValidationRunnerFoundationTests : IDisposable
         var result = await service.ExecuteAsync(run.Id, approval, decision);
         var loaded = await service.GetRunAsync(run.Id);
         var recent = await service.ListRecentAsync(_workspace.Id, run.ProposalId);
+        var replay = await service.ExecuteAsync(run.Id, approval, decision);
+        var loadedAfterReplay = await service.GetRunAsync(run.Id);
 
         Assert.Equal(ValidationRunStatus.Succeeded, result.Status);
         Assert.Equal(0, result.CommandResult!.ExitCode);
@@ -127,6 +250,9 @@ public sealed class ValidationRunnerFoundationTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Single(recent);
         Assert.Equal(1, _runner.RunCount);
+        Assert.Equal(ValidationRunStatus.Blocked, replay.Status);
+        Assert.Contains(ValidationFailureReason.ApprovalMissing, replay.FailureReasons);
+        Assert.Equal(ValidationRunStatus.Succeeded, loadedAfterReplay!.Status);
     }
 
     [Theory]
@@ -289,13 +415,15 @@ public sealed class ValidationRunnerFoundationTests : IDisposable
     {
         public ControlledProcessResult Next { get; set; } = Success(string.Empty);
 
-        public int RunCount { get; private set; }
+        private int _runCount;
+
+        public int RunCount => Volatile.Read(ref _runCount);
 
         public Task<ControlledProcessResult> RunAsync(
             ControlledProcessRequest request,
             CancellationToken cancellationToken = default)
         {
-            RunCount++;
+            Interlocked.Increment(ref _runCount);
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(Next);
         }

@@ -64,7 +64,11 @@ public sealed class ValidationRunnerService(
     {
         var run = await repository.GetAsync(runId, cancellationToken) ??
             throw new InvalidOperationException("validation_run_not_found");
-        var approvalFailure = ValidateApproval(run, approvalRequest, approvalDecision);
+        var approvalFailure = await ValidateApprovalAsync(
+            run,
+            approvalRequest,
+            approvalDecision,
+            cancellationToken);
         if (approvalFailure is not null)
         {
             var rejected = run with
@@ -75,11 +79,15 @@ public sealed class ValidationRunnerService(
                 FailureReasons = [approvalFailure.Value],
                 UpdatedAtUtc = DateTimeOffset.UtcNow
             };
-            await repository.UpdateAsync(rejected, cancellationToken);
-            await AppendAsync(
-                rejected.Status == ValidationRunStatus.Rejected ? TaskEventKind.ValidationApprovalDenied : TaskEventKind.ValidationFailed,
-                "Validation approval rejected.",
-                cancellationToken);
+            if (run.Status == ValidationRunStatus.WaitingForApproval)
+            {
+                await repository.UpdateAsync(rejected, cancellationToken);
+                await AppendAsync(
+                    rejected.Status == ValidationRunStatus.Rejected ? TaskEventKind.ValidationApprovalDenied : TaskEventKind.ValidationFailed,
+                    "Validation approval rejected.",
+                    cancellationToken);
+            }
+
             return rejected;
         }
 
@@ -218,18 +226,28 @@ public sealed class ValidationRunnerService(
             result.Duration,
             reason);
 
-    private static ValidationFailureReason? ValidateApproval(
+    private async ValueTask<ValidationFailureReason?> ValidateApprovalAsync(
         ValidationRun run,
         ApprovalRequest request,
-        ApprovalDecision decision)
+        ApprovalDecision decision,
+        CancellationToken cancellationToken)
     {
-        if (request.Scope.NormalizedResourceScope !=
-            CreateScope(run.Id, run.WorkspaceId).NormalizedResourceScope)
+        var expectedScope = CreateScope(run.Id, run.WorkspaceId);
+        if (run.Status != ValidationRunStatus.WaitingForApproval ||
+            !ScopeMatches(request.Scope, expectedScope) ||
+            decision.RequestId != request.RequestId)
         {
             return ValidationFailureReason.ApprovalMissing;
         }
 
-        return decision.IsAllowed ? null : ValidationFailureReason.ApprovalDenied;
+        if (!decision.IsAllowed)
+        {
+            return ValidationFailureReason.ApprovalDenied;
+        }
+
+        return await approvalStore.TryConsumeAsync(request, decision, cancellationToken)
+            ? null
+            : ValidationFailureReason.ApprovalMissing;
     }
 
     private static ValidationRun CreateInitialRun(
@@ -253,7 +271,12 @@ public sealed class ValidationRunnerService(
     }
 
     private static ApprovalScope CreateScope(ValidationRunId runId, WorkspaceId workspaceId) =>
-        new(TaskId.NewId(), ApprovalKind.ValidationRun, $"validation-run:{workspaceId}:{runId}");
+        new(new TaskId(runId.Value), ApprovalKind.ValidationRun, $"validation-run:{workspaceId}:{runId}");
+
+    private static bool ScopeMatches(ApprovalScope actual, ApprovalScope expected) =>
+        actual.TaskId == expected.TaskId &&
+        actual.Kind == expected.Kind &&
+        actual.NormalizedResourceScope == expected.NormalizedResourceScope;
 
     private static TaskEventKind MapEvent(ValidationRunStatus status) =>
         status switch

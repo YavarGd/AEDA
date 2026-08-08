@@ -1,14 +1,15 @@
-using System.Collections.Concurrent;
-
 namespace PersonalAI.Core.Approvals;
 
 public sealed class InMemoryApprovalCheckpointStore :
     IApprovalCheckpointStore,
     IApprovalCheckpointQueryStore
 {
-    private readonly ConcurrentDictionary<Guid, ApprovalRequest> _requests = [];
-    private readonly ConcurrentDictionary<Guid, ApprovalDecision> _decisions = [];
-    private readonly ConcurrentDictionary<ScopeKey, ApprovalDecision> _taskScopedAllows = [];
+    private readonly object _gate = new();
+    private readonly Dictionary<Guid, ApprovalRequest> _requests = [];
+    private readonly Dictionary<Guid, ApprovalDecision> _decisions = [];
+    private readonly Dictionary<ScopeKey, Guid> _latestRequests = [];
+    private readonly Dictionary<ScopeKey, ApprovalDecision> _taskScopedAllows = [];
+    private readonly HashSet<Guid> _consumedDecisions = [];
 
     public ValueTask<ApprovalRequest> RequestAsync(
         ApprovalRequest request,
@@ -16,7 +17,25 @@ public sealed class InMemoryApprovalCheckpointStore :
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(request);
-        _requests[request.RequestId] = request;
+        lock (_gate)
+        {
+            if (_requests.TryGetValue(request.RequestId, out var existing) && existing != request)
+            {
+                throw new InvalidOperationException("approval_request_id_conflict");
+            }
+
+            var key = ScopeKey.From(request.Scope);
+            if (_latestRequests.TryGetValue(key, out var previousRequestId) &&
+                previousRequestId != request.RequestId)
+            {
+                _requests.Remove(previousRequestId);
+                _decisions.Remove(previousRequestId);
+            }
+
+            _requests[request.RequestId] = request;
+            _latestRequests[key] = request.RequestId;
+        }
+
         return ValueTask.FromResult(request);
     }
 
@@ -28,24 +47,45 @@ public sealed class InMemoryApprovalCheckpointStore :
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(request);
-
-        var approvalDecision = decision switch
+        lock (_gate)
         {
-            ApprovalDecisionKind.AllowOnce => ApprovalDecision.AllowOnce(request, summary),
-            ApprovalDecisionKind.AllowForTask => ApprovalDecision.AllowForTask(request, summary),
-            ApprovalDecisionKind.Deny => ApprovalDecision.Deny(request, summary),
-            ApprovalDecisionKind.Cancel => ApprovalDecision.Cancel(request, summary),
-            _ => ApprovalDecision.Deny(request, "Unsupported approval decision.")
-        };
+            var key = ScopeKey.From(request.Scope);
+            if (!_requests.TryGetValue(request.RequestId, out var issuedRequest) ||
+                issuedRequest != request ||
+                !_latestRequests.TryGetValue(key, out var latestRequestId) ||
+                latestRequestId != request.RequestId)
+            {
+                throw new InvalidOperationException("approval_request_not_issued");
+            }
 
-        _decisions[request.RequestId] = approvalDecision;
+            if (_decisions.TryGetValue(request.RequestId, out var existingDecision))
+            {
+                if (existingDecision.Kind == decision)
+                {
+                    return ValueTask.FromResult(existingDecision);
+                }
 
-        if (approvalDecision.Kind == ApprovalDecisionKind.AllowForTask)
-        {
-            _taskScopedAllows[ScopeKey.From(request.Scope)] = approvalDecision;
+                throw new InvalidOperationException("approval_request_already_decided");
+            }
+
+            var approvalDecision = decision switch
+            {
+                ApprovalDecisionKind.AllowOnce => ApprovalDecision.AllowOnce(request, summary),
+                ApprovalDecisionKind.AllowForTask => ApprovalDecision.AllowForTask(request, summary),
+                ApprovalDecisionKind.Deny => ApprovalDecision.Deny(request, summary),
+                ApprovalDecisionKind.Cancel => ApprovalDecision.Cancel(request, summary),
+                _ => ApprovalDecision.Deny(request, "Unsupported approval decision.")
+            };
+
+            _decisions[request.RequestId] = approvalDecision;
+
+            if (approvalDecision.Kind == ApprovalDecisionKind.AllowForTask)
+            {
+                _taskScopedAllows[key] = approvalDecision;
+            }
+
+            return ValueTask.FromResult(approvalDecision);
         }
-
-        return ValueTask.FromResult(approvalDecision);
     }
 
     public ValueTask<ApprovalDecision?> FindReusableDecisionAsync(
@@ -53,8 +93,43 @@ public sealed class InMemoryApprovalCheckpointStore :
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _taskScopedAllows.TryGetValue(ScopeKey.From(scope), out var decision);
-        return ValueTask.FromResult(decision);
+        lock (_gate)
+        {
+            var key = ScopeKey.From(scope);
+            if (!_taskScopedAllows.TryGetValue(key, out var decision) ||
+                !_latestRequests.TryGetValue(key, out var requestId) ||
+                requestId != decision.RequestId ||
+                !_decisions.TryGetValue(requestId, out var currentDecision) ||
+                currentDecision != decision)
+            {
+                return ValueTask.FromResult<ApprovalDecision?>(null);
+            }
+
+            return ValueTask.FromResult<ApprovalDecision?>(decision);
+        }
+    }
+
+    public ValueTask<bool> TryConsumeAsync(
+        ApprovalRequest request,
+        ApprovalDecision decision,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(decision);
+        lock (_gate)
+        {
+            var key = ScopeKey.From(request.Scope);
+            var valid = decision.Kind == ApprovalDecisionKind.AllowOnce &&
+                decision.RequestId == request.RequestId &&
+                _requests.TryGetValue(request.RequestId, out var issuedRequest) &&
+                issuedRequest == request &&
+                _latestRequests.TryGetValue(key, out var latestRequestId) &&
+                latestRequestId == request.RequestId &&
+                _decisions.TryGetValue(request.RequestId, out var issuedDecision) &&
+                issuedDecision == decision;
+            return ValueTask.FromResult(valid && _consumedDecisions.Add(decision.DecisionId));
+        }
     }
 
     public ValueTask<IReadOnlyList<ApprovalCheckpoint>> ListPendingAsync(
@@ -62,14 +137,17 @@ public sealed class InMemoryApprovalCheckpointStore :
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var selected = _requests.Values
-            .Where(request => !_decisions.ContainsKey(request.RequestId))
-            .OrderByDescending(request => request.RequestedAtUtc)
-            .ThenBy(request => request.RequestId)
-            .Take(Math.Clamp(limit, 1, 100))
-            .Select(request => new ApprovalCheckpoint(request))
-            .ToArray();
-        return ValueTask.FromResult<IReadOnlyList<ApprovalCheckpoint>>(selected);
+        lock (_gate)
+        {
+            var selected = _requests.Values
+                .Where(request => !_decisions.ContainsKey(request.RequestId))
+                .OrderByDescending(request => request.RequestedAtUtc)
+                .ThenBy(request => request.RequestId)
+                .Take(Math.Clamp(limit, 1, 100))
+                .Select(request => new ApprovalCheckpoint(request))
+                .ToArray();
+            return ValueTask.FromResult<IReadOnlyList<ApprovalCheckpoint>>(selected);
+        }
     }
 
     private sealed record ScopeKey(
