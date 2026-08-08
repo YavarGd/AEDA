@@ -546,3 +546,84 @@ outstanding gap for Q2 or a follow-up accessibility pass:
 - WinUI and Avalonia were never run concurrently at any point.
 - Real profile untouched; backup remains at
   `C:\Users\yavar\AppData\Local\PersonalAI-backup-q1-20260804-210722`.
+
+---
+
+# Q1 final acceptance closure — integration `1144b03`
+
+This section is the final disposition after R3 through R7. It supersedes an
+earlier **Blocked** or **Failed** status only where a row is listed below; the
+earlier rounds remain in this file as the audit trail. No product code was
+changed by this closure section.
+
+Q1 result: **Passed with precisely recorded environmental limitations.** No
+confirmed critical or major product defect remains. The Windows text-size
+defect was repaired by `Honor Windows accessibility text scaling` (worker
+`c9b274f`, integration `1144b03`).
+
+## Final accessibility and Windows evidence
+
+| Check | Final status | Evidence |
+| --- | --- | --- |
+| Visible focus in light and dark palettes | **Manually verified** | Valid final captures `focus-system-mica-final.png`, `focus-graphite-final.png`, `palette-final-focus.png`, and `high-contrast-final.png` show a distinct keyboard focus outline. Two older `focus-*.png` files were later overwritten by unrelated game captures and were deliberately excluded. |
+| Keyboard traversal | **Manually verified** | Preserved `keyboard-traversal.txt`: Tab and Shift+Tab reached 2–13 distinct stops on every registered screen, with no disabled or hidden target and no trap. R7 repeated traversal at 200% on the main and floating Assist surfaces. |
+| Windows high contrast | **Manually verified** | The real Windows contrast theme produced readable text, controls, selection, and focus in `high-contrast-final.png`; the original contrast state was restored. |
+| Windows Accessibility Text size | **Manually verified** | R7 used `Windows.UI.ViewManagement.UISettings.TextScaleFactor` and the live `TextScaleFactorChanged` event. At 100/150/200%, sidebar AEDA measured `199x27 / 199x40 / 199x54`, Open General Chat measured `200x32 / 200x41 / 250x51`, and the Assist nav item measured `215x40 / 215x49 / 215x59`. Returning to 100% restored all baseline measurements exactly. |
+| Text-size layout at 1080x760 | **Manually verified** | At 150% and 200%, Dashboard, General Chat, Settings, Code, Task Center, Memory, Research, and Assist remained navigable. Headings, controls, editors, and ComboBoxes remeasured; long pages retained native scrolling; primary actions remained reachable. No whole-window transform is used. |
+| Floating Assist under text scaling | **Manually verified** | At 200%, the idle Pill remained visible and operable at `56x51`; the expanded prompt stayed bounded at `520x180`. Prompt, Send, and screen-text actions were inside the window and keyboard reachable. The compact Pill alone uses a deterministic 1.25 factor cap; expanded Assist uses the full Windows factor. |
+| Permission dialog and focus return | **Manually verified** | Preserved live evidence exposes Technical details, Allow once, Allow for this task, Deny, and Cancel task. Dismissal denied the tool, explicit Deny produced `PermissionDenied`, Allow once permitted one request and reprompted on the next, and focus returned to AEDA. |
+| Screen-reader live announcements | **Blocked — environment** | Live regions remain authored with polite automation settings, but Narrator/NVDA speech output was not captured reliably. This is not recorded as a pass or a product defect. |
+
+## Final functional and safety regressions
+
+| Area | Final status | Evidence |
+| --- | --- | --- |
+| Tray Open / New chat / Exit | **Manually verified** | The real Windows overflow tray exposed the native `Open AEDA`, `New chat`, and `Exit` menu items. Open restored a tray-hidden `1080x760` main window; New chat selected General Chat and exposed the composer; Exit removed the process. One process existed throughout. |
+| Global hotkey | **Passed for conflict handling; invocation blocked by environment** | The configured chord is owned by another application on this machine. AEDA reports that conflict in the window title and remains usable through Pill/tray input. Invocation itself is not claimed. |
+| Four palettes and rapid final write | **Manually verified plus regression coverage** | System Mica, Graphite, Mineral Stone, and Sharp Almond applied immediately through real input. Rapid changes retained Graphite as the final requested palette. `JsonApplicationSettingsService` serialization tests cover overlapping saves without temporary-file races. |
+| Workspace add/rename/permission | **Manually verified** | The native folder picker registered a disposable folder, rename produced `Q1 Acceptance Workspace`, and permission dismissal/Deny/Allow-once behavior matched the fail-closed policy. |
+| R4 durable workspace removal | **Passed** | Removal performs the SQLite soft delete, removes the workspace from the runtime registry, invalidates workspace permission state, remains absent after Refresh and restart, and leaves the workspace file intact. The focused persistence regression asserts `RemovedAtUtc`, inactive/Removed status, restart absence, invalidation, and unchanged `keep.txt`. |
+| R3 Open in AEDA | **Manually verified** | Post-repair scenarios covered visible Dashboard, tray-hidden main window, and genuine external Notepad foreground. The requested conversation loaded before explicit General Chat navigation; the existing restore/activate path surfaced one main window after Assist completed its Hidden/focus transition. |
+| R5 response action containment | **Manually verified** | Short and long responses retained Copy/Open in the non-scrolling Auto action row; response content scrolled in the Star row. Actions remained inside the floating window, pointer clickable, and keyboard reachable on primary and negative-coordinate displays. |
+| R6 floating Copy | **Manually verified** | Copy succeeded before the lazy in-app Assist view existed, with the main visible, hidden to tray, and external Notepad foreground. Short/long response copies used the floating TopLevel and preserved the existing failure state for genuine clipboard errors. |
+| Retry / fresh provider generation during R7 | **Blocked — environment** | Ollama was not running during the final R7 pass, so a new prompt reached the safe Retry state rather than completing. Retry was visible, bounded, and accessible; successful provider-dependent retry was not re-claimed from this pass. Earlier R5/R6 response evidence remains valid. |
+| Negative coordinates and mixed DPI | **Manually verified** | The required W2 real-Windows pass covered 100% plus 125/150% displays, a secondary display left of primary, single- and cross-monitor selections, Escape cancellation, capture alignment, and clean focus return. R5/R6 additionally exercised floating Assist actions on the negative-coordinate display. R7 text scaling did not alter monitor coordinates or process/window count. |
+| AEDA Code safety boundaries | **Passed** | Existing approval, stale-baseline rejection, bounded diff, validation allowlist, backup, rollback eligibility, and cancellation tests remain green. R3–R7 did not modify Core/Infrastructure coding-safety semantics or persistence schemas. |
+| Existing-profile compatibility | **Manually verified** | The existing profile repeatedly launched and reopened with the same SQLite/settings formats; every Q1/R3–R7 live pass restored the pre-test profile afterward. |
+| Clean-profile compatibility | **Manually verified** | With the existing profile moved to a recoverable backup, Release created only compatible `personalai.db` and `settings.json`, then displayed one `MainWindow` (`1080x760`) and one `AvaloniaAssistWindow`. The generated clean profile was quarantined and the original profile restored. |
+
+## Crash disposition and cleanup
+
+**Residual monitored risk — not reproduced after instrumented investigation.**
+
+The single historical AEDA `0xc0000374` WER event remains acknowledged. It
+was not reproduced under PageHeap stress, R3–R7 regression work, text-size
+live changes, negative-monitor checks, tray cycles, or the final clean-profile
+launch. No repository-owned native contract violation was established. A
+crash-time full dump is still required if it recurs. The earlier PowerShell
+harness crash is not counted as an AEDA crash.
+
+Final cleanup confirmed:
+
+- Windows Accessibility Text size restored to the original 100% state and
+  original absent registry-value representation.
+- Windows contrast state restored; LG OnScreen Control service remains
+  Running/Automatic.
+- Active AEDA profile restored; post-test and clean-generated profiles remain
+  recoverable under their temporary backup roots.
+- No AEDA, WinUI, Notepad, or Q1 test process remains.
+- No AEDA Application Error or .NET Runtime event occurred in the R7 or final
+  tray/clean-profile windows.
+
+## Final automated gate
+
+- Focused text-scale and Assist regressions: **25 passed, 0 failed**.
+- Full .NET suite: **1,037 passed, 0 failed, 0 skipped**.
+- Debug solution build: **0 warnings, 0 errors**.
+- Release solution build: **0 warnings, 0 errors**.
+- VS Code compile/tests: **10 passed, 0 failed**.
+- `npm audit --omit=dev`: **0 runtime vulnerabilities**; the six reported
+  high-severity findings remain dev-only transitive tooling findings.
+
+Q1 is complete. Q2 remains a separate independent audit, and CUT still
+requires explicit user approval.
