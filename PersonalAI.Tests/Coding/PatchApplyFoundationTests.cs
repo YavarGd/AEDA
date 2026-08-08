@@ -212,6 +212,28 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_RejectsTaskScopedApprovalWithoutWriting()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(
+            approval,
+            ApprovalDecisionKind.AllowForTask);
+
+        var result = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+
+        Assert.Contains(PatchApplyFailureReason.ApprovalMissing, result.FailureReasons);
+        Assert.Equal("old\n", Read("src/App.cs"));
+    }
+
+    [Fact]
     public async Task Apply_ApprovedModifyCreatesBackupAndRollbackRestores()
     {
         await InitializeAsync();
