@@ -8,6 +8,7 @@ using PersonalAI.Core.Editor;
 using PersonalAI.Desktop.Avalonia.Composition;
 using PersonalAI.Desktop.Avalonia.Platform.Windows;
 using PersonalAI.Desktop.Avalonia.Platform.Windows.Assist;
+using PersonalAI.Desktop.Avalonia.Themes;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Views.Dialogs;
 using PersonalAI.Infrastructure.Ipc;
@@ -17,6 +18,9 @@ namespace PersonalAI.Desktop.Avalonia;
 
 public partial class App : Application
 {
+    static App() => Window.WindowOpenedEvent.AddClassHandler<Window>(
+        (window, _) => (Current as App)?._textScaleManager?.Attach(window));
+
     private AvaloniaAppComposition? _composition;
     private MainWindow? _mainWindow;
     private AvaloniaAssistWindow? _assistWindow;
@@ -28,6 +32,7 @@ public partial class App : Application
     private bool _isExiting;
     private bool _resourcesDisposed;
     private bool _exitConfirmationOpen;
+    private AvaloniaTextScaleManager? _textScaleManager;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -40,6 +45,9 @@ public partial class App : Application
         }
 
         _desktop = desktop;
+        _textScaleManager = new AvaloniaTextScaleManager(
+            new WindowsTextScaleSource(),
+            action => Dispatcher.UIThread.Post(action));
         desktop.Exit += (_, _) => DisposeResources();
         try
         {
@@ -307,5 +315,7 @@ public partial class App : Application
         _assistWindow = null;
         _mainWindow = null;
         _mainWindowActivation = null;
+        _textScaleManager?.Dispose();
+        _textScaleManager = null;
     }
 }
