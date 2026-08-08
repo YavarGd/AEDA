@@ -204,6 +204,26 @@ public sealed class ValidationRunnerFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task Approval_RejectsTaskScopedDecisionWithoutRunningProcess()
+    {
+        await _repository.InitializeAsync();
+        var service = CreateService();
+        var run = await service.CreateRunAsync(new ValidationRunRequest(
+            _workspace.Id,
+            "dotnet-build-debug"));
+        var approval = await service.RequestApprovalAsync(run.Id);
+        var decision = await _approvals.DecideAsync(
+            approval,
+            ApprovalDecisionKind.AllowForTask);
+
+        var result = await service.ExecuteAsync(run.Id, approval, decision);
+
+        Assert.Equal(ValidationRunStatus.Blocked, result.Status);
+        Assert.Contains(ValidationFailureReason.ApprovalMissing, result.FailureReasons);
+        Assert.Equal(0, _runner.RunCount);
+    }
+
+    [Fact]
     public async Task AllowOnce_ConcurrentExecutionRunsProcessExactlyOnce()
     {
         await _repository.InitializeAsync();
