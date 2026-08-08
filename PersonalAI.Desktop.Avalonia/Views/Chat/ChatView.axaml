@@ -76,7 +76,7 @@
                     Margin="0,12"
                     VerticalScrollBarVisibility="Auto"
                     AutomationProperties.Name="Message timeline">
-        <ItemsControl ItemsSource="{Binding Messages}">
+        <ItemsControl x:Name="MessagesItemsControl" ItemsSource="{Binding Messages}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ChatMessageItem">
               <Border Margin="0,0,0,10"
@@ -95,6 +95,24 @@
                       Text="{Binding Content}"
                       TextWrapping="Wrap"
                       IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsNotAssistant}}" />
+
+                  <!-- Retry/Regenerate only ever apply to assistant messages, and only in the
+                       state the WinUI reference allows: Retry on a failed/cancelled reply,
+                       Regenerate on the latest completed reply. -->
+                  <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsAssistant}}">
+                    <Button Content="Retry"
+                            Command="{Binding DataContext.RetryCommand, ElementName=MessagesItemsControl}"
+                            CommandParameter="{Binding}"
+                            IsVisible="{Binding CanRetry}"
+                            ToolTip.Tip="Retry this response"
+                            AutomationProperties.Name="Retry message" />
+                    <Button Content="Regenerate"
+                            Command="{Binding DataContext.RegenerateCommand, ElementName=MessagesItemsControl}"
+                            CommandParameter="{Binding}"
+                            IsVisible="{Binding CanRegenerate}"
+                            ToolTip.Tip="Regenerate a new response"
+                            AutomationProperties.Name="Regenerate response" />
+                  </StackPanel>
                 </StackPanel>
               </Border>
             </DataTemplate>
