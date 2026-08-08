@@ -1190,6 +1190,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            ClearApplyApprovalState();
             NotifyAll();
         }
     }
@@ -1334,6 +1335,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            ValidationApprovalRequest = null;
+            ValidationApprovalDecision = null;
             NotifyAll();
         }
     }

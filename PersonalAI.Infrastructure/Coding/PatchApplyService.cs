@@ -45,7 +45,7 @@ public sealed class PatchApplyService(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var approvalFailure = ValidateApproval(request);
+        var approvalFailure = await ValidateApprovalAsync(request, cancellationToken);
         if (approvalFailure is not null)
         {
             return await PersistFailureAsync(request, approvalFailure.Value, cancellationToken);
@@ -241,21 +241,33 @@ public sealed class PatchApplyService(
         return plan;
     }
 
-    private PatchApplyFailureReason? ValidateApproval(PatchApplyRequest request)
+    private async ValueTask<PatchApplyFailureReason?> ValidateApprovalAsync(
+        PatchApplyRequest request,
+        CancellationToken cancellationToken)
     {
         if (request.ApprovalRequest is null || request.ApprovalDecision is null)
         {
             return PatchApplyFailureReason.ApprovalMissing;
         }
 
-        if (request.ApprovalRequest.Scope.NormalizedResourceScope != CreateScope(request.ProposalId, request.WorkspaceId).NormalizedResourceScope)
+        var expectedScope = CreateScope(request.ProposalId, request.WorkspaceId);
+        if (!ScopeMatches(request.ApprovalRequest.Scope, expectedScope) ||
+            request.ApprovalDecision.RequestId != request.ApprovalRequest.RequestId)
         {
             return PatchApplyFailureReason.ApprovalMissing;
         }
 
-        return request.ApprovalDecision.IsAllowed
+        if (!request.ApprovalDecision.IsAllowed)
+        {
+            return PatchApplyFailureReason.ApprovalDenied;
+        }
+
+        return await approvalStore.TryConsumeAsync(
+            request.ApprovalRequest,
+            request.ApprovalDecision,
+            cancellationToken)
             ? null
-            : PatchApplyFailureReason.ApprovalDenied;
+            : PatchApplyFailureReason.ApprovalMissing;
     }
 
     private PatchApplyBackup CreateBackup(
@@ -375,7 +387,12 @@ public sealed class PatchApplyService(
         };
 
     private static ApprovalScope CreateScope(PatchProposalId proposalId, WorkspaceId workspaceId) =>
-        new(TaskId.NewId(), ApprovalKind.ApproveFutureApply, $"patch-apply:{workspaceId}:{proposalId}");
+        new(new TaskId(proposalId.Value), ApprovalKind.ApproveFutureApply, $"patch-apply:{workspaceId}:{proposalId}");
+
+    private static bool ScopeMatches(ApprovalScope actual, ApprovalScope expected) =>
+        actual.TaskId == expected.TaskId &&
+        actual.Kind == expected.Kind &&
+        actual.NormalizedResourceScope == expected.NormalizedResourceScope;
 
     private async ValueTask AppendAsync(TaskEventKind kind, string summary, CancellationToken cancellationToken)
     {

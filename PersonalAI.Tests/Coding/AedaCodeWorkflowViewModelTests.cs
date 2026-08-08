@@ -138,6 +138,11 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Contains("Backup checkpoint", viewModel.ApplyResultDetailText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Rollback available", viewModel.RollbackAvailabilityText, StringComparison.OrdinalIgnoreCase);
         Assert.True(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+        Assert.False(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
+        Assert.Contains("not requested", viewModel.ApplyApprovalStatusText, StringComparison.OrdinalIgnoreCase);
+
+        await viewModel.ApplyApprovedProposalAsync();
+        Assert.Equal(1, service.ApplyCount);
     }
 
     [Fact]
@@ -300,6 +305,57 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         Assert.Contains("Duration:", viewModel.ValidationRunDetailText, StringComparison.Ordinal);
         Assert.DoesNotContain(@"C:\secret", viewModel.ValidationOutputPreview, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("hunter2", viewModel.ValidationOutputPreview, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.RunApprovedValidationCommand.CanExecute(null));
+        Assert.Contains("not requested", viewModel.ValidationApprovalStatusText, StringComparison.OrdinalIgnoreCase);
+
+        await viewModel.RunApprovedValidationAsync();
+        Assert.Equal(1, service.ValidationRunCount);
+    }
+
+    [Fact]
+    public async Task ReplacingProposalOrValidationRunClearsRetainedApproval()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Fix safely", proposal.Id)],
+            ProposalDetail = proposal,
+            Templates =
+            [
+                new ValidationCommandTemplate(
+                    "dotnet-build-debug",
+                    "Build solution",
+                    "dotnet",
+                    ["build", "PersonalAI.slnx"],
+                    TimeSpan.FromMinutes(3),
+                    "PersonalAI.slnx")
+            ]
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        Assert.True(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
+
+        await viewModel.SelectProposalAsync(null);
+
+        Assert.False(viewModel.ApplyApprovedProposalCommand.CanExecute(null));
+        Assert.Contains("not requested", viewModel.ApplyApprovalStatusText, StringComparison.OrdinalIgnoreCase);
+
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+        await viewModel.CreateValidationRunAsync();
+        await viewModel.RequestValidationApprovalAsync();
+        await viewModel.AllowValidationOnceAsync();
+        Assert.True(viewModel.RunApprovedValidationCommand.CanExecute(null));
+
+        await viewModel.CreateValidationRunAsync();
+
+        Assert.False(viewModel.RunApprovedValidationCommand.CanExecute(null));
+        Assert.Contains("not requested", viewModel.ValidationApprovalStatusText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1003,12 +1059,14 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
             hasTaskArtifactLinks: true);
         var moduleRegistry = new AedaModuleRegistry(
             [AedaCodeModuleDescriptorFactory.Create(capabilities)]);
+        var approvalStore = new InMemoryApprovalCheckpointStore();
+        service.ApprovalStore = approvalStore;
         return new AedaCodeModuleViewModel(
             service,
             moduleRegistry,
             workspaceRegistry,
             taskCenterService ?? new FakeTaskCenterService(),
-            new InMemoryApprovalCheckpointStore());
+            approvalStore);
     }
 
     private static AedaCodeProposalSummary CreateProposalSummary(
@@ -1086,6 +1144,8 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         public bool DelayUntilCancelled { get; init; }
 
         public Func<PatchApplyRequest, PatchApplyResult>? ApplyResultFactory { get; init; }
+
+        public IApprovalCheckpointStore? ApprovalStore { private get; set; }
 
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -1269,13 +1329,15 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
                 RequiresApproval: true));
         }
 
-        public Task<ApprovalRequest> RequestApplyApprovalAsync(PatchProposalId proposalId, WorkspaceId workspaceId, CancellationToken cancellationToken = default)
+        public async Task<ApprovalRequest> RequestApplyApprovalAsync(PatchProposalId proposalId, WorkspaceId workspaceId, CancellationToken cancellationToken = default)
         {
             ApplyApprovalRequestCount++;
-            return Task.FromResult(ApprovalRequest.Create(
+            var request = ApprovalRequest.Create(
                 new ApprovalScope(TaskId.NewId(), ApprovalKind.ApproveFutureApply, $"patch-apply:{workspaceId}:{proposalId}"),
                 "Approve apply",
-                "Approve apply."));
+                "Approve apply.");
+            return await (ApprovalStore ?? throw new InvalidOperationException("approval_store_missing"))
+                .RequestAsync(request, cancellationToken);
         }
 
         public Task<PatchApplyResult> ApplyApprovedProposalAsync(PatchApplyRequest request, CancellationToken cancellationToken = default)
@@ -1328,13 +1390,15 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
                 DateTimeOffset.UtcNow,
                 DateTimeOffset.UtcNow));
 
-        public Task<ApprovalRequest> RequestValidationApprovalAsync(ValidationRunId runId, CancellationToken cancellationToken = default)
+        public async Task<ApprovalRequest> RequestValidationApprovalAsync(ValidationRunId runId, CancellationToken cancellationToken = default)
         {
             ValidationApprovalRequestCount++;
-            return Task.FromResult(ApprovalRequest.Create(
+            var request = ApprovalRequest.Create(
                 new ApprovalScope(TaskId.NewId(), ApprovalKind.ValidationRun, $"validation-run:test:{runId}"),
                 "Approve validation",
-                "Approve validation."));
+                "Approve validation.");
+            return await (ApprovalStore ?? throw new InvalidOperationException("approval_store_missing"))
+                .RequestAsync(request, cancellationToken);
         }
 
         public Task<ValidationRun> RunApprovedValidationAsync(ValidationRunId runId, ApprovalRequest approvalRequest, ApprovalDecision approvalDecision, CancellationToken cancellationToken = default)

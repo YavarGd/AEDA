@@ -15,4 +15,9 @@ public interface IApprovalCheckpointStore
     ValueTask<ApprovalDecision?> FindReusableDecisionAsync(
         ApprovalScope scope,
         CancellationToken cancellationToken = default);
+
+    ValueTask<bool> TryConsumeAsync(
+        ApprovalRequest request,
+        ApprovalDecision decision,
+        CancellationToken cancellationToken = default);
 }
