@@ -690,6 +690,215 @@ public sealed class AvaloniaChatViewModelTests
         Assert.DoesNotContain("WindowsSingleInstanceService", source);
     }
 
+    // --- CHAT-01: hidden provider reasoning must not be displayed, persisted, or replayed. ---
+
+    private const string LegacyAssistantRow =
+        "<think>internal chain of thought</think>Sanitized answer.";
+
+    /// <summary>
+    /// The provider splits <c>&lt;think&gt;</c> across chunk boundaries. Every intermediate
+    /// message content is inspected, so a tag or payload that surfaced for even one chunk fails
+    /// the test. Only the visible answer may reach the timeline or the persisted row.
+    /// </summary>
+    [Fact]
+    public async Task HiddenReasoning_SplitAcrossChunks_IsNeverVisibleAndIsNotPersisted()
+    {
+        var repository = new MemoryRepository();
+        AvaloniaChatViewModel? viewModel = null;
+        var observed = new List<string>();
+        var provider = new TestProvider
+        {
+            Chunks =
+            [
+                new ChatChunk("Answer. ", false),
+                new ChatChunk("<thi", false),
+                new ChatChunk("nk>chain of thought", false),
+                new ChatChunk("</thi", false),
+                new ChatChunk("nk>Done.", true)
+            ],
+            AfterEachChunk = () => observed.Add(viewModel!.Messages.Last().Content)
+        };
+        viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        Assert.NotEmpty(observed);
+        foreach (var content in observed)
+        {
+            AssertNoHiddenReasoning(content);
+
+            // The half-arrived "<thi" fragment must be withheld too, not shown and then
+            // retracted once the rest of the tag lands.
+            Assert.DoesNotContain('<', content);
+        }
+
+        var persisted = Assert.Single(repository.Messages, message => message.Role == ChatRole.Assistant);
+        Assert.Equal("Answer. Done.", persisted.Content);
+        Assert.Equal("Answer. Done.", viewModel.Messages.Last().Content);
+
+        var reopened = Create(repository, []);
+        await reopened.OpenConversationAsync(repository.Conversations.Single().Id);
+        Assert.Equal("Answer. Done.", reopened.Messages.Last().Content);
+    }
+
+    [Fact]
+    public async Task UnclosedHiddenBlock_IsWithheldAndNotPersisted()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider
+        {
+            Chunks = [new ChatChunk("Visible answer.", false), new ChatChunk("<analysis>truncated", true)]
+        };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        Assert.Equal("Visible answer.", viewModel.Messages.Last().Content);
+        Assert.Equal(
+            "Visible answer.",
+            Assert.Single(repository.Messages, message => message.Role == ChatRole.Assistant).Content);
+    }
+
+    [Fact]
+    public async Task OrdinaryMarkupInAnswer_IsUnaffected()
+    {
+        const string answer = "Use <code>x</code> and <xml><node/></xml>.";
+        var repository = new MemoryRepository();
+        var viewModel = Create(repository, [new ChatChunk(answer, true)]);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        Assert.Equal(answer, viewModel.Messages.Last().Content);
+        Assert.Equal(
+            answer,
+            Assert.Single(repository.Messages, message => message.Role == ChatRole.Assistant).Content);
+    }
+
+    /// <summary>
+    /// Rows written before this repair still hold hidden reasoning. Rewriting them would need a
+    /// migration, so the read boundary filters instead: the reopened timeline, the accessible
+    /// text derived from it, and the history replayed to the model are all safe.
+    /// </summary>
+    [Fact]
+    public async Task LegacyPersistedReasoning_IsSanitizedOnReopenAndInAccessibleText()
+    {
+        var repository = new MemoryRepository();
+        var conversation = await SeedAsync(repository, ("Question", ChatRole.User), (LegacyAssistantRow, ChatRole.Assistant));
+        var viewModel = Create(repository, []);
+
+        await viewModel.OpenConversationAsync(conversation.Id);
+
+        var content = viewModel.Messages.Last().Content;
+        Assert.Equal("Sanitized answer.", content);
+        AssertNoHiddenReasoning(content);
+
+        var accessible = PersonalAI.Desktop.Avalonia.Views.Chat.ChatPresentation.ToAccessibleText(
+            PersonalAI.Core.Chat.Rendering.ChatMarkdownRenderer.Shared.Render(content));
+        AssertNoHiddenReasoning(accessible);
+        Assert.Contains("Sanitized answer.", accessible, StringComparison.Ordinal);
+
+        // The stored row itself is untouched — no migration was introduced.
+        Assert.Equal(
+            LegacyAssistantRow,
+            Assert.Single(repository.Messages, message => message.Role == ChatRole.Assistant).Content);
+    }
+
+    [Fact]
+    public async Task LegacyPersistedReasoning_IsNotReplayedAsModelHistory()
+    {
+        var repository = new MemoryRepository();
+        var conversation = await SeedAsync(repository, ("Question", ChatRole.User), (LegacyAssistantRow, ChatRole.Assistant));
+        var provider = new TestProvider { Chunks = [new ChatChunk("Next", true)] };
+        var viewModel = Create(repository, provider);
+        await viewModel.OpenConversationAsync(conversation.Id);
+        viewModel.Draft = "Follow up";
+
+        await viewModel.SendAsync();
+
+        foreach (var message in provider.LastRequest!.Messages)
+        {
+            AssertNoHiddenReasoning(message.Content);
+        }
+    }
+
+    [Fact]
+    public async Task RegenerateHistory_DoesNotReplayLegacyHiddenReasoning()
+    {
+        var repository = new MemoryRepository();
+        var conversation = await SeedAsync(
+            repository,
+            ("First question", ChatRole.User),
+            (LegacyAssistantRow, ChatRole.Assistant),
+            ("Second question", ChatRole.User),
+            ("Second answer.", ChatRole.Assistant));
+        var provider = new MultiTurnProvider();
+        provider.Enqueue(new ChatChunk("Regenerated.", true));
+        var viewModel = Create(repository, provider);
+        await viewModel.OpenConversationAsync(conversation.Id);
+        var latest = viewModel.Messages.Last(message => message.Role == ChatRole.Assistant);
+
+        Assert.True(latest.CanRegenerate);
+        await viewModel.RegenerateCommand.ExecuteAsync(latest);
+
+        foreach (var message in provider.Requests.Single().Messages)
+        {
+            AssertNoHiddenReasoning(message.Content);
+        }
+    }
+
+    [Fact]
+    public async Task RetryHistory_DoesNotReplayLegacyHiddenReasoning()
+    {
+        var repository = new MemoryRepository();
+        var conversation = await SeedAsync(
+            repository,
+            ("First question", ChatRole.User),
+            (LegacyAssistantRow, ChatRole.Assistant),
+            ("Second question", ChatRole.User),
+            ("Partial", ChatRole.Assistant));
+        var provider = new MultiTurnProvider();
+        provider.Enqueue(new ChatChunk("Retried.", true));
+        var viewModel = Create(repository, provider);
+        await viewModel.OpenConversationAsync(conversation.Id);
+        var latest = viewModel.Messages.Last(message => message.Role == ChatRole.Assistant);
+        latest.Status = ChatMessageStatus.Failed;
+
+        Assert.True(latest.CanRetry);
+        await viewModel.RetryCommand.ExecuteAsync(latest);
+
+        foreach (var message in provider.Requests.Single().Messages)
+        {
+            AssertNoHiddenReasoning(message.Content);
+        }
+
+        Assert.Equal("Retried.", latest.Content);
+    }
+
+    private static async Task<Conversation> SeedAsync(
+        MemoryRepository repository,
+        params (string Content, ChatRole Role)[] messages)
+    {
+        var conversation = await repository.CreateConversationAsync(new Conversation(
+            Guid.NewGuid(), "Seeded", "test", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, ConversationStatus.Completed));
+        foreach (var (content, role) in messages)
+        {
+            await repository.AddMessageAsync(new StoredChatMessage(
+                Guid.NewGuid(), conversation.Id, role, content, DateTimeOffset.UtcNow));
+        }
+
+        return conversation;
+    }
+
+    private static void AssertNoHiddenReasoning(string content)
+    {
+        Assert.DoesNotContain("think", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("analysis", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("chain of thought", content, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static AvaloniaChatViewModel Create(MemoryRepository repository, IReadOnlyList<ChatChunk> chunks) =>
         Create(repository, new TestProvider { Chunks = chunks });
 
@@ -717,6 +926,7 @@ public sealed class AvaloniaChatViewModelTests
         public bool Wait { get; init; }
         public bool Fail { get; init; }
         public Action? AfterChunk { get; init; }
+        public Action? AfterEachChunk { get; init; }
         public ChatRequest? LastRequest { get; private set; }
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -727,6 +937,7 @@ public sealed class AvaloniaChatViewModelTests
             {
                 yield return chunk;
                 if (chunk.Content == "First ") AfterChunk?.Invoke();
+                AfterEachChunk?.Invoke();
             }
 
             Started.TrySetResult();

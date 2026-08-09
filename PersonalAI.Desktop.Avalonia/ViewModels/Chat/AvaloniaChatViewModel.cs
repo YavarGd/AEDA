@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -310,7 +309,8 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyn
         prompt = Messages[userIndex].Content;
         priorHistory = Messages
             .Take(userIndex)
-            .Select(message => new ChatMessage(message.Role, message.Content))
+            .Select(message => new ChatMessage(
+                message.Role, SafeText(message.Role, message.Content)))
             .ToArray();
         return !string.IsNullOrWhiteSpace(prompt);
     }
@@ -354,7 +354,7 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyn
         SetStatus(ChatStatus.Generating);
         var cancellation = new CancellationTokenSource();
         _sendCancellation = cancellation;
-        var response = new StringBuilder();
+        var response = new HiddenReasoningBuffer();
         var toolActivityMessages = new Dictionary<string, ChatMessageItem>(StringComparer.Ordinal);
         var assistantPersisted = false;
         var assistant = existingAssistantMessage;
@@ -382,7 +382,8 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyn
             {
                 var stored = await _session.LoadMessagesAsync(conversationId, CancellationToken.None);
                 history = stored.Where(message => message.Role != ChatRole.Tool)
-                    .Select(message => new ChatMessage(message.Role, message.Content))
+                    .Select(message => new ChatMessage(
+                        message.Role, SafeText(message.Role, message.Content)))
                     .Append(new ChatMessage(ChatRole.User, prompt))
                     .ToArray();
             }
@@ -431,21 +432,28 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyn
 
                 if (!string.IsNullOrEmpty(chunk.Content))
                 {
+                    // Only the streaming-safe projection of the buffer is published. A hidden
+                    // block that is still open — including one whose opening tag was split
+                    // across chunks — is withheld until it is proven closed.
                     response.Append(chunk.Content);
-                    var text = response.ToString();
+                    var text = response.VisibleText;
                     var current = assistant!;
                     _dispatch(() => current.Content = text);
                 }
             }
 
+            var completedResponse = response.CompletedText;
+            var completedTarget = assistant!;
+            _dispatch(() => completedTarget.Content = completedResponse);
+
             assistantPersisted = await PersistAssistantAsync(
                 conversationId,
-                response.ToString(),
+                completedResponse,
                 assistantPersisted);
             await PersistCompletedAsync(
                 conversation,
                 taskId.Value,
-                response.ToString(),
+                completedResponse,
                 model,
                 assistant!,
                 completionStatus);
@@ -457,7 +465,7 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyn
                 assistantPersisted = await RecoverInterruptedTurnAsync(
                     conversation,
                     taskId,
-                    response.ToString(),
+                    response.CompletedText,
                     model,
                     ConversationStatus.Cancelled,
                     assistantPersisted,
@@ -473,7 +481,7 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyn
                 assistantPersisted = await RecoverInterruptedTurnAsync(
                     conversation,
                     taskId,
-                    response.ToString(),
+                    response.CompletedText,
                     model,
                     ConversationStatus.Error,
                     assistantPersisted,
@@ -700,8 +708,19 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyn
     /// </summary>
     private static string FormatStoredMessage(StoredChatMessage message) =>
         message.Role != ChatRole.Tool
-            ? message.Content
+            ? SafeText(message.Role, message.Content)
             : ToolPresentationMapper.FormatStoredToolActivity(message.Content);
+
+    /// <summary>
+    /// Assistant text is re-sanitized at every read boundary, not just when it is produced.
+    /// Rows persisted before this repair may still hold hidden reasoning blocks, and rewriting
+    /// them would need a migration; filtering on the way out covers presentation, reopen, and
+    /// replayed model history without touching stored data.
+    /// </summary>
+    private static string SafeText(ChatRole role, string content) =>
+        role == ChatRole.Assistant
+            ? HiddenReasoningSanitizer.SanitizeCompleted(content)
+            : content;
 
     /// <summary>
     /// A tool_call record is superseded once a later Tool record carries a matching

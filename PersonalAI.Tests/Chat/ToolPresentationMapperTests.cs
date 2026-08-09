@@ -249,6 +249,148 @@ public sealed class ToolPresentationMapperTests
         Assert.DoesNotContain("workspace.directory.list", activity, StringComparison.Ordinal);
     }
 
+    // --- CHAT-02: secret-like query arguments must not reach activity labels. ---
+
+    /// <summary>
+    /// Truncation alone still discloses the leading characters of a credential, so a query that
+    /// trips the shared secret-marker policy collapses to a bounded generic label. These are the
+    /// exact markers <see cref="SecretMarkerPolicy"/> already applied to task metadata.
+    /// </summary>
+    [Theory]
+    [InlineData("token=abcdef0123456789")]
+    [InlineData("api_key=abcdef0123456789")]
+    [InlineData("apikey abcdef0123456789")]
+    [InlineData("access_token=abcdef0123456789")]
+    [InlineData("secret abcdef0123456789")]
+    [InlineData("find the ACCESS_TOKEN value")]
+    public void SecretLikeQuery_IsReplacedByBoundedGenericLabel(string query)
+    {
+        var call = CreateCall(
+            "workspace.text.search",
+            new { workspaceId = "workspace-a", query, relativeDirectory = "." });
+
+        var requested = ToolPresentationMapper.RequestedActivity(call, workspaceRegistry: null);
+        var completed = ToolPresentationMapper.CompletedActivity(
+            call, SucceededSearch(), workspaceRegistry: null);
+
+        foreach (var activity in new[] { requested, completed })
+        {
+            Assert.Contains("Search query [redacted]", activity, StringComparison.Ordinal);
+            Assert.DoesNotContain("abcdef", activity, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(query, activity, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void MultilineSecretQuery_IsRedactedWithoutLeakingAnyLine()
+    {
+        var call = CreateCall(
+            "workspace.text.search",
+            new
+            {
+                workspaceId = "workspace-a",
+                query = "first line\r\napi_key=abcdef0123456789\r\ntrailing line",
+                relativeDirectory = "."
+            });
+
+        var activity = ToolPresentationMapper.RequestedActivity(call, workspaceRegistry: null);
+
+        Assert.Contains("Search query [redacted]", activity, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcdef", activity, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("first line", activity, StringComparison.Ordinal);
+        Assert.DoesNotContain("trailing line", activity, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', activity);
+    }
+
+    [Fact]
+    public void VeryLongSecretQuery_IsRedactedRatherThanTruncated()
+    {
+        var call = CreateCall(
+            "workspace.text.search",
+            new
+            {
+                workspaceId = "workspace-a",
+                query = $"token={new string('a', 4000)}",
+                relativeDirectory = "."
+            });
+
+        var activity = ToolPresentationMapper.RequestedActivity(call, workspaceRegistry: null);
+
+        Assert.Contains("Search query [redacted]", activity, StringComparison.Ordinal);
+        Assert.DoesNotContain("aaaa", activity, StringComparison.Ordinal);
+        Assert.True(activity.Length < 120);
+    }
+
+    [Fact]
+    public void OrdinaryQueryRemainsReadable()
+    {
+        var call = CreateCall(
+            "workspace.text.search",
+            new { workspaceId = "workspace-a", query = "ConfigureServices", relativeDirectory = "src" });
+
+        var activity = ToolPresentationMapper.RequestedActivity(call, workspaceRegistry: null);
+
+        Assert.Equal(
+            "Search text · Waiting for permission · Workspace · src · ConfigureServices",
+            activity);
+    }
+
+    /// <summary>
+    /// The stored record keeps its raw JSON (no schema change, no migration), but the reopened
+    /// timeline is rendered from the friendly formatter, which never echoes arguments.
+    /// </summary>
+    [Fact]
+    public void StoredToolActivity_NeverEchoesQueryArgumentsOrRawJson()
+    {
+        const string storedCall =
+            """
+            {"kind":"tool_call","toolCallId":"call-1","toolName":"workspace.text.search","arguments":{"workspaceId":"workspace-a","query":"api_key=abcdef0123456789"}}
+            """;
+        const string storedResult =
+            """
+            {"toolCallId":"call-1","toolName":"workspace.text.search","isSuccess":true,"status":"Succeeded","output":{"matches":[]},"isTruncated":false}
+            """;
+
+        var call = ToolPresentationMapper.FormatStoredToolActivity(storedCall);
+        var result = ToolPresentationMapper.FormatStoredToolActivity(storedResult);
+
+        Assert.Equal("Search text requested.", call);
+        Assert.Equal("Search text · Completed", result);
+        foreach (var activity in new[] { call, result })
+        {
+            Assert.DoesNotContain("abcdef", activity, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("api_key", activity, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("arguments", activity, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void ArbitraryRawJsonStaysHidden()
+    {
+        Assert.Equal(
+            "Workspace tool activity.",
+            ToolPresentationMapper.FormatStoredToolActivity(
+                """{"unexpected":{"token=":"abcdef0123456789"}}"""));
+        Assert.Equal(
+            "Workspace tool activity.",
+            ToolPresentationMapper.FormatStoredToolActivity("not json at all"));
+    }
+
+    private static ChatToolResultPayload SucceededSearch()
+    {
+        using var output = JsonDocument.Parse("""{"matches":[]}""");
+        return new ChatToolResultPayload(
+            "call-1",
+            "workspace.text.search",
+            true,
+            ToolExecutionStatus.Succeeded.ToString(),
+            "Search completed.",
+            null,
+            null,
+            output.RootElement.Clone(),
+            false);
+    }
+
     private static ChatToolCall CreateCall(string toolName, object arguments)
     {
         var element = JsonSerializer.SerializeToElement(
