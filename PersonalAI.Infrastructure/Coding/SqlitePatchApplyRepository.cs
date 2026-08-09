@@ -47,17 +47,9 @@ public sealed class SqlitePatchApplyRepository(string databasePath)
                 applied_hash TEXT NOT NULL,
                 operation_kind TEXT NOT NULL,
                 encoding_name TEXT NOT NULL,
-                original_bytes BLOB NULL,
                 created_at_utc TEXT NOT NULL
             );
             """, cancellationToken);
-        if (!await ColumnExistsAsync(connection, "patch_apply_backups", "original_bytes", cancellationToken))
-        {
-            await ExecuteAsync(
-                connection,
-                "ALTER TABLE patch_apply_backups ADD COLUMN original_bytes BLOB NULL;",
-                cancellationToken);
-        }
         await ExecuteAsync(connection, """
             CREATE TABLE IF NOT EXISTS patch_rollback_results (
                 id TEXT NOT NULL PRIMARY KEY,
@@ -227,12 +219,10 @@ public sealed class SqlitePatchApplyRepository(string databasePath)
         command.CommandText = """
             INSERT INTO patch_apply_backups (
                 apply_result_id, proposal_id, workspace_id, relative_path, original_content,
-                original_hash, applied_hash, operation_kind, encoding_name, original_bytes,
-                created_at_utc)
+                original_hash, applied_hash, operation_kind, encoding_name, created_at_utc)
             VALUES (
                 $apply_result_id, $proposal_id, $workspace_id, $relative_path, $original_content,
-                $original_hash, $applied_hash, $operation_kind, $encoding_name, $original_bytes,
-                $created_at_utc);
+                $original_hash, $applied_hash, $operation_kind, $encoding_name, $created_at_utc);
             """;
         Add(command, "$apply_result_id", backup.ApplyResultId.ToString());
         Add(command, "$proposal_id", backup.ProposalId.ToString());
@@ -243,7 +233,6 @@ public sealed class SqlitePatchApplyRepository(string databasePath)
         Add(command, "$applied_hash", backup.AppliedContentHash);
         Add(command, "$operation_kind", backup.OperationKind.ToString());
         Add(command, "$encoding_name", backup.EncodingName);
-        Add(command, "$original_bytes", backup.OriginalBytes);
         Add(command, "$created_at_utc", FormatUtc(backup.CreatedAtUtc));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -272,8 +261,7 @@ public sealed class SqlitePatchApplyRepository(string databasePath)
             reader["applied_hash"].ToString() ?? string.Empty,
             ParseUtc(reader["created_at_utc"].ToString()),
             Enum.TryParse<PatchProposalFileChangeKind>(reader["operation_kind"].ToString(), out var kind) ? kind : PatchProposalFileChangeKind.Modify,
-            reader["encoding_name"].ToString() ?? "utf-8",
-            reader["original_bytes"] is byte[] bytes ? bytes : null);
+            reader["encoding_name"].ToString() ?? "utf-8");
 
     private static PatchRollbackResult ReadRollbackResult(SqliteDataReader reader) =>
         new(
@@ -291,26 +279,6 @@ public sealed class SqlitePatchApplyRepository(string databasePath)
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private static async Task<bool> ColumnExistsAsync(
-        SqliteConnection connection,
-        string table,
-        string column,
-        CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"PRAGMA table_info({table});";
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            if (string.Equals(reader["name"].ToString(), column, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static T Deserialize<T>(string? json, T fallback)

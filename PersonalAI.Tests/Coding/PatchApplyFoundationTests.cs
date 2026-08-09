@@ -418,16 +418,24 @@ public sealed class PatchApplyFoundationTests : IDisposable
     {
         const string lf = "héllo 世界\nline two\n";
         const string crlf = "héllo 世界\r\nline two\r\n";
-        yield return ["utf8-lf.txt", new UTF8Encoding(false, true).GetBytes(lf), lf];
+        yield return ["utf8-lf.txt", new UTF8Encoding(false, true).GetBytes(lf), lf, "utf-8"];
         yield return [
             "utf8-bom-crlf.txt",
             new UTF8Encoding(true, true).GetPreamble().Concat(new UTF8Encoding(false, true).GetBytes(crlf)).ToArray(),
-            crlf
+            crlf,
+            "utf-8-bom"
         ];
         yield return [
             "utf16-crlf.txt",
             new UnicodeEncoding(false, true, true).GetPreamble().Concat(new UnicodeEncoding(false, false, true).GetBytes(crlf)).ToArray(),
-            crlf
+            crlf,
+            "utf-16le-bom"
+        ];
+        yield return [
+            "utf16be-lf.txt",
+            new UnicodeEncoding(true, true, true).GetPreamble().Concat(new UnicodeEncoding(true, false, true).GetBytes(lf)).ToArray(),
+            lf,
+            "utf-16be-bom"
         ];
     }
 
@@ -436,7 +444,8 @@ public sealed class PatchApplyFoundationTests : IDisposable
     public async Task Rollback_AfterRepositoryRestartRestoresOriginalBytes(
         string fileName,
         byte[] originalBytes,
-        string originalText)
+        string originalText,
+        string expectedEncodingName)
     {
         await InitializeAsync();
         WriteBytes($"src/{fileName}", originalBytes);
@@ -469,7 +478,7 @@ public sealed class PatchApplyFoundationTests : IDisposable
             _workspace.Id));
 
         Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
-        Assert.Equal(originalBytes, persistedBackup.OriginalBytes);
+        Assert.Equal(expectedEncodingName, persistedBackup.EncodingName);
         Assert.Equal(originalBytes, ReadBytes($"src/{fileName}"));
     }
 
@@ -900,7 +909,7 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     [Fact]
-    public async Task Persistence_AddsOriginalBytesColumnAndLoadsLegacyBackup()
+    public async Task Persistence_InitializationKeepsPreM02BackupSchemaAndLoadsLegacyBackup()
     {
         var databasePath = Path.Combine(_root, "legacy-apply.db");
         var applyId = PatchApplyResultId.NewId();
@@ -935,12 +944,51 @@ public sealed class PatchApplyFoundationTests : IDisposable
             await command.ExecuteNonQueryAsync();
         }
 
+        var columnsBefore = await ReadBackupColumnsAsync(databasePath);
         var repository = new SqlitePatchApplyRepository(databasePath);
         await repository.InitializeAsync();
+        var columnsAfter = await ReadBackupColumnsAsync(databasePath);
         var backup = Assert.Single(await repository.ListBackupsAsync(applyId));
 
+        Assert.Equal(columnsBefore, columnsAfter);
+        Assert.DoesNotContain("original_bytes", columnsAfter);
         Assert.Equal("old", backup.OriginalContent);
-        Assert.Null(backup.OriginalBytes);
+        Assert.Equal("utf-8", backup.EncodingName);
+    }
+
+    [Fact]
+    public async Task Rollback_LegacyUtf8EncodingNameUsesPreviousNoBomSemantics()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "new\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\r\n", "new\n")]);
+        var now = DateTimeOffset.UtcNow;
+        var apply = new PatchApplyResult(
+            PatchApplyResultId.NewId(),
+            proposal.Id,
+            _workspace.Id,
+            PatchApplyStatus.Applied,
+            [new PatchApplyFileResult("src/App.cs", PatchProposalFileChangeKind.Modify, PatchApplyStatus.Applied)],
+            [],
+            now,
+            now);
+        var backup = new PatchApplyBackup(
+            apply.Id,
+            proposal.Id,
+            _workspace.Id,
+            "src/App.cs",
+            "old\r\n",
+            CodeContextService.ComputeHash("old\r\n"),
+            CodeContextService.ComputeHash("new\n"),
+            now,
+            PatchProposalFileChangeKind.Modify,
+            "utf-8");
+        await _applyRepository.CreateApplyResultAsync(apply, [backup]);
+
+        var rollback = await CreateService().RollbackAsync(new PatchRollbackRequest(apply.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
+        Assert.Equal(new UTF8Encoding(false, true).GetBytes("old\r\n"), ReadBytes("src/App.cs"));
     }
 
     [Fact]
@@ -1039,6 +1087,22 @@ public sealed class PatchApplyFoundationTests : IDisposable
     private string Read(string relativePath) => File.ReadAllText(PathFor(relativePath));
 
     private byte[] ReadBytes(string relativePath) => File.ReadAllBytes(PathFor(relativePath));
+
+    private static async Task<IReadOnlyList<string>> ReadBackupColumnsAsync(string databasePath)
+    {
+        await using var connection = new SqliteConnection($"Data Source={databasePath}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA table_info(patch_apply_backups);";
+        await using var reader = await command.ExecuteReaderAsync();
+        var columns = new List<string>();
+        while (await reader.ReadAsync())
+        {
+            columns.Add(reader["name"].ToString() ?? string.Empty);
+        }
+
+        return columns;
+    }
 
     private static void CreateJunction(string junctionPath, string targetPath)
     {
