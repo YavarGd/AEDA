@@ -41,6 +41,19 @@ internal static class ReparseSafePatchWriter
         string relativePath,
         string content,
         bool replaceExisting,
+        CancellationToken cancellationToken) =>
+        WriteBytes(
+            workspaceRoot,
+            relativePath,
+            Encoding.UTF8.GetBytes(content),
+            replaceExisting,
+            cancellationToken);
+
+    public static void WriteBytes(
+        string workspaceRoot,
+        string relativePath,
+        ReadOnlySpan<byte> content,
+        bool replaceExisting,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -58,7 +71,7 @@ internal static class ReparseSafePatchWriter
             throw new InvalidOperationException("path_outside_workspace");
         }
 
-        using var directories = OpenDestinationParent(workspaceRoot, parts[..^1]);
+        using var directories = OpenDestinationParent(workspaceRoot, parts[..^1], createMissing: true);
         var parent = directories.Parent;
         var destinationName = parts[^1];
         using (var existing = TryOpenRelative(
@@ -113,9 +126,92 @@ internal static class ReparseSafePatchWriter
         }
     }
 
+    public static byte[] ReadBytes(
+        string workspaceRoot,
+        string relativePath,
+        int maxBytes,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        PatchApplyValidator.RejectUnsafeRelativePath(relativePath);
+        if (maxBytes <= 0)
+        {
+            throw new InvalidOperationException("backup_failed");
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return ReadPortable(workspaceRoot, relativePath, maxBytes);
+        }
+
+        var parts = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            throw new InvalidOperationException("path_outside_workspace");
+        }
+
+        using var directories = OpenDestinationParent(workspaceRoot, parts[..^1], createMissing: false);
+        using var file = TryOpenRelative(
+            directories.Parent,
+            parts[^1],
+            GenericRead | FileReadAttributes | Synchronize,
+            ShareRead | ShareWrite | ShareDelete,
+            FileOpen,
+            FileNonDirectoryFile | FileSynchronousIoNonAlert | FileOpenReparsePoint,
+            FileAttributeNormal)
+            ?? throw new InvalidOperationException("path_outside_workspace");
+        RejectReparsePoint(file);
+        EnsureHandleInside(workspaceRoot, file);
+        return ReadBytes(file, maxBytes, cancellationToken);
+    }
+
+    public static bool DeleteIfContentHashMatches(
+        string workspaceRoot,
+        string relativePath,
+        string expectedContentHash,
+        int maxBytes,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        PatchApplyValidator.RejectUnsafeRelativePath(relativePath);
+
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new InvalidOperationException("path_outside_workspace");
+        }
+
+        var parts = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            throw new InvalidOperationException("path_outside_workspace");
+        }
+
+        using var directories = OpenDestinationParent(workspaceRoot, parts[..^1], createMissing: false);
+        using var file = TryOpenRelative(
+            directories.Parent,
+            parts[^1],
+            GenericRead | FileReadAttributes | Delete | Synchronize,
+            ShareRead | ShareWrite | ShareDelete,
+            FileOpen,
+            FileNonDirectoryFile | FileSynchronousIoNonAlert | FileOpenReparsePoint,
+            FileAttributeNormal)
+            ?? throw new InvalidOperationException("path_outside_workspace");
+        RejectReparsePoint(file);
+        EnsureHandleInside(workspaceRoot, file);
+        var bytes = ReadBytes(file, maxBytes, cancellationToken);
+        if (CodeContextService.ComputeHash(Encoding.UTF8.GetString(bytes)) != expectedContentHash)
+        {
+            return false;
+        }
+
+        MarkForDeletion(file);
+        return true;
+    }
+
     private static DirectoryHandleChain OpenDestinationParent(
         string workspaceRoot,
-        IReadOnlyList<string> parts)
+        IReadOnlyList<string> parts,
+        bool createMissing)
     {
         var current = CreateFileW(
             workspaceRoot,
@@ -141,7 +237,8 @@ internal static class ReparseSafePatchWriter
                 var next = OpenDirectoryRelative(
                     current,
                     part,
-                    FileListDirectory | FileAddFile | FileAddSubdirectory | FileReadAttributes | DeleteChild | Synchronize);
+                    FileListDirectory | FileAddFile | FileAddSubdirectory | FileReadAttributes | DeleteChild | Synchronize,
+                    createMissing);
                 ValidateDestinationDirectory(workspaceRoot, next);
                 handles.Add(next);
                 current = next;
@@ -177,14 +274,15 @@ internal static class ReparseSafePatchWriter
     private static SafeFileHandle OpenDirectoryRelative(
         SafeFileHandle parent,
         string name,
-        uint desiredAccess)
+        uint desiredAccess,
+        bool createMissing)
     {
         var handle = TryOpenRelative(
             parent,
             name,
             desiredAccess,
             ShareRead | ShareWrite,
-            FileOpenIf,
+            createMissing ? FileOpenIf : FileOpen,
             FileDirectoryFile | FileSynchronousIoNonAlert | FileOpenReparsePoint,
             FileAttributeDirectory);
         return handle ?? throw new InvalidOperationException("path_outside_workspace");
@@ -292,15 +390,14 @@ internal static class ReparseSafePatchWriter
 
     private static void WriteAndVerify(
         SafeFileHandle handle,
-        string content,
+        ReadOnlySpan<byte> content,
         CancellationToken cancellationToken)
     {
-        var expected = Encoding.UTF8.GetBytes(content);
         RandomAccess.SetLength(handle, 0);
-        RandomAccess.Write(handle, expected, 0);
+        RandomAccess.Write(handle, content, 0);
         RandomAccess.FlushToDisk(handle);
         cancellationToken.ThrowIfCancellationRequested();
-        var actualBytes = new byte[expected.Length];
+        var actualBytes = new byte[content.Length];
         var offset = 0;
         while (offset < actualBytes.Length)
         {
@@ -313,11 +410,38 @@ internal static class ReparseSafePatchWriter
             offset += read;
         }
 
-        var actual = Encoding.UTF8.GetString(actualBytes);
-        if (CodeContextService.ComputeHash(actual) != CodeContextService.ComputeHash(content))
+        if (!content.SequenceEqual(actualBytes))
         {
             throw new InvalidOperationException("hash_mismatch");
         }
+    }
+
+    private static byte[] ReadBytes(
+        SafeFileHandle handle,
+        int maxBytes,
+        CancellationToken cancellationToken)
+    {
+        var length = RandomAccess.GetLength(handle);
+        if (length > maxBytes || length > int.MaxValue)
+        {
+            throw new InvalidOperationException("backup_failed");
+        }
+
+        var bytes = new byte[(int)length];
+        var offset = 0;
+        while (offset < bytes.Length)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var read = RandomAccess.Read(handle, bytes.AsSpan(offset), offset);
+            if (read == 0)
+            {
+                throw new InvalidOperationException("backup_failed");
+            }
+
+            offset += read;
+        }
+
+        return bytes;
     }
 
     private static void RenameRelative(
@@ -368,6 +492,23 @@ internal static class ReparseSafePatchWriter
         {
             Marshal.WriteByte(buffer, 1);
             _ = SetFileInformationByHandle(handle, FileDispositionInfo, buffer, sizeof(byte));
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    private static void MarkForDeletion(SafeFileHandle handle)
+    {
+        var buffer = Marshal.AllocHGlobal(sizeof(byte));
+        try
+        {
+            Marshal.WriteByte(buffer, 1);
+            if (!SetFileInformationByHandle(handle, FileDispositionInfo, buffer, sizeof(byte)))
+            {
+                throw new InvalidOperationException("write_failed");
+            }
         }
         finally
         {
@@ -443,7 +584,7 @@ internal static class ReparseSafePatchWriter
     private static void WritePortable(
         string workspaceRoot,
         string relativePath,
-        string content,
+        ReadOnlySpan<byte> content,
         bool replaceExisting)
     {
         var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, relativePath));
@@ -458,13 +599,39 @@ internal static class ReparseSafePatchWriter
         var tempPath = Path.Combine(directory, $".aeda-patch-{Guid.NewGuid():N}.tmp");
         try
         {
-            File.WriteAllText(tempPath, content);
+            File.WriteAllBytes(tempPath, content);
             File.Move(tempPath, fullPath, replaceExisting);
         }
         finally
         {
             File.Delete(tempPath);
         }
+    }
+
+    private static byte[] ReadPortable(string workspaceRoot, string relativePath, int maxBytes)
+    {
+        var fullPath = GetPortablePath(workspaceRoot, relativePath);
+        if (File.GetAttributes(fullPath).HasFlag(FileAttributes.ReparsePoint))
+        {
+            throw new InvalidOperationException("path_outside_workspace");
+        }
+
+        var bytes = File.ReadAllBytes(fullPath);
+        return bytes.Length <= maxBytes
+            ? bytes
+            : throw new InvalidOperationException("backup_failed");
+    }
+
+    private static string GetPortablePath(string workspaceRoot, string relativePath)
+    {
+        var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, relativePath));
+        var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar);
+        if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("path_outside_workspace");
+        }
+
+        return fullPath;
     }
 
     private sealed class DirectoryHandleChain(IReadOnlyList<SafeFileHandle> handles) : IDisposable
