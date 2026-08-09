@@ -1,3 +1,4 @@
+using System.Text;
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Coding;
 using PersonalAI.Core.Tasks;
@@ -14,6 +15,7 @@ public sealed class PatchApplyService(
     ITaskRuntime? taskRuntime = null) : IPatchApplyService
 {
     private const int MaxBackupCharacters = 500_000;
+    private const int MaxBackupBytes = 5 * 1024 * 1024;
 
     public Task<PatchApplyPlan> DryRunAsync(
         PatchApplyRequest request,
@@ -76,11 +78,26 @@ public sealed class PatchApplyService(
                     : PatchApplyStatus.Applying))
             .ToList();
 
-        foreach (var file in proposal.Files.Where(file => file.ChangeKind != PatchProposalFileChangeKind.NoOp))
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            backups.Add(CreateBackup(resultId, proposal, file, cancellationToken));
-            await AppendAsync(TaskEventKind.PatchFileBackupCreated, "Patch file backup created.", cancellationToken);
+            foreach (var file in proposal.Files.Where(file => file.ChangeKind != PatchProposalFileChangeKind.NoOp))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                backups.Add(CreateBackup(resultId, proposal, file, cancellationToken));
+                await AppendAsync(TaskEventKind.PatchFileBackupCreated, "Patch file backup created.", cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException exception)
+        {
+            return await PersistFailureAsync(request, MapFailure(exception.Message), CancellationToken.None);
+        }
+        catch
+        {
+            return await PersistFailureAsync(request, PatchApplyFailureReason.BackupFailed, CancellationToken.None);
         }
 
         var journal = CreateResult(
@@ -209,6 +226,26 @@ public sealed class PatchApplyService(
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
+                    if (backup.OperationKind == PatchProposalFileChangeKind.Add)
+                    {
+                        var workspace = workspaceReader.GetWorkspace(request.WorkspaceId);
+                        if (!ReparseSafePatchWriter.DeleteIfContentHashMatches(
+                                workspace.CanonicalRootPath,
+                                backup.RelativePath,
+                                backup.AppliedContentHash,
+                                MaxBackupBytes,
+                                cancellationToken))
+                        {
+                            failures.Add(PatchApplyFailureReason.StaleOriginalContent);
+                            files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RollbackFailed, PatchApplyFailureReason.StaleOriginalContent));
+                            continue;
+                        }
+
+                        files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RolledBack));
+                        await AppendAsync(TaskEventKind.PatchFileRolledBack, "Patch file rolled back.", cancellationToken);
+                        continue;
+                    }
+
                     var current = workspaceReader.ReadTextFile(
                         request.WorkspaceId,
                         backup.RelativePath,
@@ -221,10 +258,10 @@ public sealed class PatchApplyService(
                         continue;
                     }
 
-                    WriteContent(
+                    WriteBytes(
                         request.WorkspaceId,
                         backup.RelativePath,
-                        backup.OriginalContent,
+                        backup.OriginalBytes ?? EncodeLegacyBackup(backup),
                         replaceExisting: true,
                         cancellationToken: cancellationToken);
                     files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RolledBack));
@@ -319,7 +356,18 @@ public sealed class PatchApplyService(
         }
 
         var current = workspaceReader.ReadTextFile(proposal.WorkspaceId, file.RelativePath, MaxBackupCharacters, cancellationToken);
+        var workspace = workspaceReader.GetWorkspace(proposal.WorkspaceId);
+        var originalBytes = ReparseSafePatchWriter.ReadBytes(
+            workspace.CanonicalRootPath,
+            file.RelativePath,
+            MaxBackupBytes,
+            cancellationToken);
         if (current.IsTruncated || current.HadDecodingErrors)
+        {
+            throw new InvalidOperationException("backup_failed");
+        }
+
+        if (!string.Equals(DecodeBackup(originalBytes, current.EncodingName), current.Content, StringComparison.Ordinal))
         {
             throw new InvalidOperationException("backup_failed");
         }
@@ -334,7 +382,8 @@ public sealed class PatchApplyService(
             file.ProposedContentHash,
             DateTimeOffset.UtcNow,
             file.ChangeKind,
-            current.EncodingName);
+            current.EncodingName,
+            originalBytes);
     }
 
     private void WriteProposedContent(WorkspaceId workspaceId, PatchProposalFile file, CancellationToken cancellationToken)
@@ -367,6 +416,49 @@ public sealed class PatchApplyService(
             replaceExisting,
             cancellationToken);
     }
+
+    private void WriteBytes(
+        WorkspaceId workspaceId,
+        string relativePath,
+        ReadOnlySpan<byte> content,
+        bool replaceExisting,
+        CancellationToken cancellationToken)
+    {
+        var workspace = workspaceReader.GetWorkspace(workspaceId);
+        ReparseSafePatchWriter.WriteBytes(
+            workspace.CanonicalRootPath,
+            relativePath,
+            content,
+            replaceExisting,
+            cancellationToken);
+    }
+
+    private static string DecodeBackup(byte[] bytes, string encodingName)
+    {
+        var text = CreateEncoding(encodingName).GetString(bytes);
+        return text.Length > 0 && text[0] == '\uFEFF' ? text[1..] : text;
+    }
+
+    private static byte[] EncodeLegacyBackup(PatchApplyBackup backup)
+    {
+        var encoding = CreateEncoding(backup.EncodingName);
+        var content = encoding.GetBytes(backup.OriginalContent);
+        if (string.Equals(backup.EncodingName, "utf-8", StringComparison.OrdinalIgnoreCase))
+        {
+            return content;
+        }
+
+        var preamble = encoding.GetPreamble();
+        return [.. preamble, .. content];
+    }
+
+    private static Encoding CreateEncoding(string name) => name.ToLowerInvariant() switch
+    {
+        "utf-8" => new UTF8Encoding(false, true),
+        "utf-16" => new UnicodeEncoding(false, true, true),
+        "utf-16be" => new UnicodeEncoding(true, true, true),
+        _ => Encoding.GetEncoding(name, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback)
+    };
 
     private async Task<PatchApplyResult> PersistFailureAsync(PatchApplyRequest request, PatchApplyFailureReason reason, CancellationToken cancellationToken) =>
         await PersistFailureAsync(request, [reason], cancellationToken);

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Microsoft.Data.Sqlite;
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
@@ -413,6 +414,159 @@ public sealed class PatchApplyFoundationTests : IDisposable
         Assert.Equal("old\n", Read("src/App.cs"));
     }
 
+    public static IEnumerable<object[]> FaithfulRollbackCases()
+    {
+        const string lf = "héllo 世界\nline two\n";
+        const string crlf = "héllo 世界\r\nline two\r\n";
+        yield return ["utf8-lf.txt", new UTF8Encoding(false, true).GetBytes(lf), lf];
+        yield return [
+            "utf8-bom-crlf.txt",
+            new UTF8Encoding(true, true).GetPreamble().Concat(new UTF8Encoding(false, true).GetBytes(crlf)).ToArray(),
+            crlf
+        ];
+        yield return [
+            "utf16-crlf.txt",
+            new UnicodeEncoding(false, true, true).GetPreamble().Concat(new UnicodeEncoding(false, false, true).GetBytes(crlf)).ToArray(),
+            crlf
+        ];
+    }
+
+    [Theory]
+    [MemberData(nameof(FaithfulRollbackCases))]
+    public async Task Rollback_AfterRepositoryRestartRestoresOriginalBytes(
+        string fileName,
+        byte[] originalBytes,
+        string originalText)
+    {
+        await InitializeAsync();
+        WriteBytes($"src/{fileName}", originalBytes);
+        var proposal = await SaveProposalAsync([
+            Edit($"src/{fileName}", originalText, "changed\n")
+        ]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+
+        var restartedProposals = new SqlitePatchProposalRepository(Path.Combine(_root, "proposals.db"));
+        var restartedApplies = new SqlitePatchApplyRepository(Path.Combine(_root, "apply.db"));
+        await restartedProposals.InitializeAsync();
+        await restartedApplies.InitializeAsync();
+        var persistedBackup = Assert.Single(await restartedApplies.ListBackupsAsync(applied.Id));
+        var restartedService = new PatchApplyService(
+            restartedProposals,
+            restartedApplies,
+            new PatchApplyValidator(restartedProposals, _reader, _resolver),
+            _reader,
+            _approvals);
+
+        var rollback = await restartedService.RollbackAsync(new PatchRollbackRequest(
+            applied.Id,
+            _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
+        Assert.Equal(originalBytes, persistedBackup.OriginalBytes);
+        Assert.Equal(originalBytes, ReadBytes($"src/{fileName}"));
+    }
+
+    [Fact]
+    public async Task Rollback_AddDeletesFileThatWasOriginallyAbsent()
+    {
+        await InitializeAsync();
+        var proposal = await SaveProposalAsync([
+            Edit("src/Added.cs", null, "created\n", PatchProposalFileChangeKind.Add)
+        ]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
+        Assert.False(File.Exists(PathFor("src/Added.cs")));
+    }
+
+    [Fact]
+    public async Task Rollback_AddChangedAfterApplyRefusesDeletion()
+    {
+        await InitializeAsync();
+        var proposal = await SaveProposalAsync([
+            Edit("src/Added.cs", null, "created\n", PatchProposalFileChangeKind.Add)
+        ]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        Write("src/Added.cs", "changed later\n");
+
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+        Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, rollback.FailureReasons);
+        Assert.Equal("changed later\n", Read("src/Added.cs"));
+    }
+
+    [Fact]
+    public async Task Rollback_AddParentSwappedToJunctionDoesNotDeleteExternalTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        await InitializeAsync();
+        var outside = _root + "-rollback-outside";
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "Added.cs"), "external sentinel\n");
+        var proposal = await SaveProposalAsync([
+            Edit("linked/Added.cs", null, "created\n", PatchProposalFileChangeKind.Add)
+        ]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        Directory.Move(PathFor("linked"), PathFor("linked-original"));
+        CreateJunction(PathFor("linked"), outside);
+
+        try
+        {
+            var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+            Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+            Assert.Equal("external sentinel\n", File.ReadAllText(Path.Combine(outside, "Added.cs")));
+            Assert.Equal("created\n", File.ReadAllText(PathFor("linked-original/Added.cs")));
+        }
+        finally
+        {
+            if (Directory.Exists(PathFor("linked")))
+            {
+                Directory.Delete(PathFor("linked"));
+            }
+
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+    }
+
     [Fact]
     public async Task Apply_ApprovedNewFileCreatesInsideWorkspace()
     {
@@ -746,6 +900,50 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task Persistence_AddsOriginalBytesColumnAndLoadsLegacyBackup()
+    {
+        var databasePath = Path.Combine(_root, "legacy-apply.db");
+        var applyId = PatchApplyResultId.NewId();
+        var proposalId = PatchProposalId.NewId();
+        await using (var connection = new SqliteConnection($"Data Source={databasePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE patch_apply_backups (
+                    apply_result_id TEXT NOT NULL,
+                    proposal_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    original_content TEXT NOT NULL,
+                    original_hash TEXT NOT NULL,
+                    applied_hash TEXT NOT NULL,
+                    operation_kind TEXT NOT NULL,
+                    encoding_name TEXT NOT NULL,
+                    created_at_utc TEXT NOT NULL
+                );
+                INSERT INTO patch_apply_backups VALUES (
+                    $apply, $proposal, $workspace, 'src/App.cs', 'old', $original_hash,
+                    $applied_hash, 'Modify', 'utf-8', $created);
+                """;
+            command.Parameters.AddWithValue("$apply", applyId.ToString());
+            command.Parameters.AddWithValue("$proposal", proposalId.ToString());
+            command.Parameters.AddWithValue("$workspace", _workspace.Id.ToString());
+            command.Parameters.AddWithValue("$original_hash", CodeContextService.ComputeHash("old"));
+            command.Parameters.AddWithValue("$applied_hash", CodeContextService.ComputeHash("new"));
+            command.Parameters.AddWithValue("$created", DateTimeOffset.UtcNow.ToString("O"));
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var repository = new SqlitePatchApplyRepository(databasePath);
+        await repository.InitializeAsync();
+        var backup = Assert.Single(await repository.ListBackupsAsync(applyId));
+
+        Assert.Equal("old", backup.OriginalContent);
+        Assert.Null(backup.OriginalBytes);
+    }
+
+    [Fact]
     public void Capabilities_EnableApplyAndRollbackWhenConfigured()
     {
         var registry = BackendCapabilityRegistry.CreateDefault(
@@ -831,7 +1029,16 @@ public sealed class PatchApplyFoundationTests : IDisposable
         File.WriteAllText(path, content);
     }
 
+    private void WriteBytes(string relativePath, byte[] content)
+    {
+        var path = PathFor(relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, content);
+    }
+
     private string Read(string relativePath) => File.ReadAllText(PathFor(relativePath));
+
+    private byte[] ReadBytes(string relativePath) => File.ReadAllBytes(PathFor(relativePath));
 
     private static void CreateJunction(string junctionPath, string targetPath)
     {

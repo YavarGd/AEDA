@@ -84,7 +84,8 @@ public sealed record PatchApplyBackup(
     string AppliedContentHash,
     DateTimeOffset CreatedAtUtc,
     PatchProposalFileChangeKind OperationKind,
-    string EncodingName = "utf-8");
+    string EncodingName = "utf-8",
+    byte[]? OriginalBytes = null);
 
 public sealed record PatchApplyPlan(
     PatchProposalId ProposalId,
