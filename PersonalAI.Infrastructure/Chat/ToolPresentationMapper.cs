@@ -235,7 +235,7 @@ public static class ToolPresentationMapper
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var safeQuery = ShortenForActivity(query);
+            var safeQuery = DescribeQuery(query);
             return string.IsNullOrWhiteSpace(relativePath)
                 ? $"{workspaceName} · {safeQuery}"
                 : $"{workspaceName} · {FormatRelativeDisplay(relativePath)} · {safeQuery}";
@@ -245,6 +245,17 @@ public static class ToolPresentationMapper
             ? workspaceName
             : $"{workspaceName} · {FormatRelativeDisplay(relativePath)}";
     }
+
+    /// <summary>
+    /// Search queries are model- or user-authored free text and were previously shown after only
+    /// a length truncation, which still discloses the leading characters of a credential. A query
+    /// that trips the shared <see cref="SecretMarkerPolicy"/> collapses to a bounded generic label
+    /// instead of being partially exposed; ordinary queries stay readable.
+    /// </summary>
+    private static string DescribeQuery(string query) =>
+        SecretMarkerPolicy.ContainsSecretMarker(query)
+            ? $"Search query {SecretMarkerPolicy.Redacted}"
+            : ShortenForActivity(query);
 
     private static string FormatRelativeDisplay(string value)
     {

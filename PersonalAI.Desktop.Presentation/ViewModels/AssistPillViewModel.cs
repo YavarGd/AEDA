@@ -1,7 +1,7 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PersonalAI.Core.Chat;
 using PersonalAI.Core.Settings;
 using PersonalAI.Infrastructure.Chat;
 using PersonalAI.Desktop.Presentation.Services;
@@ -480,6 +480,11 @@ public sealed partial class AssistPillViewModel : ObservableObject, IAsyncDispos
                 return;
             }
 
+            // No further chunks can arrive, so switch from the streaming projection (which
+            // withholds a trailing fragment that might still become a hidden tag) to the
+            // completed one before the response is judged, shown, or copied.
+            SetResponse(HiddenReasoningSanitizer.SanitizeCompleted(_rawResponse.ToString()));
+
             if (result.Status == ChatStatus.Cancelled)
             {
                 State = AssistPillState.Cancelled;
@@ -533,7 +538,7 @@ public sealed partial class AssistPillViewModel : ObservableObject, IAsyncDispos
         }
 
         _rawResponse.Append(chunk);
-        SetResponse(RemoveHiddenReasoning(_rawResponse.ToString()));
+        SetResponse(HiddenReasoningSanitizer.SanitizeVisible(_rawResponse.ToString()));
     }
 
     private void SetResponse(string fullResponse)
@@ -541,12 +546,6 @@ public sealed partial class AssistPillViewModel : ObservableObject, IAsyncDispos
         _safeFullResponse = fullResponse;
         Response = Bound(fullResponse, _settings.ResponsePreviewCharacters);
     }
-
-    private static string RemoveHiddenReasoning(string value) =>
-        Regex.Replace(
-            value,
-            @"(?is)<(?:think|analysis)>.*?(?:</(?:think|analysis)>|$)",
-            string.Empty).Trim();
 
     private static string Bound(string value, int limit)
     {

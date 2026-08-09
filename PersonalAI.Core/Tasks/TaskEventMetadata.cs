@@ -86,7 +86,7 @@ public static class TaskEventMetadata
 
         if (ContainsSecretMarker(sanitized))
         {
-            sanitized = "[redacted]";
+            sanitized = SecretMarkerPolicy.Redacted;
         }
 
         sanitized = sanitized.ReplaceLineEndings(" ");
@@ -97,9 +97,5 @@ public static class TaskEventMetadata
     }
 
     private static bool ContainsSecretMarker(string value) =>
-        value.Contains("api_key", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("apikey", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("access_token", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("token=", StringComparison.OrdinalIgnoreCase) ||
-        value.Contains("secret", StringComparison.OrdinalIgnoreCase);
+        SecretMarkerPolicy.ContainsSecretMarker(value);
 }
