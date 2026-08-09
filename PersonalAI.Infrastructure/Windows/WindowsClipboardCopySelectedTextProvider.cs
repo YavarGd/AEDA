@@ -13,6 +13,8 @@ public sealed record ClipboardCaptureSnapshot(uint SequenceNumber, object State)
 
 public interface IClipboardCaptureBackend
 {
+    bool CanRestore { get; }
+    string? CaptureFailureCode { get; }
     uint GetSequenceNumber();
     ClipboardCaptureSnapshot? TryCapture();
     string? TryReadUnicodeText();
@@ -47,7 +49,7 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
     private static readonly TimeSpan FocusTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ClipboardTimeout = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan ClipboardStableDelay = TimeSpan.FromMilliseconds(60);
-    private readonly IClipboardCaptureBackend _clipboard = clipboard ?? new NativeClipboardBackend();
+    private readonly IClipboardCaptureBackend _clipboard = clipboard ?? new NativeClipboardBackend(getAedaWindowHandle);
     private readonly IFixedCopyInputSender _input = input ?? new NativeFixedCopyInputSender(getAedaWindowHandle);
     private readonly SemaphoreSlim _captureGate = new(1, 1);
 
@@ -80,6 +82,15 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
                     used: false);
             }
 
+            if (!_clipboard.CanRestore)
+            {
+                return Fail(
+                    request,
+                    SelectedTextCaptureFailure.SafeFailure,
+                    "clipboard-owner-unavailable",
+                    used: false);
+            }
+
             ClipboardCaptureSnapshot? snapshot = null;
             uint copySequence = 0;
             var clipboardChanged = false;
@@ -92,7 +103,13 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
                 snapshot = await Task.Run(_clipboard.TryCapture, cancellationToken);
                 if (snapshot is null)
                 {
-                    return Fail(request, SelectedTextCaptureFailure.ClipboardBusy, "clipboard-busy");
+                    var code = _clipboard.CaptureFailureCode ?? "clipboard-busy";
+                    return Fail(
+                        request,
+                        code == "clipboard-busy"
+                            ? SelectedTextCaptureFailure.ClipboardBusy
+                            : SelectedTextCaptureFailure.SafeFailure,
+                        code);
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -286,30 +303,43 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
 
     private sealed record NativeClipboardSnapshot(uint SequenceNumber, IReadOnlyList<ClipboardFormat> Formats)
     {
-        public static NativeClipboardSnapshot? TryCapture()
+        private const nuint MaxFormatBytes = 64 * 1024 * 1024;
+
+        public static NativeClipboardSnapshot? TryCapture(out string? failureCode)
         {
-            if (!Native.TryOpenClipboard())
+            failureCode = null;
+            if (!Native.TryOpenClipboard(0))
             {
+                failureCode = "clipboard-busy";
                 return null;
             }
 
             try
             {
+                var sequence = Native.GetClipboardSequenceNumber();
                 var formats = new List<ClipboardFormat>();
                 uint format = 0;
                 while ((format = Native.EnumClipboardFormats(format)) != 0)
                 {
+                    if (!IsSupportedHGlobalFormat(format))
+                    {
+                        failureCode = "clipboard-format-unsupported";
+                        return null;
+                    }
+
                     var handle = Native.GetClipboardData(format);
                     var size = handle == 0 ? 0 : Native.GlobalSize(handle);
-                    if (size == 0 || size > 64 * 1024 * 1024)
+                    if (size == 0 || size > MaxFormatBytes)
                     {
-                        continue;
+                        failureCode = "clipboard-format-unavailable";
+                        return null;
                     }
 
                     var pointer = Native.GlobalLock(handle);
                     if (pointer == 0)
                     {
-                        continue;
+                        failureCode = "clipboard-format-unavailable";
+                        return null;
                     }
 
                     try
@@ -324,7 +354,13 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
                     }
                 }
 
-                return new NativeClipboardSnapshot(Native.GetClipboardSequenceNumber(), formats);
+                if (Native.GetClipboardSequenceNumber() != sequence)
+                {
+                    failureCode = "clipboard-changed-during-snapshot";
+                    return null;
+                }
+
+                return new NativeClipboardSnapshot(sequence, formats);
             }
             finally
             {
@@ -335,7 +371,7 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
         public static string? TryReadUnicodeText()
         {
             const uint unicodeText = 13;
-            if (!Native.TryOpenClipboard())
+            if (!Native.TryOpenClipboard(0))
             {
                 return null;
             }
@@ -364,20 +400,20 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
             }
         }
 
-        public static bool TryRestore(NativeClipboardSnapshot snapshot, uint expectedSequence)
+        public static bool TryRestore(
+            NativeClipboardSnapshot snapshot,
+            uint expectedSequence,
+            nint owner)
         {
-            if (!Native.TryOpenClipboard())
+            if (owner == 0 || !Native.IsWindow(owner) ||
+                Native.GetClipboardSequenceNumber() != expectedSequence)
             {
                 return false;
             }
 
+            var prepared = new List<PreparedClipboardFormat>(snapshot.Formats.Count);
             try
             {
-                if (Native.GetClipboardSequenceNumber() != expectedSequence || !Native.EmptyClipboard())
-                {
-                    return false;
-                }
-
                 foreach (var format in snapshot.Formats)
                 {
                     var handle = Native.GlobalAlloc(0x0002, (nuint)format.Bytes.Length);
@@ -386,38 +422,99 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
                         return false;
                     }
 
+                    prepared.Add(new PreparedClipboardFormat(format.Id, handle));
                     var pointer = Native.GlobalLock(handle);
                     if (pointer == 0)
                     {
-                        _ = Native.GlobalFree(handle);
                         return false;
                     }
 
-                    Marshal.Copy(format.Bytes, 0, pointer, format.Bytes.Length);
-                    _ = Native.GlobalUnlock(handle);
-                    if (Native.SetClipboardData(format.Id, handle) == 0)
+                    try
                     {
-                        _ = Native.GlobalFree(handle);
-                        return false;
+                        Marshal.Copy(format.Bytes, 0, pointer, format.Bytes.Length);
+                    }
+                    finally
+                    {
+                        _ = Native.GlobalUnlock(handle);
                     }
                 }
 
-                return true;
+                if (!Native.TryOpenClipboard(owner))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    if (Native.GetClipboardSequenceNumber() != expectedSequence || !Native.EmptyClipboard())
+                    {
+                        return false;
+                    }
+
+                    var restored = true;
+                    foreach (var format in prepared)
+                    {
+                        if (Native.SetClipboardData(format.Id, format.Handle) != 0)
+                        {
+                            format.Transferred = true;
+                        }
+                        else
+                        {
+                            restored = false;
+                        }
+                    }
+
+                    return restored;
+                }
+                finally
+                {
+                    _ = Native.CloseClipboard();
+                }
             }
             finally
             {
-                _ = Native.CloseClipboard();
+                foreach (var format in prepared.Where(format => !format.Transferred))
+                {
+                    _ = Native.GlobalFree(format.Handle);
+                }
             }
+        }
+
+        private static bool IsSupportedHGlobalFormat(uint format) => format switch
+        {
+            1 or 4 or 5 or 6 or 7 or 8 or 10 or 11 or 12 or 13 or 15 or 16 or 17 or 0x81 => true,
+            >= 0xC000 => true,
+            _ => false
+        };
+
+        private sealed class PreparedClipboardFormat(uint id, nint handle)
+        {
+            public uint Id { get; } = id;
+            public nint Handle { get; } = handle;
+            public bool Transferred { get; set; }
         }
     }
 
-    private sealed class NativeClipboardBackend : IClipboardCaptureBackend
+    private sealed class NativeClipboardBackend(Func<nint> getAedaWindowHandle) : IClipboardCaptureBackend
     {
+        public bool CanRestore
+        {
+            get
+            {
+                var owner = getAedaWindowHandle();
+                return owner != 0 && Native.IsWindow(owner);
+            }
+        }
+
+        public string? CaptureFailureCode { get; private set; }
+
         public uint GetSequenceNumber() => Native.GetClipboardSequenceNumber();
 
         public ClipboardCaptureSnapshot? TryCapture()
         {
-            var snapshot = NativeClipboardSnapshot.TryCapture();
+            CaptureFailureCode = null;
+            var snapshot = NativeClipboardSnapshot.TryCapture(out var failureCode);
+            CaptureFailureCode = failureCode;
             return snapshot is null
                 ? null
                 : new ClipboardCaptureSnapshot(snapshot.SequenceNumber, snapshot);
@@ -427,7 +524,7 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
 
         public bool TryRestore(ClipboardCaptureSnapshot snapshot, uint expectedSequence) =>
             snapshot.State is NativeClipboardSnapshot native &&
-            NativeClipboardSnapshot.TryRestore(native, expectedSequence);
+            NativeClipboardSnapshot.TryRestore(native, expectedSequence, getAedaWindowHandle());
     }
 
     private sealed class NativeFixedCopyInputSender : IFixedCopyInputSender
@@ -607,11 +704,11 @@ public sealed class WindowsClipboardCopySelectedTextProvider(
             }
         }
 
-        public static bool TryOpenClipboard()
+        public static bool TryOpenClipboard(nint owner)
         {
             for (var attempt = 0; attempt < 6; attempt++)
             {
-                if (OpenClipboard(0))
+                if (OpenClipboard(owner))
                 {
                     return true;
                 }

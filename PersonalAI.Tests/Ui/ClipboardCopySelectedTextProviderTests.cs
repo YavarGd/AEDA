@@ -25,6 +25,23 @@ public sealed class ClipboardCopySelectedTextProviderTests
             System.Runtime.InteropServices.Marshal.SizeOf(input));
     }
 
+    [Theory]
+    [InlineData(13, true)]
+    [InlineData(0xC000, true)]
+    [InlineData(2, false)]
+    [InlineData(14, false)]
+    public void NativeSnapshotAcceptsOnlyRestorableHGlobalFormats(uint format, bool expected)
+    {
+        var snapshot = typeof(WindowsClipboardCopySelectedTextProvider).GetNestedType(
+            "NativeClipboardSnapshot",
+            System.Reflection.BindingFlags.NonPublic)!;
+        var method = snapshot.GetMethod(
+            "IsSupportedHGlobalFormat",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        Assert.Equal(expected, method.Invoke(null, [format]));
+    }
+
     [Fact]
     public async Task CopyChangeReturnsTextAndRestoresSnapshot()
     {
@@ -112,6 +129,59 @@ public sealed class ClipboardCopySelectedTextProviderTests
         Assert.True(input.FocusRestored);
     }
 
+    [Theory]
+    [InlineData("clipboard-format-unsupported")]
+    [InlineData("clipboard-format-unavailable")]
+    [InlineData("clipboard-changed-during-snapshot")]
+    public async Task IncompleteSnapshotAbortsBeforeCopy(string failureCode)
+    {
+        var clipboard = new FakeClipboard("before", "selected")
+        {
+            CaptureFailureCode = failureCode
+        };
+        var input = new FakeInput();
+        var provider = Provider(clipboard, input);
+
+        var result = await provider.CaptureAsync(Request(), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal(failureCode, result.DiagnosticCode);
+        Assert.Equal(0, input.CopyCalls);
+        Assert.False(clipboard.RestoreCalled);
+    }
+
+    [Fact]
+    public async Task MissingRestoreOwnerAbortsBeforeSnapshotOrCopy()
+    {
+        var clipboard = new FakeClipboard("before", "selected") { CanRestore = false };
+        var input = new FakeInput();
+        var provider = Provider(clipboard, input);
+
+        var result = await provider.CaptureAsync(Request(), CancellationToken.None);
+
+        Assert.Equal("clipboard-owner-unavailable", result.DiagnosticCode);
+        Assert.False(clipboard.CaptureCalled);
+        Assert.Equal(0, input.CopyCalls);
+    }
+
+    [Fact]
+    public async Task CancellationAfterSnapshotButBeforeCopyLeavesClipboardUnchanged()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var clipboard = new FakeClipboard("before", "selected")
+        {
+            OnCapture = cancellation.Cancel
+        };
+        var input = new FakeInput();
+        var provider = Provider(clipboard, input);
+
+        var result = await provider.CaptureAsync(Request(), cancellation.Token);
+
+        Assert.Equal(SelectedTextCaptureFailure.Cancelled, result.FailureReason);
+        Assert.Equal(0, input.CopyCalls);
+        Assert.False(clipboard.RestoreCalled);
+    }
+
     [Fact]
     public async Task ElevatedTargetIsRejectedBeforeClipboardOrInput()
     {
@@ -123,6 +193,38 @@ public sealed class ClipboardCopySelectedTextProviderTests
 
         Assert.Equal(SelectedTextCaptureFailure.ElevatedTarget, result.FailureReason);
         Assert.False(result.ClipboardFallbackUsed);
+        Assert.False(clipboard.CaptureCalled);
+        Assert.Equal(0, input.CopyCalls);
+    }
+
+    [Fact]
+    public async Task PrivacyExcludedTargetIsRejectedBeforeClipboardOrInput()
+    {
+        var clipboard = new FakeClipboard("before", "selected");
+        var input = new FakeInput();
+        var provider = Provider(clipboard, input);
+        var request = Request() with
+        {
+            Foreground = Foreground with { ProcessName = "1Password", WindowTitle = "Vault" }
+        };
+
+        var result = await provider.CaptureAsync(request, CancellationToken.None);
+
+        Assert.Equal(SelectedTextCaptureFailure.PrivacyBlocked, result.FailureReason);
+        Assert.False(clipboard.CaptureCalled);
+        Assert.Equal(0, input.CopyCalls);
+    }
+
+    [Fact]
+    public async Task PasswordTargetIsRejectedBeforeClipboardOrInput()
+    {
+        var clipboard = new FakeClipboard("before", "selected");
+        var input = new FakeInput { ValidationFailure = SelectedTextCaptureFailure.PasswordControl };
+        var provider = Provider(clipboard, input);
+
+        var result = await provider.CaptureAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(SelectedTextCaptureFailure.PasswordControl, result.FailureReason);
         Assert.False(clipboard.CaptureCalled);
         Assert.Equal(0, input.CopyCalls);
     }
@@ -243,18 +345,27 @@ public sealed class ClipboardCopySelectedTextProviderTests
 
     private sealed class FakeClipboard(string before, string copied) : IClipboardCaptureBackend
     {
+        public bool CanRestore { get; init; } = true;
+        public string? CaptureFailureCode { get; init; }
         public uint Sequence { get; set; } = 10;
         public bool CaptureCalled { get; private set; }
         public bool RestoreCalled { get; private set; }
         public bool RaceBeforeRestore { get; init; }
         public object SnapshotState { get; init; } = before;
         public object? RestoredState { get; private set; }
+        public Action? OnCapture { get; init; }
 
         public uint GetSequenceNumber() => Sequence;
 
         public ClipboardCaptureSnapshot? TryCapture()
         {
             CaptureCalled = true;
+            OnCapture?.Invoke();
+            if (CaptureFailureCode is not null)
+            {
+                return null;
+            }
+
             return new ClipboardCaptureSnapshot(Sequence, SnapshotState);
         }
 
