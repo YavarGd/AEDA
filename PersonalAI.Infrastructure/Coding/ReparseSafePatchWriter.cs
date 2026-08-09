@@ -363,11 +363,11 @@ internal static class ReparseSafePatchWriter
 
     private static void TryDelete(SafeFileHandle handle)
     {
-        var buffer = Marshal.AllocHGlobal(sizeof(int));
+        var buffer = Marshal.AllocHGlobal(sizeof(byte));
         try
         {
-            Marshal.WriteInt32(buffer, 1);
-            _ = SetFileInformationByHandle(handle, FileDispositionInfo, buffer, sizeof(int));
+            Marshal.WriteByte(buffer, 1);
+            _ = SetFileInformationByHandle(handle, FileDispositionInfo, buffer, sizeof(byte));
         }
         finally
         {
