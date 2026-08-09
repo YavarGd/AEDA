@@ -235,6 +235,157 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_JournalFailurePreventsFirstMutation()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var repository = new InterceptingApplyRepository(
+            _applyRepository,
+            (save, result, backups, _) =>
+            {
+                Assert.Equal(1, save);
+                Assert.Equal(PatchApplyStatus.Applying, result.Status);
+                Assert.Single(backups);
+                Assert.Equal("old\n", Read("src/App.cs"));
+                throw new IOException("journal_failed");
+            });
+        var service = new PatchApplyService(
+            _proposalRepository,
+            repository,
+            CreateValidator(),
+            _reader,
+            _approvals);
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        await Assert.ThrowsAsync<IOException>(() => service.ApplyAsync(
+            new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision)));
+
+        Assert.Equal("old\n", Read("src/App.cs"));
+        Assert.Empty(await _applyRepository.ListRecentApplyResultsAsync());
+    }
+
+    [Fact]
+    public async Task Apply_CancellationBeforeJournalPreventsFirstMutation()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        using var cancellation = new CancellationTokenSource();
+        var cancellingReader = new AfterReadWorkspaceReader(_reader, 2, cancellation.Cancel);
+        var service = new PatchApplyService(
+            _proposalRepository,
+            _applyRepository,
+            new PatchApplyValidator(_proposalRepository, cancellingReader, _resolver),
+            cancellingReader,
+            _approvals);
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.ApplyAsync(
+            new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision),
+            cancellation.Token));
+
+        Assert.Equal("old\n", Read("src/App.cs"));
+        Assert.Empty(await _applyRepository.ListRecentApplyResultsAsync());
+    }
+
+    [Fact]
+    public async Task Apply_InterruptedFinalizationLeavesApplyingJournalVisibleAfterRestart()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        PatchApplyResultId resultId = default;
+        var repository = new InterceptingApplyRepository(
+            _applyRepository,
+            (save, result, backups, _) =>
+            {
+                resultId = result.Id;
+                if (save == 2)
+                {
+                    Assert.Empty(backups);
+                    throw new IOException("simulated_process_interruption");
+                }
+            });
+        var service = new PatchApplyService(
+            _proposalRepository,
+            repository,
+            CreateValidator(),
+            _reader,
+            _approvals);
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        await Assert.ThrowsAsync<IOException>(() => service.ApplyAsync(
+            new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision)));
+
+        var restartedRepository = new SqlitePatchApplyRepository(Path.Combine(_root, "apply.db"));
+        await restartedRepository.InitializeAsync();
+        var interrupted = await restartedRepository.GetApplyResultAsync(resultId);
+        var backups = await restartedRepository.ListBackupsAsync(resultId);
+        Assert.Equal("new\n", Read("src/App.cs"));
+        Assert.NotNull(interrupted);
+        Assert.Equal(PatchApplyStatus.Applying, interrupted.Status);
+        Assert.Single(interrupted.Files);
+        Assert.Equal(PatchApplyStatus.Applying, interrupted.Files[0].Status);
+        Assert.Single(backups);
+        Assert.Equal("old\n", backups[0].OriginalContent);
+        Assert.Equal(CodeContextService.ComputeHash("old\n"), backups[0].OriginalContentHash);
+    }
+
+    [Fact]
+    public async Task Apply_CancellationAfterFirstWritePersistsPartialRecoveryWithCancelledCallerToken()
+    {
+        await InitializeAsync();
+        Write("src/One.cs", "one\n");
+        Write("src/Two.cs", "two\n");
+        var proposal = await SaveProposalAsync([
+            Edit("src/One.cs", "one\n", "changed one\n"),
+            Edit("src/Two.cs", "two\n", "changed two\n")
+        ]);
+        using var cancellation = new CancellationTokenSource();
+        var runtime = new CancelOnFirstAppliedFileTaskRuntime(cancellation);
+        var repository = new InterceptingApplyRepository(
+            _applyRepository,
+            (save, _, backups, token) =>
+            {
+                if (save == 2)
+                {
+                    Assert.Empty(backups);
+                    Assert.False(token.IsCancellationRequested);
+                }
+            });
+        var service = new PatchApplyService(
+            _proposalRepository,
+            repository,
+            CreateValidator(),
+            _reader,
+            _approvals,
+            runtime);
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        var result = await service.ApplyAsync(
+            new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision),
+            cancellation.Token);
+
+        var restartedRepository = new SqlitePatchApplyRepository(Path.Combine(_root, "apply.db"));
+        await restartedRepository.InitializeAsync();
+        var persisted = await restartedRepository.GetApplyResultAsync(result.Id);
+        var backups = await restartedRepository.ListBackupsAsync(result.Id);
+        Assert.Equal(PatchApplyStatus.PartiallyApplied, result.Status);
+        Assert.Equal("changed one\n", Read("src/One.cs"));
+        Assert.Equal("two\n", Read("src/Two.cs"));
+        Assert.NotNull(persisted);
+        Assert.Equal(PatchApplyStatus.PartiallyApplied, persisted.Status);
+        Assert.Equal(PatchApplyStatus.Applied, persisted.Files[0].Status);
+        Assert.Equal(PatchApplyStatus.Cancelled, persisted.Files[1].Status);
+        Assert.Equal(2, backups.Count);
+    }
+
+    [Fact]
     public async Task Apply_ApprovedModifyCreatesBackupAndRollbackRestores()
     {
         await InitializeAsync();
@@ -254,6 +405,7 @@ public sealed class PatchApplyFoundationTests : IDisposable
         Assert.Equal(PatchApplyStatus.Applied, result.Status);
         Assert.Equal("new\n", Read("src/App.cs"));
         Assert.Single(backups);
+        Assert.Equal(PatchApplyStatus.Applied, (await _applyRepository.GetApplyResultAsync(result.Id))?.Status);
         var rollback = await service.RollbackAsync(new PatchRollbackRequest(
             result.Id,
             _workspace.Id));
@@ -520,6 +672,15 @@ public sealed class PatchApplyFoundationTests : IDisposable
         Assert.Equal(PatchApplyStatus.PartiallyApplied, result.Status);
         Assert.Equal("two\n", Read("src/One.cs"));
         Assert.Contains(PatchApplyFailureReason.WriteFailed, result.FailureReasons);
+        var restartedRepository = new SqlitePatchApplyRepository(Path.Combine(_root, "apply.db"));
+        await restartedRepository.InitializeAsync();
+        var persisted = await restartedRepository.GetApplyResultAsync(result.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(PatchApplyStatus.PartiallyApplied, persisted.Status);
+        Assert.Equal(2, persisted.Files.Count);
+        Assert.Equal(PatchApplyStatus.Applied, persisted.Files[0].Status);
+        Assert.Equal(PatchApplyStatus.Failed, persisted.Files[1].Status);
+        Assert.Equal(2, (await restartedRepository.ListBackupsAsync(result.Id)).Count);
     }
 
     [Fact]
@@ -784,6 +945,111 @@ public sealed class PatchApplyFoundationTests : IDisposable
                 matchCase,
                 maxResults,
                 cancellationToken);
+    }
+
+    private sealed class InterceptingApplyRepository(
+        IPatchApplyRepository inner,
+        Action<int, PatchApplyResult, IReadOnlyList<PatchApplyBackup>, CancellationToken> beforeSave)
+        : IPatchApplyRepository
+    {
+        private int _saveCount;
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public async Task CreateApplyResultAsync(
+            PatchApplyResult result,
+            IReadOnlyList<PatchApplyBackup> backups,
+            CancellationToken cancellationToken = default)
+        {
+            beforeSave(Interlocked.Increment(ref _saveCount), result, backups, cancellationToken);
+            await inner.CreateApplyResultAsync(result, backups, cancellationToken);
+        }
+
+        public Task<PatchApplyResult?> GetApplyResultAsync(
+            PatchApplyResultId resultId,
+            CancellationToken cancellationToken = default) =>
+            inner.GetApplyResultAsync(resultId, cancellationToken);
+
+        public Task<IReadOnlyList<PatchApplyResult>> ListRecentApplyResultsAsync(
+            int limit = 50,
+            CancellationToken cancellationToken = default) =>
+            inner.ListRecentApplyResultsAsync(limit, cancellationToken);
+
+        public Task<IReadOnlyList<PatchApplyBackup>> ListBackupsAsync(
+            PatchApplyResultId resultId,
+            CancellationToken cancellationToken = default) =>
+            inner.ListBackupsAsync(resultId, cancellationToken);
+
+        public Task CreateRollbackResultAsync(
+            PatchRollbackResult result,
+            CancellationToken cancellationToken = default) =>
+            inner.CreateRollbackResultAsync(result, cancellationToken);
+
+        public Task<PatchRollbackResult?> GetRollbackResultAsync(
+            PatchRollbackResultId resultId,
+            CancellationToken cancellationToken = default) =>
+            inner.GetRollbackResultAsync(resultId, cancellationToken);
+    }
+
+    private sealed class CancelOnFirstAppliedFileTaskRuntime(CancellationTokenSource cancellation)
+        : ITaskRuntime
+    {
+        private readonly TaskRun _run = TaskRun.Create("Patch apply", "aeda-code");
+
+        public ValueTask<TaskRun> StartTaskAsync(string title, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(_run);
+
+        public ValueTask<TaskRun> StartTaskAsync(
+            string title,
+            string source = "unknown",
+            Guid? conversationId = null,
+            string? model = null,
+            string? provider = null,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(_run);
+
+        public ValueTask AppendEventAsync(
+            TaskId taskId,
+            TaskEventKind kind,
+            string summary,
+            CancellationToken cancellationToken = default)
+        {
+            if (kind == TaskEventKind.PatchFileApplied)
+            {
+                cancellation.Cancel();
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask AttachArtifactAsync(
+            TaskId taskId,
+            TaskArtifact artifact,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask CompleteTaskAsync(
+            TaskId taskId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask CancelTaskAsync(
+            TaskId taskId,
+            TaskCancellationReason reason,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask FailTaskAsync(
+            TaskId taskId,
+            string safeErrorCode,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask<TaskRunRecord?> GetTaskAsync(
+            TaskId taskId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<TaskRunRecord?>(null);
     }
 
     public void Dispose()

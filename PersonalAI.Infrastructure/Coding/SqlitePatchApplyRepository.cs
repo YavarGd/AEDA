@@ -190,7 +190,12 @@ public sealed class SqlitePatchApplyRepository(string databasePath)
                 created_at_utc, updated_at_utc)
             VALUES (
                 $id, $proposal_id, $workspace_id, $status, $files_json, $failures_json,
-                $created_at_utc, $updated_at_utc);
+                $created_at_utc, $updated_at_utc)
+            ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                files_json = excluded.files_json,
+                failures_json = excluded.failures_json,
+                updated_at_utc = excluded.updated_at_utc;
             """;
         Add(command, "$id", result.Id.ToString());
         Add(command, "$proposal_id", result.ProposalId.ToString());
