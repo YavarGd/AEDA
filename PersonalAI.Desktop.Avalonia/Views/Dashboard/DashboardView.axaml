@@ -10,7 +10,7 @@
         <TextBlock Text="AEDA" FontSize="26" FontWeight="SemiBold" />
         <TextBlock Classes="metadata"
                    TextWrapping="Wrap"
-                   Text="Local-first assistant. Start in General chat; other modules arrive in later steps." />
+                   Text="Local-first assistant. Start in General chat." />
       </StackPanel>
 
       <!-- Bounded status summary -->
