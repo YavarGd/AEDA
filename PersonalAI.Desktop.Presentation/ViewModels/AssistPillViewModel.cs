@@ -8,7 +8,7 @@ using PersonalAI.Desktop.Presentation.Services;
 
 namespace PersonalAI.Desktop.Presentation.ViewModels;
 
-public sealed partial class AssistPillViewModel : ObservableObject
+public sealed partial class AssistPillViewModel : ObservableObject, IAsyncDisposable
 {
     public const string AutomaticContextPrompt =
         "Explain the selected content clearly and concisely.";
@@ -18,12 +18,17 @@ public sealed partial class AssistPillViewModel : ObservableObject
     private AssistPillSettings _settings;
     private string _safeFullResponse = string.Empty;
     private CancellationTokenSource? _generationCancellation;
+    private CancellationTokenSource? _contextCaptureCancellation;
     private CancellationTokenSource? _screenCaptureCancellation;
+    private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private Task? _contextCaptureTask;
+    private Task? _screenCaptureTask;
     private Task? _generationTask;
     private PersonalAI.Core.Context.AttachedContextItem? _context;
     private int _isOpening;
     private string? _lastPrompt;
     private long _invocationId;
+    private int _disposed;
 
     public AssistPillViewModel(
         IAssistPillHost host,
@@ -107,11 +112,17 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
     public async Task<bool> OpenPromptAsync(CancellationToken cancellationToken = default)
     {
-        if (!IsEnabled || Interlocked.CompareExchange(ref _isOpening, 1, 0) != 0)
+        if (Volatile.Read(ref _disposed) != 0 ||
+            !IsEnabled ||
+            Interlocked.CompareExchange(ref _isOpening, 1, 0) != 0)
         {
             return false;
         }
 
+        using var captureCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _lifetimeCancellation.Token);
+        _contextCaptureCancellation = captureCancellation;
         try
         {
             var invocationId = PrepareForInvocation();
@@ -119,7 +130,9 @@ public sealed partial class AssistPillViewModel : ObservableObject
             StatusText = "Reading selected text";
             try
             {
-                _context = await _host.CaptureContextAsync(cancellationToken);
+                var captureTask = _host.CaptureContextAsync(captureCancellation.Token);
+                _contextCaptureTask = captureTask;
+                _context = await captureTask;
             }
             catch (OperationCanceledException)
             {
@@ -153,6 +166,12 @@ public sealed partial class AssistPillViewModel : ObservableObject
         }
         finally
         {
+            if (ReferenceEquals(_contextCaptureCancellation, captureCancellation))
+            {
+                _contextCaptureCancellation = null;
+                _contextCaptureTask = null;
+            }
+
             Interlocked.Exchange(ref _isOpening, 0);
         }
     }
@@ -160,20 +179,24 @@ public sealed partial class AssistPillViewModel : ObservableObject
     [RelayCommand]
     public async Task SelectScreenTextAsync()
     {
-        if (!IsFallbackInput ||
+        if (Volatile.Read(ref _disposed) != 0 ||
+            !IsFallbackInput ||
             Interlocked.CompareExchange(ref _isOpening, 1, 0) != 0)
         {
             return;
         }
 
         var invocationId = InvocationId;
-        var cancellation = new CancellationTokenSource();
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCancellation.Token);
         _screenCaptureCancellation = cancellation;
         try
         {
             State = AssistPillState.DetectingContext;
             StatusText = "Select text on screen";
-            _context = await _host.CaptureScreenTextAsync(cancellation.Token);
+            var captureTask = _host.CaptureScreenTextAsync(cancellation.Token);
+            _screenCaptureTask = captureTask;
+            _context = await captureTask;
             if (invocationId != InvocationId)
             {
                 return;
@@ -214,6 +237,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
             if (ReferenceEquals(_screenCaptureCancellation, cancellation))
             {
                 _screenCaptureCancellation = null;
+                _screenCaptureTask = null;
             }
 
             cancellation.Dispose();
@@ -221,7 +245,11 @@ public sealed partial class AssistPillViewModel : ObservableObject
         }
     }
 
-    public void CancelContextCapture() => _screenCaptureCancellation?.Cancel();
+    public void CancelContextCapture()
+    {
+        _contextCaptureCancellation?.Cancel();
+        _screenCaptureCancellation?.Cancel();
+    }
 
     [RelayCommand(CanExecute = nameof(CanSubmit))]
     public async Task SubmitAsync()
@@ -250,7 +278,7 @@ public sealed partial class AssistPillViewModel : ObservableObject
         {
             try
             {
-                _context = await _host.CaptureContextAsync(CancellationToken.None);
+                _context = await _host.CaptureContextAsync(_lifetimeCancellation.Token);
             }
             catch
             {
@@ -332,6 +360,38 @@ public sealed partial class AssistPillViewModel : ObservableObject
 
     public Task WaitForGenerationAsync() => _generationTask ?? Task.CompletedTask;
 
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _invocationId);
+        _lifetimeCancellation.Cancel();
+        _contextCaptureCancellation?.Cancel();
+        _screenCaptureCancellation?.Cancel();
+        _generationCancellation?.Cancel();
+        var tasks = new[] { _contextCaptureTask, _screenCaptureTask, _generationTask }
+            .Where(task => task is not null)
+            .Cast<Task>()
+            .ToArray();
+        if (tasks.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(1));
+        }
+        catch
+        {
+            // Cancellation is expected. An uncooperative external operation is
+            // quarantined by its provider and cannot update this disposed view model.
+        }
+    }
+
     partial void OnPromptChanged(string value)
     {
         OnPropertyChanged(nameof(CanSubmit));
@@ -396,7 +456,8 @@ public sealed partial class AssistPillViewModel : ObservableObject
             ? "Using text selected from screen"
             : _context is null ? "Generating" : "Using selected text";
         State = AssistPillState.StreamingResponse;
-        var cancellation = new CancellationTokenSource();
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCancellation.Token);
         _generationCancellation = cancellation;
         _generationTask = RunGenerationAsync(prompt, invocationId, cancellation);
         return _generationTask;

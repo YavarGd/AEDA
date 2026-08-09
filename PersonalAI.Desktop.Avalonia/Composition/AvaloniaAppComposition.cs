@@ -27,6 +27,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     private readonly AvaloniaPermissionBroker _permissionBroker;
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly ExternalForegroundWindowMonitor _foregroundWindowMonitor;
+    private readonly WindowsUiaSelectedTextProvider _uiaSelectedTextProvider;
     private AvaloniaAssistWindow? _assistWindow;
     private nint _assistWindowHandle;
 
@@ -58,6 +59,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
         _foregroundWindowMonitor = new ExternalForegroundWindowMonitor(
             _foregroundWindowTracker,
             GetAedaWindowHandle);
+        _uiaSelectedTextProvider = new WindowsUiaSelectedTextProvider();
         SettingsView? settingsView = null;
         var folderPicker = new AvaloniaFolderPickerService(() =>
             settingsView is null ? null : TopLevel.GetTopLevel(settingsView));
@@ -91,7 +93,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
                 GetAedaWindowHandle,
                 runtime.Settings,
                 new UniversalSelectedTextService(
-                    new WindowsUiaSelectedTextProvider(),
+                    _uiaSelectedTextProvider,
                     new WindowsClipboardCopySelectedTextProvider(GetAedaWindowHandle))),
             new AvaloniaScreenTextCaptureService(
                 () => TopLevel.GetTopLevel(assistView)?.Screens?.All ?? []),
@@ -236,7 +238,9 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Chat.Dispose();
-        _foregroundWindowMonitor.Dispose();
+        await Assist.DisposeAsync();
+        await _foregroundWindowMonitor.DisposeAsync();
+        await _uiaSelectedTextProvider.DisposeAsync();
         _themeManager.Dispose();
         _permissionBroker.Dispose();
         await Runtime.DisposeAsync();

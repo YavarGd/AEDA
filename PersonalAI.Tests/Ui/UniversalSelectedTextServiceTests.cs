@@ -2,6 +2,7 @@ using PersonalAI.Core.Context;
 using PersonalAI.Core.Settings;
 using PersonalAI.Desktop.Presentation.Services;
 using PersonalAI.Infrastructure.Context;
+using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Tests.Ui;
 
@@ -56,6 +57,30 @@ public sealed class UniversalSelectedTextServiceTests
         Assert.Equal(SelectedTextCaptureSource.ClipboardCopyFallback, result.Source);
         Assert.Equal("copied", result.Text);
         Assert.Equal(1, copy.Calls);
+    }
+
+    [Fact]
+    public async Task TimedOutUiaFallsThroughWithoutStartingAnotherNativeWorker()
+    {
+        using var release = new ManualResetEventSlim();
+        var invocations = 0;
+        await using var uia = new WindowsUiaSelectedTextProvider((_, _) =>
+        {
+            Interlocked.Increment(ref invocations);
+            release.Wait();
+            return "late";
+        }, TimeSpan.FromMilliseconds(20));
+        var copy = new FakeCopy { Text = "copied" };
+        var service = new UniversalSelectedTextService(uia, copy);
+
+        var first = await service.CaptureAsync(Request(Foreground), CancellationToken.None);
+        var second = await service.CaptureAsync(Request(Foreground), CancellationToken.None);
+
+        Assert.Equal(SelectedTextCaptureSource.ClipboardCopyFallback, first.Source);
+        Assert.Equal(SelectedTextCaptureSource.ClipboardCopyFallback, second.Source);
+        Assert.Equal(1, invocations);
+        Assert.Equal(2, copy.Calls);
+        release.Set();
     }
 
     [Theory]
