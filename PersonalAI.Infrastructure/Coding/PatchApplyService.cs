@@ -65,64 +65,88 @@ public sealed class PatchApplyService(
 
         await AppendAsync(TaskEventKind.PatchApplyStarted, "Patch apply started.", cancellationToken);
         var resultId = PatchApplyResultId.NewId();
-        var fileResults = new List<PatchApplyFileResult>();
         var backups = new List<PatchApplyBackup>();
         var failures = new List<PatchApplyFailureReason>();
+        var fileResults = proposal.Files
+            .Select(file => new PatchApplyFileResult(
+                file.RelativePath,
+                file.ChangeKind,
+                file.ChangeKind == PatchProposalFileChangeKind.NoOp
+                    ? PatchApplyStatus.Applied
+                    : PatchApplyStatus.Applying))
+            .ToList();
 
-        foreach (var file in proposal.Files)
+        foreach (var file in proposal.Files.Where(file => file.ChangeKind != PatchProposalFileChangeKind.NoOp))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            backups.Add(CreateBackup(resultId, proposal, file, cancellationToken));
+            await AppendAsync(TaskEventKind.PatchFileBackupCreated, "Patch file backup created.", cancellationToken);
+        }
+
+        var journal = CreateResult(
+            resultId,
+            request,
+            PatchApplyStatus.Applying,
+            fileResults,
+            []);
+        await applyRepository.CreateApplyResultAsync(journal, backups, cancellationToken);
+
+        for (var index = 0; index < proposal.Files.Count; index++)
+        {
+            var file = proposal.Files[index];
             if (file.ChangeKind == PatchProposalFileChangeKind.NoOp)
             {
-                fileResults.Add(new PatchApplyFileResult(
-                    file.RelativePath,
-                    file.ChangeKind,
-                    PatchApplyStatus.Applied));
                 continue;
             }
 
             try
             {
-                var backup = CreateBackup(resultId, proposal, file, cancellationToken);
-                backups.Add(backup);
-                await AppendAsync(TaskEventKind.PatchFileBackupCreated, "Patch file backup created.", cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 WriteProposedContent(proposal.WorkspaceId, file, cancellationToken);
-                fileResults.Add(new PatchApplyFileResult(
+                fileResults[index] = new PatchApplyFileResult(
                     file.RelativePath,
                     file.ChangeKind,
-                    PatchApplyStatus.Applied));
+                    PatchApplyStatus.Applied);
                 await AppendAsync(TaskEventKind.PatchFileApplied, "Patch file applied.", cancellationToken);
             }
             catch (OperationCanceledException)
             {
                 failures.Add(PatchApplyFailureReason.Cancelled);
-                fileResults.Add(new PatchApplyFileResult(
+                fileResults[index] = new PatchApplyFileResult(
                     file.RelativePath,
                     file.ChangeKind,
                     PatchApplyStatus.Cancelled,
-                    PatchApplyFailureReason.Cancelled));
+                    PatchApplyFailureReason.Cancelled);
                 break;
             }
             catch (InvalidOperationException exception)
             {
                 var reason = MapFailure(exception.Message);
                 failures.Add(reason);
-                fileResults.Add(new PatchApplyFileResult(
+                fileResults[index] = new PatchApplyFileResult(
                     file.RelativePath,
                     file.ChangeKind,
                     PatchApplyStatus.Failed,
-                    reason));
+                    reason);
                 break;
             }
             catch
             {
                 failures.Add(PatchApplyFailureReason.WriteFailed);
-                fileResults.Add(new PatchApplyFileResult(
+                fileResults[index] = new PatchApplyFileResult(
                     file.RelativePath,
                     file.ChangeKind,
                     PatchApplyStatus.Failed,
-                    PatchApplyFailureReason.WriteFailed));
+                    PatchApplyFailureReason.WriteFailed);
                 break;
+            }
+        }
+
+        for (var index = 0; index < fileResults.Count; index++)
+        {
+            if (fileResults[index].Status == PatchApplyStatus.Applying)
+            {
+                fileResults[index] = fileResults[index] with { Status = PatchApplyStatus.NotStarted };
             }
         }
 
@@ -130,9 +154,17 @@ public sealed class PatchApplyService(
             ? PatchApplyStatus.Applied
             : fileResults.Any(file => file.Status == PatchApplyStatus.Applied)
                 ? PatchApplyStatus.PartiallyApplied
-                : PatchApplyStatus.Failed;
-        var result = CreateResult(resultId, request, status, fileResults, failures);
-        await applyRepository.CreateApplyResultAsync(result, backups, cancellationToken);
+                : failures.Contains(PatchApplyFailureReason.Cancelled)
+                    ? PatchApplyStatus.Cancelled
+                    : PatchApplyStatus.Failed;
+        var result = journal with
+        {
+            Status = status,
+            Files = fileResults,
+            FailureReasons = failures,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        };
+        await applyRepository.CreateApplyResultAsync(result, [], CancellationToken.None);
         if (status == PatchApplyStatus.Applied)
         {
             await proposalRepository.UpdateStatusAsync(request.ProposalId, PatchProposalStatus.Applied, cancellationToken);
