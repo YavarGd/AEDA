@@ -261,7 +261,7 @@ public sealed class PatchApplyService(
                     WriteBytes(
                         request.WorkspaceId,
                         backup.RelativePath,
-                        backup.OriginalBytes ?? EncodeLegacyBackup(backup),
+                        EncodeBackup(backup),
                         replaceExisting: true,
                         cancellationToken: cancellationToken);
                     files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RolledBack));
@@ -382,8 +382,7 @@ public sealed class PatchApplyService(
             file.ProposedContentHash,
             DateTimeOffset.UtcNow,
             file.ChangeKind,
-            current.EncodingName,
-            originalBytes);
+            DescribeEncoding(originalBytes, current.EncodingName));
     }
 
     private void WriteProposedContent(WorkspaceId workspaceId, PatchProposalFile file, CancellationToken cancellationToken)
@@ -439,17 +438,48 @@ public sealed class PatchApplyService(
         return text.Length > 0 && text[0] == '\uFEFF' ? text[1..] : text;
     }
 
-    private static byte[] EncodeLegacyBackup(PatchApplyBackup backup)
+    private static byte[] EncodeBackup(PatchApplyBackup backup)
     {
-        var encoding = CreateEncoding(backup.EncodingName);
-        var content = encoding.GetBytes(backup.OriginalContent);
-        if (string.Equals(backup.EncodingName, "utf-8", StringComparison.OrdinalIgnoreCase))
+        var normalized = backup.EncodingName.ToLowerInvariant();
+        var encoding = normalized switch
         {
-            return content;
+            "utf-8" or "utf-8-bom" => new UTF8Encoding(false, true),
+            "utf-16" or "utf-16le-bom" => new UnicodeEncoding(false, false, true),
+            "utf-16be" or "utf-16be-bom" => new UnicodeEncoding(true, false, true),
+            _ => Encoding.GetEncoding(
+                backup.EncodingName,
+                EncoderFallback.ExceptionFallback,
+                DecoderFallback.ExceptionFallback)
+        };
+        var content = encoding.GetBytes(backup.OriginalContent);
+        var preamble = normalized switch
+        {
+            "utf-8-bom" => new UTF8Encoding(true, true).GetPreamble(),
+            "utf-16" or "utf-16le-bom" => new UnicodeEncoding(false, true, true).GetPreamble(),
+            "utf-16be" or "utf-16be-bom" => new UnicodeEncoding(true, true, true).GetPreamble(),
+            _ => []
+        };
+        return preamble.Length == 0 ? content : [.. preamble, .. content];
+    }
+
+    private static string DescribeEncoding(byte[] bytes, string encodingName)
+    {
+        if (bytes.AsSpan().StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }))
+        {
+            return "utf-8-bom";
         }
 
-        var preamble = encoding.GetPreamble();
-        return [.. preamble, .. content];
+        if (bytes.AsSpan().StartsWith(new byte[] { 0xFF, 0xFE }))
+        {
+            return "utf-16le-bom";
+        }
+
+        if (bytes.AsSpan().StartsWith(new byte[] { 0xFE, 0xFF }))
+        {
+            return "utf-16be-bom";
+        }
+
+        return encodingName;
     }
 
     private static Encoding CreateEncoding(string name) => name.ToLowerInvariant() switch
