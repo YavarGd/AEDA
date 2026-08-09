@@ -387,6 +387,241 @@ public sealed class AvaloniaChatViewModelTests
     }
 
     [Fact]
+    public async Task LiveActivityChunk_ProducesExactlyOneToolActivityItem_AndAssistantTextStreamsSeparately()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider
+        {
+            Chunks =
+            [
+                new ChatChunk("", false, [], "Read file · Running", "call-1"),
+                new ChatChunk("Hello", true)
+            ]
+        };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        var toolItems = viewModel.Messages.Where(message => message.Role == ChatRole.Tool).ToArray();
+        var assistant = Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Assistant);
+        Assert.Single(toolItems);
+        Assert.Equal("Read file · Running", toolItems[0].Content);
+        Assert.Equal("Hello", assistant.Content);
+        Assert.Equal("Read file · Running", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task RepeatedChunks_SharingActivityKey_CoalesceIntoOneItem()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider
+        {
+            Chunks =
+            [
+                new ChatChunk("", false, [], "Read file · Running", "call-1"),
+                new ChatChunk("", false, [], "Read file · Completed", "call-1"),
+                new ChatChunk("Done", true)
+            ]
+        };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        var toolItems = viewModel.Messages.Where(message => message.Role == ChatRole.Tool).ToArray();
+        var toolItem = Assert.Single(toolItems);
+        Assert.Equal("Read file · Completed", toolItem.Content);
+    }
+
+    [Fact]
+    public async Task FailedActivity_ShowsSafeFailureStatus_NotRawDetail()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider
+        {
+            Chunks =
+            [
+                new ChatChunk("", false, [], "Read file · Permission denied", "call-1"),
+                new ChatChunk("Sorry", true)
+            ]
+        };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        var toolItem = Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Tool);
+        Assert.Equal("Read file · Permission denied", toolItem.Content);
+    }
+
+    [Fact]
+    public async Task PersistedToolRecord_Reopens_AsFriendlyActivity_NotRawJson()
+    {
+        var repository = new MemoryRepository();
+        var conversation = await repository.CreateConversationAsync(new Conversation(
+            Guid.NewGuid(), "Stored", "test", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, ConversationStatus.Completed));
+        await repository.AddMessageAsync(new StoredChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.User, "hello", DateTimeOffset.UtcNow));
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            conversation.Id,
+            ChatRole.Tool,
+            "{\"toolName\":\"workspace.file.read_text\",\"status\":\"Succeeded\"}",
+            DateTimeOffset.UtcNow));
+        await repository.AddMessageAsync(new StoredChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Assistant, "answer", DateTimeOffset.UtcNow));
+        var viewModel = Create(repository, []);
+
+        await viewModel.OpenConversationAsync(conversation.Id);
+
+        var toolItem = Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Tool);
+        Assert.DoesNotContain("toolName", toolItem.Content);
+        Assert.DoesNotContain("{", toolItem.Content);
+        Assert.Contains("Read file", toolItem.Content);
+    }
+
+    [Fact]
+    public async Task PersistedToolRecord_SecretLikeRawFields_AreNotSurfaced()
+    {
+        var repository = new MemoryRepository();
+        var conversation = await repository.CreateConversationAsync(new Conversation(
+            Guid.NewGuid(), "Stored", "test", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, ConversationStatus.Completed));
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            conversation.Id,
+            ChatRole.Tool,
+            "{\"toolName\":\"workspace.file.read_text\",\"status\":\"Succeeded\",\"apiKey\":\"sk-super-secret\",\"secret\":\"do-not-show\"}",
+            DateTimeOffset.UtcNow));
+        var viewModel = Create(repository, []);
+
+        await viewModel.OpenConversationAsync(conversation.Id);
+
+        var toolItem = Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Tool);
+        Assert.DoesNotContain("sk-super-secret", toolItem.Content);
+        Assert.DoesNotContain("do-not-show", toolItem.Content);
+        Assert.DoesNotContain("apiKey", toolItem.Content);
+    }
+
+    [Fact]
+    public async Task PersistedToolRecord_PrivateReasoningFields_AreNotSurfaced()
+    {
+        var repository = new MemoryRepository();
+        var conversation = await repository.CreateConversationAsync(new Conversation(
+            Guid.NewGuid(), "Stored", "test", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, ConversationStatus.Completed));
+        await repository.AddMessageAsync(new StoredChatMessage(
+            Guid.NewGuid(),
+            conversation.Id,
+            ChatRole.Tool,
+            "{\"toolName\":\"workspace.text.search\",\"status\":\"Succeeded\",\"reasoning\":\"internal chain of thought\",\"thought\":\"private plan\"}",
+            DateTimeOffset.UtcNow));
+        var viewModel = Create(repository, []);
+
+        await viewModel.OpenConversationAsync(conversation.Id);
+
+        var toolItem = Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Tool);
+        Assert.DoesNotContain("internal chain of thought", toolItem.Content);
+        Assert.DoesNotContain("private plan", toolItem.Content);
+        Assert.DoesNotContain("reasoning", toolItem.Content);
+        Assert.DoesNotContain("thought", toolItem.Content);
+    }
+
+    [Fact]
+    public async Task PromptReconstruction_TreatsToolRecords_ExactlyLikeWinUI()
+    {
+        // TryGetGenerationPromptFor's priorHistory is unfiltered (ported verbatim from WinUI):
+        // a Tool activity item left over from an earlier turn is replayed into a later
+        // Retry/Regenerate's history exactly as WinUI does, while a fresh Send's history load
+        // still explicitly filters persisted Tool rows out (existing, preserved Avalonia
+        // behaviour - see SecondTurn_DoesNotSendOrphanPersistedToolMessages above).
+        var repository = new MemoryRepository();
+        var provider = new MultiTurnProvider();
+        provider.Enqueue(
+            new ChatChunk("", false, [], "Read file · Running", "call-1"),
+            new ChatChunk("First answer", true));
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question one";
+        await viewModel.SendAsync();
+
+        provider.Enqueue(new ChatChunk("Second answer", true));
+        viewModel.Draft = "Question two";
+        await viewModel.SendAsync();
+
+        var latestAssistant = viewModel.Messages.Last(message => message.Role == ChatRole.Assistant);
+        provider.Enqueue(new ChatChunk("Regenerated answer", true));
+        await viewModel.RegenerateCommand.ExecuteAsync(latestAssistant);
+
+        var lastRequest = provider.Requests[^1];
+        Assert.Contains(lastRequest.Messages, message => message.Role == ChatRole.Tool);
+    }
+
+    [Fact]
+    public async Task ToolItems_CannotRetryOrRegenerate()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider
+        {
+            Chunks =
+            [
+                new ChatChunk("", false, [], "Read file · Running", "call-1"),
+                new ChatChunk("Hello", true)
+            ]
+        };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        var toolItem = Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Tool);
+        Assert.False(toolItem.CanRetry);
+        Assert.False(toolItem.CanRegenerate);
+        Assert.False(viewModel.RetryCommand.CanExecute(toolItem));
+        Assert.False(viewModel.RegenerateCommand.CanExecute(toolItem));
+    }
+
+    [Fact]
+    public async Task LatestAssistantEligibility_IsCorrect_WithToolRecordsInterleaved()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider
+        {
+            Chunks =
+            [
+                new ChatChunk("", false, [], "Read file · Running", "call-1"),
+                new ChatChunk("Hello", true)
+            ]
+        };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        var assistant = Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Assistant);
+        Assert.True(assistant.CanRegenerate);
+    }
+
+    [Fact]
+    public async Task ToolFreeConversation_IsUnchanged()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider { Chunks = [new ChatChunk("Plain answer", true)] };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+
+        await viewModel.SendAsync();
+
+        Assert.DoesNotContain(viewModel.Messages, message => message.Role == ChatRole.Tool);
+        Assert.Equal("Plain answer", Assert.Single(viewModel.Messages, message => message.Role == ChatRole.Assistant).Content);
+    }
+
+    [Fact]
+    public void ChatView_RendersToolActivity_WithMeaningfulAccessibleName()
+    {
+        var source = File.ReadAllText(Find("PersonalAI.Desktop.Avalonia", "Views", "Chat", "ChatView.axaml"));
+
+        Assert.Contains("Converter={x:Static views:ChatRoleConverters.IsTool}", source);
+        Assert.Contains("AutomationProperties.Name=\"{Binding Role, Converter={x:Static views:ChatRoleConverters.RoleLabel}}\"", source);
+    }
+
+    [Fact]
     public void ChatView_ExposesRetryAndRegenerateButtons_WithAccessibleNames()
     {
         var source = File.ReadAllText(Find("PersonalAI.Desktop.Avalonia", "Views", "Chat", "ChatView.axaml"));

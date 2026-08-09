@@ -87,14 +87,25 @@
                   <TextBlock Classes="metadata"
                              Text="{Binding Role, Converter={x:Static views:ChatRoleConverters.RoleLabel}}" />
 
-                  <!-- Assistant output is markdown; other roles stay plain text. -->
+                  <!-- Assistant output is markdown; Tool activity gets its own row so status
+                       reads as words, not colour; other roles stay plain text. -->
                   <views:ChatMarkdownPresenter
                       Markdown="{Binding Content}"
                       IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsAssistant}}" />
+                  <Border Classes="metadata"
+                          Padding="8,4"
+                          CornerRadius="4"
+                          Background="{DynamicResource AedaBorderBrush}"
+                          IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsTool}}"
+                          AutomationProperties.Name="{Binding Role, Converter={x:Static views:ChatRoleConverters.RoleLabel}}">
+                    <TextBlock Classes="metadata"
+                               Text="{Binding Content}"
+                               TextWrapping="Wrap" />
+                  </Border>
                   <SelectableTextBlock
                       Text="{Binding Content}"
                       TextWrapping="Wrap"
-                      IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsNotAssistant}}" />
+                      IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsPlainText}}" />
 
                   <!-- Retry/Regenerate only ever apply to assistant messages, and only in the
                        state the WinUI reference allows: Retry on a failed/cancelled reply,

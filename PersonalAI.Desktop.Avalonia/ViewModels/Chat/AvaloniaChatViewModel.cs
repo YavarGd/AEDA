@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PersonalAI.Core.Chat;
@@ -139,10 +140,16 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
         {
             _activeConversation = conversation;
             Messages.Clear();
+            var supersededToolCallIds = FindSupersededToolCallIds(messages);
             for (var index = 0; index < messages.Count; index++)
             {
                 var stored = messages[index];
-                var item = new ChatMessageItem(stored.Role, stored.Content);
+                if (IsSupersededToolCall(stored, supersededToolCallIds))
+                {
+                    continue;
+                }
+
+                var item = new ChatMessageItem(stored.Role, FormatStoredMessage(stored));
                 if (stored.Role == ChatRole.Assistant && index == messages.Count - 1)
                 {
                     item.Status = ToMessageStatus(conversation.Status);
@@ -305,6 +312,7 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
         var cancellation = new CancellationTokenSource();
         _sendCancellation = cancellation;
         var response = new StringBuilder();
+        var toolActivityMessages = new Dictionary<string, ChatMessageItem>(StringComparer.Ordinal);
         var assistantPersisted = false;
         var assistant = existingAssistantMessage;
         var isNewAssistantMessage = assistant is null;
@@ -371,6 +379,13 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
                                history,
                                cancellation.Token))
             {
+                if (!string.IsNullOrWhiteSpace(chunk.ActivityMessage))
+                {
+                    AddOrUpdateToolActivity(chunk, toolActivityMessages);
+                    var activity = chunk.ActivityMessage;
+                    _dispatch(() => StatusMessage = activity);
+                }
+
                 if (!string.IsNullOrEmpty(chunk.Content))
                 {
                     response.Append(chunk.Content);
@@ -599,6 +614,128 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
 
         RetryCommand.NotifyCanExecuteChanged();
         RegenerateCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Live tool-activity handling, ported from the WinUI MainViewModel.AddOrUpdateToolActivity.
+    /// A chunk with a non-blank ActivityKey that is already tracked for this turn updates that
+    /// existing Tool message's content in place (coalescing repeated progress updates for the
+    /// same logical activity into one row instead of spamming duplicates). Otherwise a new
+    /// ChatRole.Tool message is appended and tracked by key. Assistant text streaming is
+    /// entirely separate and untouched by this path.
+    /// </summary>
+    private void AddOrUpdateToolActivity(
+        ChatChunk chunk,
+        IDictionary<string, ChatMessageItem> toolActivityMessages)
+    {
+        if (string.IsNullOrWhiteSpace(chunk.ActivityMessage))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(chunk.ActivityKey) &&
+            toolActivityMessages.TryGetValue(chunk.ActivityKey, out var existing))
+        {
+            var updatedText = chunk.ActivityMessage;
+            _dispatch(() => existing.Content = updatedText);
+            return;
+        }
+
+        var item = new ChatMessageItem(ChatRole.Tool, chunk.ActivityMessage);
+        _dispatch(() => Messages.Add(item));
+
+        if (!string.IsNullOrWhiteSpace(chunk.ActivityKey))
+        {
+            toolActivityMessages[chunk.ActivityKey] = item;
+        }
+    }
+
+    /// <summary>
+    /// Persisted Tool records render as a friendly summary produced by
+    /// ToolPresentationMapper.FormatStoredToolActivity rather than the raw JSON stored for the
+    /// record, matching the WinUI FormatStoredMessage behaviour.
+    /// </summary>
+    private static string FormatStoredMessage(StoredChatMessage message) =>
+        message.Role != ChatRole.Tool
+            ? message.Content
+            : ToolPresentationMapper.FormatStoredToolActivity(message.Content);
+
+    /// <summary>
+    /// A tool_call record is superseded once a later Tool record carries a matching
+    /// toolCallId as its result. Ported from WinUI's FindSupersededToolCallIds /
+    /// IsSupersededToolCall so a reopened conversation does not show the "requested" row next
+    /// to its own completed/failed outcome.
+    /// </summary>
+    private static HashSet<string> FindSupersededToolCallIds(IReadOnlyList<StoredChatMessage> messages)
+    {
+        var resultIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var message in messages)
+        {
+            if (message.Role != ChatRole.Tool)
+            {
+                continue;
+            }
+
+            var resultId = TryGetToolResultId(message.Content);
+            if (!string.IsNullOrWhiteSpace(resultId))
+            {
+                resultIds.Add(resultId);
+            }
+        }
+
+        return resultIds;
+    }
+
+    private static bool IsSupersededToolCall(
+        StoredChatMessage message,
+        HashSet<string> supersededToolCallIds)
+    {
+        if (message.Role != ChatRole.Tool)
+        {
+            return false;
+        }
+
+        var callId = TryGetToolCallId(message.Content);
+        return !string.IsNullOrWhiteSpace(callId) && supersededToolCallIds.Contains(callId);
+    }
+
+    private static string? TryGetToolCallId(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            if (root.TryGetProperty("kind", out var kind) &&
+                string.Equals(kind.GetString(), "tool_call", StringComparison.Ordinal) &&
+                root.TryGetProperty("toolCallId", out var id) &&
+                id.ValueKind == JsonValueKind.String)
+            {
+                return id.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
+    }
+
+    private static string? TryGetToolResultId(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            if (root.TryGetProperty("toolCallId", out var id) && id.ValueKind == JsonValueKind.String)
+            {
+                return id.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
     }
 
     private static ChatStatus ToChatStatus(ConversationStatus status) => status switch

@@ -16,6 +16,15 @@ public static class ChatRoleConverters
     public static IValueConverter IsNotAssistant { get; } =
         new RoleMatchConverter(ChatRole.Assistant, negate: true);
 
+    public static IValueConverter IsTool { get; } =
+        new RoleMatchConverter(ChatRole.Tool);
+
+    /// <summary>
+    /// True for roles that render as plain prose text: everything except Assistant (which
+    /// renders as markdown) and Tool (which renders as a distinct activity row).
+    /// </summary>
+    public static IValueConverter IsPlainText { get; } = new PlainTextRoleConverter();
+
     public static IValueConverter RoleLabel { get; } = new RoleLabelConverter();
 
     private sealed class RoleMatchConverter(ChatRole expected, bool negate = false)
@@ -27,6 +36,23 @@ public static class ChatRoleConverters
             object? parameter,
             CultureInfo culture) =>
             value is ChatRole role && role == expected ? !negate : negate;
+
+        public object ConvertBack(
+            object? value,
+            Type targetType,
+            object? parameter,
+            CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class PlainTextRoleConverter : IValueConverter
+    {
+        public object Convert(
+            object? value,
+            Type targetType,
+            object? parameter,
+            CultureInfo culture) =>
+            value is ChatRole role && role != ChatRole.Assistant && role != ChatRole.Tool;
 
         public object ConvertBack(
             object? value,
