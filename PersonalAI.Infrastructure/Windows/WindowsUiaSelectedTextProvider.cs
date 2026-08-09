@@ -6,11 +6,24 @@ using System.Windows.Automation;
 
 namespace PersonalAI.Infrastructure.Windows;
 
-public sealed class WindowsUiaSelectedTextProvider(
-    Func<ActiveWindowReference, int, string?>? readSelection = null) :
-    ISelectedTextContextProvider
+public sealed class WindowsUiaSelectedTextProvider :
+    ISelectedTextContextProvider,
+    IAsyncDisposable
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMilliseconds(350);
+    private readonly Func<ActiveWindowReference, int, string?> _readSelection;
+    private readonly TimeSpan _timeout;
+    private readonly object _gate = new();
+    private Task<string?>? _operation;
+    private bool _disposed;
+
+    public WindowsUiaSelectedTextProvider(
+        Func<ActiveWindowReference, int, string?>? readSelection = null,
+        TimeSpan? timeout = null)
+    {
+        _readSelection = readSelection ?? ReadFocusedSelection;
+        _timeout = timeout ?? DefaultTimeout;
+    }
 
     public async Task<SelectedTextContextResult> TryGetSelectedTextAsync(
         ActiveWindowReference foreground,
@@ -18,6 +31,7 @@ public sealed class WindowsUiaSelectedTextProvider(
         int maxCharacters,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (maxCharacters <= 0 ||
             foreground.CapturedAtUtc < DateTimeOffset.UtcNow.AddSeconds(-5) ||
             PrivacyExclusionMatcher.IsSensitiveWindow(
@@ -28,33 +42,37 @@ public sealed class WindowsUiaSelectedTextProvider(
             return Unavailable(foreground, "Selection capture is blocked for this application.");
         }
 
-        try
+        Task<string?> operation;
+        lock (_gate)
         {
-            var selectedText = await Task.Run(
-                    () => (readSelection ?? ReadFocusedSelection)(foreground, maxCharacters),
-                    cancellationToken)
-                .WaitAsync(Timeout, cancellationToken);
-            selectedText = selectedText?.Trim();
-            if (string.IsNullOrWhiteSpace(selectedText))
+            if (_disposed)
             {
-                return Unavailable(foreground, "The focused control has no selected text.");
+                return Unavailable(foreground, "Selection capture is unavailable.");
             }
 
-            selectedText = selectedText.Length > maxCharacters
-                ? selectedText[..maxCharacters]
-                : selectedText;
-            return new SelectedTextContextResult(
-                true,
-                selectedText,
-                "Windows UI Automation TextPattern",
-                foreground.ProcessName,
-                DateTimeOffset.UtcNow,
-                null,
-                true);
+            if (_operation is { IsCompleted: false })
+            {
+                return Unavailable(foreground, "Selection capture is already pending.");
+            }
+
+            operation = Task.Run(() =>
+            {
+                try
+                {
+                    return _readSelection(foreground, maxCharacters);
+                }
+                catch
+                {
+                    return null;
+                }
+            });
+            _operation = operation;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+
+        string? selectedText;
+        try
         {
-            return Unavailable(foreground, "Selection capture timed out.");
+            selectedText = await operation.WaitAsync(_timeout, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -64,9 +82,53 @@ public sealed class WindowsUiaSelectedTextProvider(
         {
             return Unavailable(foreground, "Selection capture timed out.");
         }
+
+        selectedText = selectedText?.Trim();
+        if (string.IsNullOrWhiteSpace(selectedText))
+        {
+            return Unavailable(foreground, "The focused control has no selected text.");
+        }
+
+        selectedText = selectedText.Length > maxCharacters
+            ? selectedText[..maxCharacters]
+            : selectedText;
+        return new SelectedTextContextResult(
+            true,
+            selectedText,
+            "Windows UI Automation TextPattern",
+            foreground.ProcessName,
+            DateTimeOffset.UtcNow,
+            null,
+            true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Task? operation;
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            operation = _operation;
+        }
+
+        if (operation is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await operation.WaitAsync(_timeout);
+        }
         catch
         {
-            return Unavailable(foreground, "The focused control does not expose a readable selection.");
+            // UI Automation has no managed cancellation for an in-flight COM call.
+            // The single quarantined worker owns no mutable AEDA state.
         }
     }
 

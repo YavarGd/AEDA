@@ -527,6 +527,57 @@ public sealed class AssistPillViewModelTests
             now));
     }
 
+    [Fact]
+    public async Task DisposalCancelsOwnedCaptureAndRejectsFutureInvocations()
+    {
+        var host = new FakeHost { WaitForCapture = true };
+        var viewModel = CreateViewModel(host);
+        var opening = viewModel.OpenPromptAsync();
+        await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await viewModel.DisposeAsync();
+
+        Assert.False(await opening);
+        Assert.False(await viewModel.OpenPromptAsync());
+        Assert.Equal(1, host.CaptureCalls);
+    }
+
+    [Fact]
+    public async Task UninterruptibleCaptureCannotDeadlockDisposalOrPublishLateState()
+    {
+        var host = new FakeHost
+        {
+            WaitForCapture = true,
+            IgnoreCaptureCancellation = true,
+            Context = Context(20)
+        };
+        var viewModel = CreateViewModel(host);
+        var opening = viewModel.OpenPromptAsync();
+        await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await viewModel.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        host.ReleaseCapture();
+
+        Assert.False(await opening);
+        Assert.Empty(viewModel.Response);
+        Assert.Equal(0, host.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task CollapseCancelsOwnedContextDetection()
+    {
+        var host = new FakeHost { WaitForCapture = true };
+        var viewModel = CreateViewModel(host);
+        var opening = viewModel.OpenPromptAsync();
+        await host.CaptureStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        viewModel.Collapse();
+
+        Assert.False(await opening);
+        Assert.Equal(AssistPillState.IdlePill, viewModel.State);
+        Assert.Equal(0, host.GenerateCalls);
+    }
+
     [Theory]
     [InlineData("Code", "Program.cs - repo - Visual Studio Code", true)]
     [InlineData("Code - Insiders", "Program.cs - repo - Visual Studio Code", true)]
@@ -592,6 +643,7 @@ public sealed class AssistPillViewModelTests
         public AssistGenerationResult Result { get; set; } =
             new(ChatStatus.Completed);
         public bool WaitForCapture { get; set; }
+        public bool IgnoreCaptureCancellation { get; init; }
         public bool WaitForScreenCapture { get; init; }
         public bool WaitForCancellation { get; set; }
 
@@ -621,7 +673,14 @@ public sealed class AssistPillViewModelTests
             CaptureStarted.TrySetResult();
             if (WaitForCapture)
             {
-                await _captureReleased.Task.WaitAsync(cancellationToken);
+                if (IgnoreCaptureCancellation)
+                {
+                    await _captureReleased.Task;
+                }
+                else
+                {
+                    await _captureReleased.Task.WaitAsync(cancellationToken);
+                }
             }
 
             return Context;

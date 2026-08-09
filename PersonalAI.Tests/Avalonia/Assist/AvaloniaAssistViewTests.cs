@@ -64,7 +64,13 @@ public sealed class AvaloniaAssistViewTests
         Assert.Contains("new AssistPillHost(", source);
         Assert.Contains("new AssistPillViewModel(", source);
         Assert.Contains("new AvaloniaAssistContextService(", source);
-        Assert.Contains("new WindowsUiaSelectedTextProvider()", source);
+        Assert.Contains("_uiaSelectedTextProvider = new WindowsUiaSelectedTextProvider()", source);
+        Assert.Equal(
+            1,
+            source.Split("new WindowsUiaSelectedTextProvider()", StringSplitOptions.None).Length - 1);
+        Assert.Contains("await Assist.DisposeAsync()", source);
+        Assert.Contains("await _foregroundWindowMonitor.DisposeAsync()", source);
+        Assert.Contains("await _uiaSelectedTextProvider.DisposeAsync()", source);
         Assert.Contains("new WindowsClipboardCopySelectedTextProvider(GetAedaWindowHandle)", source);
         Assert.Contains("new AvaloniaScreenTextCaptureService(", source);
         // Assist reuses the shared Windows clipboard adapter from W3 rather than shipping
