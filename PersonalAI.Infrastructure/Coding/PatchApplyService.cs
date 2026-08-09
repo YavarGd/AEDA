@@ -189,7 +189,12 @@ public sealed class PatchApplyService(
                         continue;
                     }
 
-                    WriteContent(request.WorkspaceId, backup.RelativePath, backup.OriginalContent, cancellationToken);
+                    WriteContent(
+                        request.WorkspaceId,
+                        backup.RelativePath,
+                        backup.OriginalContent,
+                        replaceExisting: true,
+                        cancellationToken: cancellationToken);
                     files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RolledBack));
                     await AppendAsync(TaskEventKind.PatchFileRolledBack, "Patch file rolled back.", cancellationToken);
                 }
@@ -307,52 +312,28 @@ public sealed class PatchApplyService(
             throw new InvalidOperationException("write_failed");
         }
 
-        WriteContent(workspaceId, file.RelativePath, file.ProposedContent, cancellationToken);
+        WriteContent(
+            workspaceId,
+            file.RelativePath,
+            file.ProposedContent,
+            file.ChangeKind != PatchProposalFileChangeKind.Add,
+            cancellationToken);
     }
 
-    private void WriteContent(WorkspaceId workspaceId, string relativePath, string content, CancellationToken cancellationToken)
+    private void WriteContent(
+        WorkspaceId workspaceId,
+        string relativePath,
+        string content,
+        bool replaceExisting,
+        CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        PatchApplyValidator.RejectUnsafeRelativePath(relativePath);
         var workspace = workspaceReader.GetWorkspace(workspaceId);
-        var fullPath = Path.GetFullPath(Path.Combine(workspace.CanonicalRootPath, relativePath));
-        EnsureInside(workspace.CanonicalRootPath, fullPath);
-        var directory = Path.GetDirectoryName(fullPath) ?? workspace.CanonicalRootPath;
-        Directory.CreateDirectory(directory);
-        EnsureInside(workspace.CanonicalRootPath, directory);
-        var tempPath = Path.Combine(Path.GetTempPath(), "PersonalAI", "patch-apply", Guid.NewGuid().ToString("N") + ".tmp");
-        Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
-        File.WriteAllText(tempPath, content);
-        if (CodeContextService.ComputeHash(File.ReadAllText(tempPath)) != CodeContextService.ComputeHash(content))
-        {
-            throw new InvalidOperationException("hash_mismatch");
-        }
-
-        if (File.Exists(fullPath))
-        {
-            File.Copy(tempPath, fullPath, overwrite: true);
-            File.Delete(tempPath);
-        }
-        else
-        {
-            File.Move(tempPath, fullPath);
-        }
-    }
-
-    private static void EnsureInside(string root, string fullPath)
-    {
-        var normalizedRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var normalizedFull = Path.GetFullPath(fullPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        if (string.Equals(normalizedRoot, normalizedFull, comparison))
-        {
-            return;
-        }
-
-        if (!normalizedFull.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, comparison))
-        {
-            throw new InvalidOperationException("path_outside_workspace");
-        }
+        ReparseSafePatchWriter.Write(
+            workspace.CanonicalRootPath,
+            relativePath,
+            content,
+            replaceExisting,
+            cancellationToken);
     }
 
     private async Task<PatchApplyResult> PersistFailureAsync(PatchApplyRequest request, PatchApplyFailureReason reason, CancellationToken cancellationToken) =>

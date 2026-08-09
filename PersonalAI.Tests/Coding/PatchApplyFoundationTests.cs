@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using PersonalAI.Core.Approvals;
 using PersonalAI.Core.Capabilities;
@@ -282,6 +283,200 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_ParentChangedToReparseAfterBackupDoesNotEscapeWorkspace()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var outside = _root + "-outside";
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "App.cs"), "outside\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var swappingReader = new AfterReadWorkspaceReader(_reader, 2, () =>
+        {
+            Directory.Move(PathFor("src"), PathFor("src-original"));
+            CreateJunction(PathFor("src"), outside);
+        });
+        var service = new PatchApplyService(
+            _proposalRepository,
+            _applyRepository,
+            new PatchApplyValidator(_proposalRepository, swappingReader, _resolver),
+            swappingReader,
+            _approvals);
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        try
+        {
+            var result = await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval,
+                decision));
+
+            Assert.Equal(PatchApplyStatus.Failed, result.Status);
+            Assert.Contains(PatchApplyFailureReason.PathOutsideWorkspace, result.FailureReasons);
+            Assert.Equal("outside\n", File.ReadAllText(Path.Combine(outside, "App.cs")));
+            Assert.Equal("old\n", File.ReadAllText(PathFor("src-original/App.cs")));
+        }
+        finally
+        {
+            if (Directory.Exists(PathFor("src")))
+            {
+                Directory.Delete(PathFor("src"));
+            }
+
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Apply_ExistingReparseParentIsRejectedWithoutChangingExternalFile()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        await InitializeAsync();
+        var outside = _root + "-outside";
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "App.cs"), "outside\n");
+        CreateJunction(PathFor("linked"), outside);
+        var proposal = await SaveProposalAsync([Edit("linked/App.cs", "outside\n", "changed\n")]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        try
+        {
+            var result = await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval,
+                decision));
+
+            Assert.Equal(PatchApplyStatus.Failed, result.Status);
+            Assert.Contains(PatchApplyFailureReason.PathOutsideWorkspace, result.FailureReasons);
+            Assert.Equal("outside\n", File.ReadAllText(Path.Combine(outside, "App.cs")));
+        }
+        finally
+        {
+            Directory.Delete(PathFor("linked"));
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Apply_AddParentChangedToReparseAfterDryRunDoesNotEscapeWorkspace()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        await InitializeAsync();
+        Directory.CreateDirectory(PathFor("nested"));
+        var outside = _root + "-outside";
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "sentinel.txt"), "outside\n");
+        var proposal = await SaveProposalAsync([
+            Edit("nested/deeper/New.cs", null, "created\n", PatchProposalFileChangeKind.Add)
+        ]);
+        var initialService = CreateService();
+        var approval = await initialService.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var swappingRepository = new AfterGetProposalRepository(_proposalRepository, 2, () =>
+        {
+            Directory.Move(PathFor("nested"), PathFor("nested-original"));
+            CreateJunction(PathFor("nested"), outside);
+        });
+        var service = new PatchApplyService(
+            swappingRepository,
+            _applyRepository,
+            new PatchApplyValidator(swappingRepository, _reader, _resolver),
+            _reader,
+            _approvals);
+
+        try
+        {
+            var result = await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval,
+                decision));
+
+            Assert.Equal(PatchApplyStatus.Failed, result.Status);
+            Assert.Contains(PatchApplyFailureReason.PathOutsideWorkspace, result.FailureReasons);
+            Assert.Equal("outside\n", File.ReadAllText(Path.Combine(outside, "sentinel.txt")));
+            Assert.False(File.Exists(Path.Combine(outside, "deeper", "New.cs")));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(PathFor("nested-original")));
+        }
+        finally
+        {
+            Directory.Delete(PathFor("nested"));
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Apply_FinalTargetReparseIsRejected()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var outside = _root + "-outside";
+        Directory.CreateDirectory(outside);
+        var outsideFile = Path.Combine(outside, "sentinel.txt");
+        File.WriteAllText(outsideFile, "outside\n");
+
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var swappingReader = new AfterReadWorkspaceReader(_reader, 2, () =>
+        {
+            File.Move(PathFor("src/App.cs"), PathFor("src/App-original.cs"));
+            CreateJunction(PathFor("src/App.cs"), outside);
+        });
+        var service = new PatchApplyService(
+            _proposalRepository,
+            _applyRepository,
+            new PatchApplyValidator(_proposalRepository, swappingReader, _resolver),
+            swappingReader,
+            _approvals);
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        try
+        {
+            var result = await service.ApplyAsync(new PatchApplyRequest(
+                proposal.Id,
+                _workspace.Id,
+                approval,
+                decision));
+
+            Assert.Equal(PatchApplyStatus.Failed, result.Status);
+            Assert.Contains(PatchApplyFailureReason.PathOutsideWorkspace, result.FailureReasons);
+            Assert.Equal("outside\n", File.ReadAllText(outsideFile));
+            Assert.Equal("old\n", File.ReadAllText(PathFor("src/App-original.cs")));
+        }
+        finally
+        {
+            Directory.Delete(PathFor("src/App.cs"));
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Apply_NoOpDoesNotWrite()
     {
         await InitializeAsync();
@@ -476,6 +671,120 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     private string Read(string relativePath) => File.ReadAllText(PathFor(relativePath));
+
+    private static void CreateJunction(string junctionPath, string targetPath)
+    {
+        var startInfo = new ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("mklink");
+        startInfo.ArgumentList.Add("/J");
+        startInfo.ArgumentList.Add(junctionPath);
+        startInfo.ArgumentList.Add(targetPath);
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Unable to start the Windows junction test helper.");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Unable to create the disposable test junction: {process.StandardError.ReadToEnd()}");
+        }
+    }
+
+    private sealed class AfterGetProposalRepository(
+        IPatchProposalRepository inner,
+        int triggerGet,
+        Action afterGet) : IPatchProposalRepository
+    {
+        private int _getCount;
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task CreateAsync(PatchProposal proposal, CancellationToken cancellationToken = default) =>
+            inner.CreateAsync(proposal, cancellationToken);
+
+        public async Task<PatchProposal?> GetAsync(
+            PatchProposalId proposalId,
+            CancellationToken cancellationToken = default)
+        {
+            var proposal = await inner.GetAsync(proposalId, cancellationToken);
+            if (Interlocked.Increment(ref _getCount) == triggerGet)
+            {
+                afterGet();
+            }
+
+            return proposal;
+        }
+
+        public Task<IReadOnlyList<PatchProposal>> ListRecentAsync(
+            int limit = 50,
+            CancellationToken cancellationToken = default) =>
+            inner.ListRecentAsync(limit, cancellationToken);
+
+        public Task UpdateStatusAsync(
+            PatchProposalId proposalId,
+            PatchProposalStatus status,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateStatusAsync(proposalId, status, cancellationToken);
+    }
+
+    private sealed class AfterReadWorkspaceReader(
+        IWorkspaceReader inner,
+        int triggerRead,
+        Action afterRead) : IWorkspaceReader
+    {
+        private int _readCount;
+
+        public WorkspaceDescriptor GetWorkspace(WorkspaceId workspaceId) =>
+            inner.GetWorkspace(workspaceId);
+
+        public IReadOnlyList<WorkspaceDirectoryEntry> ListDirectory(
+            WorkspaceId workspaceId,
+            string relativePath,
+            int maxEntries,
+            bool includeHidden,
+            CancellationToken cancellationToken = default) =>
+            inner.ListDirectory(workspaceId, relativePath, maxEntries, includeHidden, cancellationToken);
+
+        public WorkspaceTextFile ReadTextFile(
+            WorkspaceId workspaceId,
+            string relativePath,
+            int maxCharacters,
+            CancellationToken cancellationToken = default)
+        {
+            var result = inner.ReadTextFile(workspaceId, relativePath, maxCharacters, cancellationToken);
+            if (Interlocked.Increment(ref _readCount) == triggerRead)
+            {
+                afterRead();
+            }
+
+            return result;
+        }
+
+        public WorkspaceSearchResult SearchText(
+            WorkspaceId workspaceId,
+            string query,
+            string relativeDirectory,
+            string? filePattern,
+            bool matchCase,
+            int maxResults,
+            CancellationToken cancellationToken = default) =>
+            inner.SearchText(
+                workspaceId,
+                query,
+                relativeDirectory,
+                filePattern,
+                matchCase,
+                maxResults,
+                cancellationToken);
+    }
 
     public void Dispose()
     {
