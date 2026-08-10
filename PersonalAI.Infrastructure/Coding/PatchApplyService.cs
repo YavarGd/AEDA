@@ -212,28 +212,45 @@ public sealed class PatchApplyService(
         await AppendAsync(TaskEventKind.PatchRollbackStarted, "Patch rollback started.", cancellationToken);
         var applyResult = await applyRepository.GetApplyResultAsync(request.ApplyResultId, cancellationToken);
         var backups = await applyRepository.ListBackupsAsync(request.ApplyResultId, cancellationToken);
+        var proposal = applyResult is null
+            ? null
+            : await proposalRepository.GetAsync(applyResult.ProposalId, cancellationToken);
         var files = new List<PatchApplyFileResult>();
         var failures = new List<PatchApplyFailureReason>();
 
-        if (applyResult is null || backups.Count == 0 || applyResult.WorkspaceId != request.WorkspaceId)
+        if (applyResult is null ||
+            proposal is null ||
+            backups.Count == 0 ||
+            applyResult.WorkspaceId != request.WorkspaceId ||
+            proposal.WorkspaceId != request.WorkspaceId)
         {
             failures.Add(PatchApplyFailureReason.UnknownSafeFailure);
         }
         else
         {
+            var workspace = workspaceReader.GetWorkspace(request.WorkspaceId);
             foreach (var backup in backups)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
+                    var expectedAppliedBytes = GetExpectedAppliedBytes(
+                        request.ApplyResultId,
+                        proposal,
+                        backup);
+                    if (expectedAppliedBytes is null)
+                    {
+                        failures.Add(PatchApplyFailureReason.StaleOriginalContent);
+                        files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RollbackFailed, PatchApplyFailureReason.StaleOriginalContent));
+                        continue;
+                    }
+
                     if (backup.OperationKind == PatchProposalFileChangeKind.Add)
                     {
-                        var workspace = workspaceReader.GetWorkspace(request.WorkspaceId);
-                        if (!ReparseSafePatchWriter.DeleteIfContentHashMatches(
+                        if (!ReparseSafePatchWriter.DeleteIfBytesMatch(
                                 workspace.CanonicalRootPath,
                                 backup.RelativePath,
-                                backup.AppliedContentHash,
-                                MaxBackupBytes,
+                                expectedAppliedBytes,
                                 cancellationToken))
                         {
                             failures.Add(PatchApplyFailureReason.StaleOriginalContent);
@@ -246,24 +263,18 @@ public sealed class PatchApplyService(
                         continue;
                     }
 
-                    var current = workspaceReader.ReadTextFile(
-                        request.WorkspaceId,
+                    if (!ReparseSafePatchWriter.RestoreIfBytesMatch(
+                        workspace.CanonicalRootPath,
                         backup.RelativePath,
-                        MaxBackupCharacters,
-                        cancellationToken);
-                    if (CodeContextService.ComputeHash(current.Content) != backup.AppliedContentHash)
+                        expectedAppliedBytes,
+                        EncodeBackup(backup),
+                        cancellationToken))
                     {
                         failures.Add(PatchApplyFailureReason.StaleOriginalContent);
                         files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RollbackFailed, PatchApplyFailureReason.StaleOriginalContent));
                         continue;
                     }
 
-                    WriteBytes(
-                        request.WorkspaceId,
-                        backup.RelativePath,
-                        EncodeBackup(backup),
-                        replaceExisting: true,
-                        cancellationToken: cancellationToken);
                     files.Add(new PatchApplyFileResult(backup.RelativePath, backup.OperationKind, PatchApplyStatus.RolledBack));
                     await AppendAsync(TaskEventKind.PatchFileRolledBack, "Patch file rolled back.", cancellationToken);
                 }
@@ -416,20 +427,39 @@ public sealed class PatchApplyService(
             cancellationToken);
     }
 
-    private void WriteBytes(
-        WorkspaceId workspaceId,
-        string relativePath,
-        ReadOnlySpan<byte> content,
-        bool replaceExisting,
-        CancellationToken cancellationToken)
+    private static byte[]? GetExpectedAppliedBytes(
+        PatchApplyResultId applyResultId,
+        PatchProposal proposal,
+        PatchApplyBackup backup)
     {
-        var workspace = workspaceReader.GetWorkspace(workspaceId);
-        ReparseSafePatchWriter.WriteBytes(
-            workspace.CanonicalRootPath,
-            relativePath,
-            content,
-            replaceExisting,
-            cancellationToken);
+        if (backup.ApplyResultId != applyResultId ||
+            backup.ProposalId != proposal.Id ||
+            backup.WorkspaceId != proposal.WorkspaceId)
+        {
+            return null;
+        }
+
+        var matches = proposal.Files.Where(file =>
+                string.Equals(file.RelativePath, backup.RelativePath, StringComparison.Ordinal) &&
+                file.ChangeKind == backup.OperationKind)
+            .Take(2)
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            return null;
+        }
+
+        var file = matches[0];
+        var proposedContent = file.ProposedContent;
+        if (proposedContent is null)
+        {
+            return null;
+        }
+
+        var contentHash = CodeContextService.ComputeHash(proposedContent);
+        return contentHash == file.ProposedContentHash && contentHash == backup.AppliedContentHash
+            ? ReparseSafePatchWriter.EncodeAppliedContent(proposedContent)
+            : null;
     }
 
     private static string DecodeBackup(byte[] bytes, string encodingName)

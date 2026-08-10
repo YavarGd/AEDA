@@ -45,9 +45,11 @@ internal static class ReparseSafePatchWriter
         WriteBytes(
             workspaceRoot,
             relativePath,
-            Encoding.UTF8.GetBytes(content),
+            EncodeAppliedContent(content),
             replaceExisting,
             cancellationToken);
+
+    public static byte[] EncodeAppliedContent(string content) => Encoding.UTF8.GetBytes(content);
 
     public static void WriteBytes(
         string workspaceRoot,
@@ -165,12 +167,57 @@ internal static class ReparseSafePatchWriter
         return ReadBytes(file, maxBytes, cancellationToken);
     }
 
-    public static bool DeleteIfContentHashMatches(
+    public static bool RestoreIfBytesMatch(
         string workspaceRoot,
         string relativePath,
-        string expectedContentHash,
-        int maxBytes,
-        CancellationToken cancellationToken)
+        ReadOnlySpan<byte> expectedCurrentBytes,
+        ReadOnlySpan<byte> replacementBytes,
+        CancellationToken cancellationToken,
+        Action? whileGuarded = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        PatchApplyValidator.RejectUnsafeRelativePath(relativePath);
+
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new InvalidOperationException("path_outside_workspace");
+        }
+
+        var parts = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            throw new InvalidOperationException("path_outside_workspace");
+        }
+
+        using var directories = OpenDestinationParent(workspaceRoot, parts[..^1], createMissing: false);
+        using var file = TryOpenRelative(
+            directories.Parent,
+            parts[^1],
+            GenericRead | GenericWrite | FileReadAttributes | Synchronize,
+            ShareRead,
+            FileOpen,
+            FileNonDirectoryFile | FileSynchronousIoNonAlert | FileOpenReparsePoint,
+            FileAttributeNormal)
+            ?? throw new InvalidOperationException("path_outside_workspace");
+        RejectReparsePoint(file);
+        EnsureHandleInside(workspaceRoot, file);
+        if (!BytesMatch(file, expectedCurrentBytes, cancellationToken))
+        {
+            return false;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        whileGuarded?.Invoke();
+        WriteAndVerify(file, replacementBytes, CancellationToken.None);
+        return true;
+    }
+
+    public static bool DeleteIfBytesMatch(
+        string workspaceRoot,
+        string relativePath,
+        ReadOnlySpan<byte> expectedCurrentBytes,
+        CancellationToken cancellationToken,
+        Action? whileGuarded = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         PatchApplyValidator.RejectUnsafeRelativePath(relativePath);
@@ -191,21 +238,35 @@ internal static class ReparseSafePatchWriter
             directories.Parent,
             parts[^1],
             GenericRead | FileReadAttributes | Delete | Synchronize,
-            ShareRead | ShareWrite | ShareDelete,
+            ShareRead,
             FileOpen,
             FileNonDirectoryFile | FileSynchronousIoNonAlert | FileOpenReparsePoint,
             FileAttributeNormal)
             ?? throw new InvalidOperationException("path_outside_workspace");
         RejectReparsePoint(file);
         EnsureHandleInside(workspaceRoot, file);
-        var bytes = ReadBytes(file, maxBytes, cancellationToken);
-        if (CodeContextService.ComputeHash(Encoding.UTF8.GetString(bytes)) != expectedContentHash)
+        if (!BytesMatch(file, expectedCurrentBytes, cancellationToken))
         {
             return false;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        whileGuarded?.Invoke();
         MarkForDeletion(file);
         return true;
+    }
+
+    private static bool BytesMatch(
+        SafeFileHandle handle,
+        ReadOnlySpan<byte> expected,
+        CancellationToken cancellationToken)
+    {
+        if (RandomAccess.GetLength(handle) != expected.Length)
+        {
+            return false;
+        }
+
+        return expected.SequenceEqual(ReadBytes(handle, expected.Length, cancellationToken));
     }
 
     private static DirectoryHandleChain OpenDestinationParent(
