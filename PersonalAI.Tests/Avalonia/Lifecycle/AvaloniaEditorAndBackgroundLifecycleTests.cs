@@ -18,17 +18,22 @@ public sealed class AvaloniaEditorAndBackgroundLifecycleTests
     }
 
     [Fact]
-    public void SecondaryExitPrecedesAvaloniaAndUnexpectedFailuresAreNotSwallowed()
+    public void SecondaryHandoffPrecedesAvaloniaAndUnexpectedFailuresAreNotSwallowed()
     {
         var app = ReadSource("App.axaml.cs");
         var program = ReadSource("Program.cs");
         var acquire = program.IndexOf("new WindowsSingleInstanceService()", StringComparison.Ordinal);
         var secondary = program.IndexOf("if (!singleInstance.IsPrimaryInstance)", StringComparison.Ordinal);
-        var controlledExit = program.IndexOf("return 0;", secondary, StringComparison.Ordinal);
-        var initializeAvalonia = program.IndexOf("BuildAvaloniaApp()", controlledExit, StringComparison.Ordinal);
+        var handoff = program.IndexOf(
+            "PersonalAiActivationClient.TryActivatePrimaryAsync()",
+            secondary,
+            StringComparison.Ordinal);
+        var initializeAvalonia = program.IndexOf("BuildAvaloniaApp()", handoff, StringComparison.Ordinal);
 
         Assert.True(acquire >= 0 && acquire < secondary);
-        Assert.True(secondary < controlledExit && controlledExit < initializeAvalonia);
+        Assert.True(secondary < handoff && handoff < initializeAvalonia);
+        Assert.Contains("? 0", program);
+        Assert.Contains(": 1", program);
         Assert.DoesNotContain("catch", program);
         Assert.DoesNotContain("WindowsSingleInstanceService", app);
     }
@@ -51,10 +56,45 @@ public sealed class AvaloniaEditorAndBackgroundLifecycleTests
         Assert.Contains("AskBeforeMainWindowExit", app);
         Assert.Contains("CloseBehavior.Exit", composition);
         Assert.Contains("CloseBehavior.AskEachTime", composition);
-        Assert.Contains("_pipeServer?.Dispose()", app);
+        Assert.Contains("pipeServer?.DisposeAsync()", app);
         Assert.Contains("_hotKey?.Dispose()", app);
         Assert.Contains("_trayIcon?.Dispose()", app);
-        Assert.Contains("_composition.DisposeAsync()", app);
+        Assert.Contains("composition?.DisposeAsync()", app);
+        Assert.Contains("new AvaloniaShutdownCoordinator(", app);
+        Assert.Contains("desktop.Shutdown", app);
+        Assert.DoesNotContain("GetAwaiter().GetResult()", app);
+        Assert.DoesNotContain("desktop.Exit +=", app);
+    }
+
+    [Fact]
+    public void ExistingActivationCallbackRestoresVisibleHiddenAndStartMinimizedPrimary()
+    {
+        var app = ReadSource("App.axaml.cs");
+        var activation = ReadSource("Platform", "Windows", "AvaloniaWindowActivationService.cs");
+        var createActivation = app.IndexOf(
+            "_mainWindowActivation = new AvaloniaWindowActivationService(window);",
+            StringComparison.Ordinal);
+        var startPipe = app.IndexOf("StartEditorIpc(_composition);", StringComparison.Ordinal);
+
+        Assert.True(createActivation >= 0 && createActivation < startPipe);
+        Assert.Contains("() => Dispatcher.UIThread.Post(ShowMainWindow)", app);
+        Assert.Contains("if (!_composition.StartMinimizedToTray)", app);
+        Assert.Contains("if (!window.IsVisible)", activation);
+        Assert.Contains("window.WindowState == WindowState.Minimized", activation);
+        Assert.Contains("window.WindowState = WindowState.Normal", activation);
+        Assert.Contains("window.Activate()", activation);
+    }
+
+    [Fact]
+    public void TrayAndWindowExitUseTheSameAsyncShutdownPathWhileCloseToTrayStaysDistinct()
+    {
+        var app = ReadSource("App.axaml.cs");
+
+        Assert.Contains("new AvaloniaTrayIconService(\n            ShowMainWindow,\n            NewChat,\n            () => RequestExit())", app.Replace("\r\n", "\n"));
+        Assert.Contains("if (_composition?.ExitOnMainWindowClose == true)", app);
+        Assert.Contains("RequestExit();", app);
+        Assert.Contains("else\n        {\n            HideMainWindow();\n        }", app.Replace("\r\n", "\n"));
+        Assert.Contains("_shutdownCoordinator?.BeginAsync(exitCode)", app);
     }
 
     [Fact]

@@ -237,12 +237,18 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        Chat.Dispose();
-        await Assist.DisposeAsync();
-        await _foregroundWindowMonitor.DisposeAsync();
-        await _uiaSelectedTextProvider.DisposeAsync();
-        _themeManager.Dispose();
-        _permissionBroker.Dispose();
-        await Runtime.DisposeAsync();
+        try
+        {
+            await Chat.DisposeAsync();
+            await Assist.DisposeAsync();
+            await _foregroundWindowMonitor.DisposeAsync();
+            await _uiaSelectedTextProvider.DisposeAsync();
+        }
+        finally
+        {
+            _themeManager.Dispose();
+            _permissionBroker.Dispose();
+            await Runtime.DisposeAsync();
+        }
     }
 }

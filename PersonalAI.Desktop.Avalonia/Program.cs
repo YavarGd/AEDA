@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using PersonalAI.Desktop.Avalonia.Platform.Windows;
+using PersonalAI.Infrastructure.Ipc;
 using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Desktop.Avalonia;
@@ -8,12 +9,15 @@ namespace PersonalAI.Desktop.Avalonia;
 internal static class Program
 {
     [STAThread]
-    public static int Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
         using var singleInstance = new WindowsSingleInstanceService();
         if (!singleInstance.IsPrimaryInstance)
         {
-            return 0;
+            return await PersonalAiActivationClient.TryActivatePrimaryAsync()
+                .ConfigureAwait(false)
+                ? 0
+                : 1;
         }
 
         AvaloniaWindowsProcessIdentity.InitializeProcessIdentity();
