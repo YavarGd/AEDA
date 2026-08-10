@@ -6,17 +6,28 @@ using PersonalAI.Core.Editor;
 
 namespace PersonalAI.Infrastructure.Ipc;
 
-public sealed class PersonalAiPipeServer : IDisposable
+public sealed class PersonalAiPipeServer : IDisposable, IAsyncDisposable
 {
     public const string PipeName = "PersonalAI.EditorContext.v1";
 
     private readonly EditorContextMessageHandler _handler;
+    private readonly string _pipeName;
     private readonly CancellationTokenSource _cancellation = new();
+    private readonly object _gate = new();
     private Task? _serverTask;
+    private Task? _disposeTask;
+    private bool _disposed;
 
     public PersonalAiPipeServer(EditorContextMessageHandler handler)
+        : this(handler, PipeName)
     {
-        _handler = handler;
+    }
+
+    internal PersonalAiPipeServer(EditorContextMessageHandler handler, string pipeName)
+    {
+        _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
+        _pipeName = pipeName;
     }
 
     public EditorIpcConnectionState State { get; private set; } =
@@ -28,21 +39,53 @@ public sealed class PersonalAiPipeServer : IDisposable
 
     public void Start()
     {
-        if (_serverTask is not null)
+        lock (_gate)
         {
-            return;
-        }
+            if (_serverTask is not null || _disposed)
+            {
+                return;
+            }
 
-        SetState(
-            EditorIpcConnectionState.Starting,
-            "Starting editor integration.");
-        _serverTask = Task.Run(RunAsync);
+            SetState(
+                EditorIpcConnectionState.Starting,
+                "Starting editor integration.");
+            _serverTask = Task.Run(RunAsync);
+        }
     }
 
-    public void Dispose()
+    public void Dispose() => _ = DisposeAsync();
+
+    public ValueTask DisposeAsync()
     {
-        _cancellation.Cancel();
-        _cancellation.Dispose();
+        lock (_gate)
+        {
+            if (_disposeTask is null)
+            {
+                _disposed = true;
+                _cancellation.Cancel();
+                _disposeTask = FinishDisposalAsync(_serverTask);
+            }
+
+            return new ValueTask(_disposeTask);
+        }
+    }
+
+    private async Task FinishDisposalAsync(Task? serverTask)
+    {
+        try
+        {
+            if (serverTask is not null)
+            {
+                await serverTask.ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            _cancellation.Dispose();
+        }
     }
 
     private async Task RunAsync()
@@ -52,7 +95,7 @@ public sealed class PersonalAiPipeServer : IDisposable
             try
             {
                 await using var pipe = new NamedPipeServerStream(
-                    PipeName,
+                    _pipeName,
                     PipeDirection.InOut,
                     maxNumberOfServerInstances: 1,
                     PipeTransmissionMode.Byte,
@@ -87,6 +130,10 @@ public sealed class PersonalAiPipeServer : IDisposable
                 return;
             }
         }
+
+        SetState(
+            EditorIpcConnectionState.Stopped,
+            "Editor integration stopped.");
     }
 
     private void SetState(EditorIpcConnectionState state, string statusMessage)
@@ -132,13 +179,8 @@ public sealed class PersonalAiPipeServer : IDisposable
                 exception.Message,
                 cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await WriteResponseAsync(
-                stream,
-                false,
-                "Request cancelled.",
-                CancellationToken.None);
         }
         catch (Exception)
         {

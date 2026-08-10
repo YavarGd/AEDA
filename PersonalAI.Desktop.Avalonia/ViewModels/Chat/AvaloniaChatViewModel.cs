@@ -10,7 +10,7 @@ using PersonalAI.Infrastructure.Chat;
 
 namespace PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 
-public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
+public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
     public const string SafeFailureText = "Something went wrong. Please try again.";
 
@@ -19,6 +19,8 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
     private readonly Action<Action> _dispatch;
     private IReadOnlyList<Conversation> _allConversations = [];
     private CancellationTokenSource? _sendCancellation;
+    private Task? _generationTask;
+    private int _disposed;
     private Conversation? _activeConversation;
     private string _searchText = string.Empty;
     private string _draft = string.Empty;
@@ -36,7 +38,7 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
         _dispatch = dispatch;
         SendCommand = new AsyncRelayCommand(SendAsync, CanSend);
         CancelCommand = new RelayCommand(Cancel, () => IsGenerating);
-        NewChatCommand = new RelayCommand(NewChat, () => !IsGenerating);
+        NewChatCommand = new RelayCommand(NewChat, () => !IsGenerating && _disposed == 0);
         RetryCommand = new AsyncRelayCommand<ChatMessageItem?>(RetryAsync, CanRetryMessage);
         RegenerateCommand = new AsyncRelayCommand<ChatMessageItem?>(RegenerateAsync, CanRegenerateMessage);
     }
@@ -207,13 +209,34 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        Interlocked.Exchange(ref _disposed, 1);
         _sendCancellation?.Cancel();
     }
 
-    private bool CanSend() => !IsGenerating && !string.IsNullOrWhiteSpace(Draft);
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (_generationTask is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _generationTask.WaitAsync(TimeSpan.FromSeconds(1));
+        }
+        catch
+        {
+            // Cancellation is expected. Providers own the quarantine boundary for
+            // an uncooperative external operation.
+        }
+    }
+
+    private bool CanSend() =>
+        _disposed == 0 && !IsGenerating && !string.IsNullOrWhiteSpace(Draft);
 
     private bool CanRetryMessage(ChatMessageItem? message) =>
-        !IsGenerating && message?.CanRetry == true;
+        _disposed == 0 && !IsGenerating && message?.CanRetry == true;
 
     private async Task RetryAsync(ChatMessageItem? message)
     {
@@ -232,7 +255,7 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
     }
 
     private bool CanRegenerateMessage(ChatMessageItem? message) =>
-        !IsGenerating && message?.CanRegenerate == true;
+        _disposed == 0 && !IsGenerating && message?.CanRegenerate == true;
 
     private async Task RegenerateAsync(ChatMessageItem? message)
     {
@@ -299,7 +322,27 @@ public sealed class AvaloniaChatViewModel : ObservableObject, IDisposable
     /// message (in place). Regenerate replays the same prompt but appends a new assistant
     /// message, leaving the previous one untouched.
     /// </summary>
-    private async Task ExecuteGenerationAsync(
+    private Task ExecuteGenerationAsync(
+        string prompt,
+        bool persistUserMessage,
+        IReadOnlyList<ChatMessage>? priorHistory,
+        ChatMessageStatus completionStatus,
+        ChatMessageItem? existingAssistantMessage)
+    {
+        if (_disposed != 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _generationTask = ExecuteGenerationCoreAsync(
+            prompt,
+            persistUserMessage,
+            priorHistory,
+            completionStatus,
+            existingAssistantMessage);
+    }
+
+    private async Task ExecuteGenerationCoreAsync(
         string prompt,
         bool persistUserMessage,
         IReadOnlyList<ChatMessage>? priorHistory,

@@ -71,6 +71,23 @@ public sealed class AvaloniaChatViewModelTests
     }
 
     [Fact]
+    public async Task AsyncDisposalCancelsAndAwaitsOwnedGeneration()
+    {
+        var repository = new MemoryRepository();
+        var provider = new TestProvider { Wait = true, Chunks = [new ChatChunk("partial", false)] };
+        var viewModel = Create(repository, provider);
+        viewModel.Draft = "Question";
+        var send = viewModel.SendAsync();
+        await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        await viewModel.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+        await send.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.False(viewModel.IsGenerating);
+        Assert.False(viewModel.SendCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task Failure_UsesSafeText_AndPersistsError()
     {
         var repository = new MemoryRepository();

@@ -28,7 +28,7 @@ public partial class App : Application
     private AvaloniaTrayIconService? _trayIcon;
     private WindowsGlobalHotKeyService? _hotKey;
     private PersonalAiPipeServer? _pipeServer;
-    private IClassicDesktopStyleApplicationLifetime? _desktop;
+    private AvaloniaShutdownCoordinator? _shutdownCoordinator;
     private bool _isExiting;
     private bool _resourcesDisposed;
     private bool _exitConfirmationOpen;
@@ -44,11 +44,13 @@ public partial class App : Application
             return;
         }
 
-        _desktop = desktop;
+        _shutdownCoordinator = new AvaloniaShutdownCoordinator(
+            DisposeResourcesAsync,
+            desktop.Shutdown);
         _textScaleManager = new AvaloniaTextScaleManager(
             new WindowsTextScaleSource(),
             action => Dispatcher.UIThread.Post(action));
-        desktop.Exit += (_, _) => DisposeResources();
+        desktop.ShutdownRequested += OnShutdownRequested;
         try
         {
             var window = new MainWindow();
@@ -56,8 +58,7 @@ public partial class App : Application
         }
         catch
         {
-            DisposeResources();
-            desktop.Shutdown(1);
+            RequestExit(1);
         }
         finally
         {
@@ -71,16 +72,27 @@ public partial class App : Application
     {
         try
         {
-            _composition = await AvaloniaAppComposition.CreateAsync(
+            var composition = await AvaloniaAppComposition.CreateAsync(
                 action => Dispatcher.UIThread.Post(action));
-            await _composition.Chat.InitializeAsync();
+            if (_isExiting)
+            {
+                await composition.DisposeAsync();
+                return;
+            }
+
+            _composition = composition;
+            await composition.Chat.InitializeAsync();
+            if (_isExiting)
+            {
+                return;
+            }
+
             await Dispatcher.UIThread.InvokeAsync(() =>
                 CompleteInitialization(desktop, window));
         }
         catch
         {
-            DisposeResources();
-            desktop.Shutdown(1);
+            RequestExit(1);
         }
     }
 
@@ -88,6 +100,11 @@ public partial class App : Application
         IClassicDesktopStyleApplicationLifetime desktop,
         MainWindow window)
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         if (_composition is null)
         {
             throw new InvalidOperationException("Composition is unavailable.");
@@ -104,7 +121,7 @@ public partial class App : Application
         _trayIcon = new AvaloniaTrayIconService(
             ShowMainWindow,
             NewChat,
-            RequestExit);
+            () => RequestExit());
         RegisterHotKey(_composition);
         StartEditorIpc(_composition);
         _assistWindow.ShowIdle();
@@ -146,6 +163,11 @@ public partial class App : Application
 
     private async Task ToggleAssistAsync()
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         try
         {
             if (_assistWindow is not null)
@@ -173,6 +195,11 @@ public partial class App : Application
 
                 Dispatcher.UIThread.Post(() =>
                 {
+                    if (_isExiting)
+                    {
+                        return;
+                    }
+
                     ShowMainWindow();
                     _mainWindow?.OpenChat(newChat: false);
                 });
@@ -206,17 +233,33 @@ public partial class App : Application
         Dispatcher.UIThread.Post(
             () =>
             {
+                if (_isExiting)
+                {
+                    return;
+                }
+
                 ShowMainWindow();
                 _mainWindow?.OpenChat(newChat: false);
             },
             DispatcherPriority.Background);
 
-    private void ShowMainWindow() => _mainWindowActivation?.ShowRestoreAndActivate();
+    private void ShowMainWindow()
+    {
+        if (!_isExiting)
+        {
+            _mainWindowActivation?.ShowRestoreAndActivate();
+        }
+    }
 
     private void HideMainWindow() => _mainWindowActivation?.Hide();
 
     private void NewChat()
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         ShowMainWindow();
         _mainWindow?.OpenChat(newChat: true);
     }
@@ -272,7 +315,13 @@ public partial class App : Application
         }
     }
 
-    private void RequestExit()
+    private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
+    {
+        e.Cancel = true;
+        RequestExit();
+    }
+
+    private void RequestExit(int exitCode = 0)
     {
         if (_isExiting)
         {
@@ -280,7 +329,7 @@ public partial class App : Application
         }
 
         _isExiting = true;
-        Dispatcher.UIThread.Post(() => _desktop?.Shutdown());
+        _ = _shutdownCoordinator?.BeginAsync(exitCode);
     }
 
     private void ReportShellStatus(string message)
@@ -291,7 +340,7 @@ public partial class App : Application
         }
     }
 
-    private void DisposeResources()
+    private async ValueTask DisposeResourcesAsync()
     {
         if (_resourcesDisposed)
         {
@@ -299,17 +348,27 @@ public partial class App : Application
         }
 
         _resourcesDisposed = true;
-        _pipeServer?.Dispose();
+        var pipeServer = _pipeServer;
         _pipeServer = null;
         _hotKey?.Dispose();
         _hotKey = null;
         _trayIcon?.Dispose();
         _trayIcon = null;
-        if (_composition is not null)
+        var composition = _composition;
+        _composition = null;
+        if (composition is not null)
         {
-            _composition.SurfaceAssistConversationInShell = null;
-            _composition.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            _composition = null;
+            composition.SurfaceAssistConversationInShell = null;
+        }
+
+        if (_mainWindow is not null)
+        {
+            _mainWindow.IsEnabled = false;
+        }
+
+        if (_assistWindow is not null)
+        {
+            _assistWindow.IsEnabled = false;
         }
 
         _assistWindow = null;
@@ -317,5 +376,9 @@ public partial class App : Application
         _mainWindowActivation = null;
         _textScaleManager?.Dispose();
         _textScaleManager = null;
+
+        var pipeDisposal = pipeServer?.DisposeAsync().AsTask() ?? Task.CompletedTask;
+        var compositionDisposal = composition?.DisposeAsync().AsTask() ?? Task.CompletedTask;
+        await Task.WhenAll(pipeDisposal, compositionDisposal);
     }
 }
