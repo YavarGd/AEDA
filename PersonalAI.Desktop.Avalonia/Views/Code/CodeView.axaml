@@ -170,6 +170,26 @@
                     HorizontalAlignment="Left" />
             <TextBlock Text="{Binding ApplyResultText}" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock Text="{Binding ApplyResultDetailText}" Classes="metadata" TextWrapping="Wrap" />
+            <StackPanel IsVisible="{Binding HasApplyResults}" Spacing="6">
+              <TextBlock Text="Apply history" Classes="sectionHeading" />
+              <ItemsControl ItemsSource="{Binding ApplyResults}" AutomationProperties.Name="Apply history">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:CompileBindings="False">
+                    <Button Margin="0,0,0,6"
+                            Padding="8"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Click="OnApplyResultClick"
+                            AutomationProperties.Name="{Binding UpdatedText}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding Status}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding UpdatedText}" Classes="metadata" />
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
             <StackPanel IsVisible="{Binding CanShowRollback}" Spacing="6">
               <TextBlock Text="{Binding RollbackAvailabilityText}" TextWrapping="Wrap" />
               <Button Content="Rollback apply result"

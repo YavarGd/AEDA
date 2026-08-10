@@ -267,6 +267,241 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Rollback_IsAvailableForAppliedAddOnlyResult()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/New.cs", "+ created", ["src/New.cs"]);
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Add file safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                workspace.Id,
+                PatchApplyStatus.DryRunPassed,
+                [new PatchApplyOperation("src/New.cs", PatchProposalFileChangeKind.Add, string.Empty, "created")],
+                [],
+                RequiresApproval: true),
+            ApplyResultFactory = request => new PatchApplyResult(
+                PatchApplyResultId.NewId(),
+                request.ProposalId,
+                request.WorkspaceId,
+                PatchApplyStatus.Applied,
+                [new PatchApplyFileResult("src/New.cs", PatchProposalFileChangeKind.Add, PatchApplyStatus.Applied)],
+                [],
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        await viewModel.ApplyApprovedProposalAsync();
+
+        Assert.True(viewModel.HasRollbackAvailable);
+        Assert.True(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+        Assert.Contains("Rollback available", viewModel.RollbackAvailabilityText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rollback available", viewModel.ApplyResultDetailText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Rollback_IsAvailableForMixedAddAndModifyResult()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs", "src/New.cs"]);
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Mixed change safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                workspace.Id,
+                PatchApplyStatus.DryRunPassed,
+                [
+                    new PatchApplyOperation("src/App.cs", PatchProposalFileChangeKind.Modify, "old", "new"),
+                    new PatchApplyOperation("src/New.cs", PatchProposalFileChangeKind.Add, string.Empty, "created")
+                ],
+                [],
+                RequiresApproval: true),
+            ApplyResultFactory = request => new PatchApplyResult(
+                PatchApplyResultId.NewId(),
+                request.ProposalId,
+                request.WorkspaceId,
+                PatchApplyStatus.Applied,
+                [
+                    new PatchApplyFileResult("src/App.cs", PatchProposalFileChangeKind.Modify, PatchApplyStatus.Applied),
+                    new PatchApplyFileResult("src/New.cs", PatchProposalFileChangeKind.Add, PatchApplyStatus.Applied)
+                ],
+                [],
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        await viewModel.ApplyApprovedProposalAsync();
+
+        Assert.True(viewModel.HasRollbackAvailable);
+        Assert.True(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Rollback_IsHiddenWhenNoFilesWereApplied()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Fix safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                workspace.Id,
+                PatchApplyStatus.DryRunPassed,
+                [new PatchApplyOperation("src/App.cs", PatchProposalFileChangeKind.Modify, "old", "new")],
+                [],
+                RequiresApproval: true),
+            ApplyResultFactory = request => new PatchApplyResult(
+                PatchApplyResultId.NewId(),
+                request.ProposalId,
+                request.WorkspaceId,
+                PatchApplyStatus.PartiallyApplied,
+                [new PatchApplyFileResult("src/App.cs", PatchProposalFileChangeKind.Modify, PatchApplyStatus.RollbackFailed, PatchApplyFailureReason.WriteFailed)],
+                [PatchApplyFailureReason.WriteFailed],
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        await viewModel.ApplyApprovedProposalAsync();
+
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Rollback_IsHiddenForFailedApplyWithNoAppliedFiles()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+        var workspace = registry.List().Single();
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Fix safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                workspace.Id,
+                PatchApplyStatus.DryRunPassed,
+                [new PatchApplyOperation("src/App.cs", PatchProposalFileChangeKind.Modify, "old", "new")],
+                [],
+                RequiresApproval: true),
+            ApplyResultFactory = request => new PatchApplyResult(
+                PatchApplyResultId.NewId(),
+                request.ProposalId,
+                request.WorkspaceId,
+                PatchApplyStatus.Failed,
+                [],
+                [PatchApplyFailureReason.StaleOriginalContent],
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        await viewModel.ApplyApprovedProposalAsync();
+
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Rollback_IsUnavailableBeforeApply()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Fix safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                registry.List().Single().Id,
+                PatchApplyStatus.DryRunPassed,
+                [new PatchApplyOperation("src/App.cs", PatchProposalFileChangeKind.Modify, "old", "new")],
+                [],
+                RequiresApproval: true)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+
+        await viewModel.DryRunSelectedProposalAsync();
+
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+        Assert.Equal(0, service.RollbackCount);
+    }
+
+    [Fact]
+    public async Task Rollback_BecomesUnavailableImmediatelyAfterSuccessfulRollback()
+    {
+        var registry = CreateRegistry();
+        var proposal = CreateProposal("src/App.cs", "+ changed", ["src/App.cs"]);
+        var service = new FakeAedaCodeModuleService
+        {
+            ProposalSummaries = [CreateProposalSummary("Fix safely", proposal.Id)],
+            ProposalDetail = proposal,
+            DryRunPlan = new PatchApplyPlan(
+                proposal.Id,
+                registry.List().Single().Id,
+                PatchApplyStatus.DryRunPassed,
+                [new PatchApplyOperation("src/App.cs", PatchProposalFileChangeKind.Modify, "old", "new")],
+                [],
+                RequiresApproval: true)
+        };
+        var viewModel = CreateViewModel(registry, service);
+        await viewModel.InitializeAsync();
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single());
+        await viewModel.SelectProposalAsync(viewModel.Proposals.Single());
+        await viewModel.DryRunSelectedProposalAsync();
+        await viewModel.RequestApplyApprovalAsync();
+        await viewModel.AllowApplyOnceAsync();
+        await viewModel.ApplyApprovedProposalAsync();
+        Assert.True(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+
+        await viewModel.RollbackSelectedApplyResultAsync();
+
+        Assert.Equal(1, service.RollbackCount);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task ValidationFlow_ExposesOnlyTemplatesAndSanitizesOutput()
     {
         var registry = CreateRegistry();

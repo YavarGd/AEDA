@@ -65,6 +65,15 @@ public partial class CodeView : UserControl
         }
     }
 
+    private async void OnApplyResultClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: AedaCodeApplyItem applyResult } &&
+            DataContext is AedaCodeModuleViewModel viewModel)
+        {
+            await viewModel.SelectApplyResultAsync(applyResult);
+        }
+    }
+
     private async void OnTaskClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: PersonalAI.Core.Tasks.AedaTaskSummary task } &&
