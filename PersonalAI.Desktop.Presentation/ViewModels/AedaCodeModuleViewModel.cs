@@ -425,9 +425,13 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     public bool HasRollbackAvailable =>
         ApplyResult is { Status: PatchApplyStatus.Applied or PatchApplyStatus.PartiallyApplied } result &&
+        SelectedWorkspace is not null &&
+        result.WorkspaceId == SelectedWorkspace.WorkspaceId &&
+        !_selectedApplyResultAlreadyRolledBack &&
+        !(RollbackResult is { Status: PatchApplyStatus.RolledBack } rollback && rollback.ApplyResultId == result.Id) &&
         result.Files.Any(file =>
             file.Status == PatchApplyStatus.Applied &&
-            file.ChangeKind == PatchProposalFileChangeKind.Modify);
+            file.ChangeKind is PatchProposalFileChangeKind.Modify or PatchProposalFileChangeKind.Add);
 
     public bool CanShowRollback => HasRollbackAvailable;
 
@@ -585,6 +589,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     private ApprovalDecision? ValidationApprovalDecision { get; set; }
 
     private PatchRollbackResult? RollbackResult { get; set; }
+
+    private bool _selectedApplyResultAlreadyRolledBack;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -1378,6 +1384,64 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public async Task SelectApplyResultAsync(
+        AedaCodeApplyItem? item,
+        CancellationToken cancellationToken = default)
+    {
+        if (item is null)
+        {
+            ApplyResult = null;
+            RollbackResult = null;
+            _selectedApplyResultAlreadyRolledBack = false;
+            NotifyAll();
+            return;
+        }
+
+        if (SelectedWorkspace is null)
+        {
+            SafeStatusMessage = "Select a workspace before choosing an apply result.";
+            NotifyAll();
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            var result = await _moduleService.GetApplyResultAsync(item.ApplyResultId, cancellationToken);
+            if (result is null || result.WorkspaceId != SelectedWorkspace.WorkspaceId)
+            {
+                ApplyResult = null;
+                RollbackResult = null;
+                _selectedApplyResultAlreadyRolledBack = false;
+                SafeStatusMessage = "Selected apply result is no longer available for this workspace.";
+                return;
+            }
+
+            var proposal = await _moduleService.GetProposalAsync(result.ProposalId, cancellationToken);
+            ApplyResult = result;
+            RollbackResult = null;
+            _selectedApplyResultAlreadyRolledBack = proposal?.Status == PatchProposalStatus.RolledBack;
+            SafeStatusMessage = "Apply result loaded from history.";
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Apply result load cancelled.";
+        }
+        catch (Exception exception) when (IsSafeFailure(exception))
+        {
+            ApplyResult = null;
+            RollbackResult = null;
+            _selectedApplyResultAlreadyRolledBack = false;
+            SafeStatusMessage = "Apply result is temporarily unavailable.";
+        }
+        finally
+        {
+            IsBusy = false;
+            NotifyAll();
+        }
+    }
+
+    [RelayCommand]
     public async Task SelectTaskAsync(
         AedaTaskSummary? task,
         CancellationToken cancellationToken = default)
@@ -1511,7 +1575,14 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value) => NotifyCommandStates();
 
-    partial void OnSelectedWorkspaceChanged(AedaCodeWorkspaceItem? value) => NotifyCommandStates();
+    partial void OnSelectedWorkspaceChanged(AedaCodeWorkspaceItem? value)
+    {
+        OnPropertyChanged(nameof(HasRollbackAvailable));
+        OnPropertyChanged(nameof(CanShowRollback));
+        OnPropertyChanged(nameof(RollbackAvailabilityText));
+        OnPropertyChanged(nameof(ApplyResultDetailText));
+        NotifyCommandStates();
+    }
 
     partial void OnSelectedProposalChanged(AedaCodeProposalItem? value) => NotifyCommandStates();
 
@@ -1769,6 +1840,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ValidationApprovalRequest = null;
         ValidationApprovalDecision = null;
         RollbackResult = null;
+        _selectedApplyResultAlreadyRolledBack = false;
         ValidationOutputPreview = "Run an approved validation to view sanitized output.";
     }
 
