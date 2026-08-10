@@ -414,6 +414,188 @@ public sealed class PatchApplyFoundationTests : IDisposable
         Assert.Equal("old\n", Read("src/App.cs"));
     }
 
+    public static IEnumerable<object[]> ChangedAppliedByteCases()
+    {
+        const string plainText = "new\n";
+        var utf8 = new UTF8Encoding(false, true).GetBytes(plainText);
+        yield return [
+            "utf8-bom-only",
+            plainText,
+            new UTF8Encoding(true, true).GetPreamble().Concat(utf8).ToArray()
+        ];
+        yield return [
+            "utf16le-same-text",
+            plainText,
+            new UnicodeEncoding(false, true, true).GetPreamble()
+                .Concat(new UnicodeEncoding(false, false, true).GetBytes(plainText))
+                .ToArray()
+        ];
+        yield return [
+            "utf16be-same-text",
+            plainText,
+            new UnicodeEncoding(true, true, true).GetPreamble()
+                .Concat(new UnicodeEncoding(true, false, true).GetBytes(plainText))
+                .ToArray()
+        ];
+        yield return ["invalid-utf8-same-decoded-text", "\uFFFD\n", new byte[] { 0xFF, 0x0A }];
+    }
+
+    [Theory]
+    [MemberData(nameof(ChangedAppliedByteCases))]
+    public async Task Rollback_ModifyRejectsSameTextWithDifferentBytes(
+        string _,
+        string proposedContent,
+        byte[] changedBytes)
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", proposedContent)]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        WriteBytes("src/App.cs", changedBytes);
+
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+        Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, rollback.FailureReasons);
+        Assert.Equal(changedBytes, ReadBytes("src/App.cs"));
+    }
+
+    [Fact]
+    public async Task Rollback_ModifyRejectsOneByteMutation()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        var changedBytes = ReadBytes("src/App.cs");
+        changedBytes[0] ^= 1;
+        WriteBytes("src/App.cs", changedBytes);
+
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+        Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, rollback.FailureReasons);
+        Assert.Equal(changedBytes, ReadBytes("src/App.cs"));
+    }
+
+    [Fact]
+    public void RestoreIfBytesMatch_BlocksConcurrentWriterDuringGuardedMutation()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var expected = new UTF8Encoding(false, true).GetBytes("applied\n");
+        var original = new UTF8Encoding(false, true).GetBytes("original\n");
+        WriteBytes("src/App.cs", expected);
+        Exception? writerFailure = null;
+
+        var restored = ReparseSafePatchWriter.RestoreIfBytesMatch(
+            _root,
+            "src/App.cs",
+            expected,
+            original,
+            CancellationToken.None,
+            () => writerFailure = Task.Run(() => Record.Exception(
+                    () => File.WriteAllBytes(PathFor("src/App.cs"), [0x01])))
+                .GetAwaiter()
+                .GetResult());
+
+        Assert.True(restored);
+        Assert.IsAssignableFrom<IOException>(writerFailure);
+        Assert.Equal(original, ReadBytes("src/App.cs"));
+    }
+
+    [Fact]
+    public void RestoreIfBytesMatch_BlocksRenameAndReplacementDuringGuardedMutation()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var expected = new UTF8Encoding(false, true).GetBytes("applied\n");
+        var original = new UTF8Encoding(false, true).GetBytes("original\n");
+        var replacement = new UTF8Encoding(false, true).GetBytes("replacement sentinel\n");
+        WriteBytes("src/App.cs", expected);
+        WriteBytes("src/Replacement.cs", replacement);
+        Exception? renameFailure = null;
+        Exception? replacementFailure = null;
+
+        var restored = ReparseSafePatchWriter.RestoreIfBytesMatch(
+            _root,
+            "src/App.cs",
+            expected,
+            original,
+            CancellationToken.None,
+            () =>
+            {
+                renameFailure = Task.Run(() => Record.Exception(
+                        () => File.Move(PathFor("src/App.cs"), PathFor("src/Renamed.cs"))))
+                    .GetAwaiter()
+                    .GetResult();
+                replacementFailure = Task.Run(() => Record.Exception(
+                        () => File.Move(PathFor("src/Replacement.cs"), PathFor("src/App.cs"), overwrite: true)))
+                    .GetAwaiter()
+                    .GetResult();
+            });
+
+        Assert.True(restored);
+        Assert.True(renameFailure is IOException or UnauthorizedAccessException);
+        Assert.True(replacementFailure is IOException or UnauthorizedAccessException);
+        Assert.Equal(original, ReadBytes("src/App.cs"));
+        Assert.False(File.Exists(PathFor("src/Renamed.cs")));
+        Assert.Equal(replacement, ReadBytes("src/Replacement.cs"));
+    }
+
+    [Fact]
+    public async Task Rollback_ModifyDoesNotUseWorkspaceTextReader()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var applyService = CreateService();
+        var approval = await applyService.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await applyService.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        var reader = new AfterReadWorkspaceReader(
+            _reader,
+            1,
+            () => throw new InvalidOperationException("rollback must not read decoded text"));
+        var rollbackService = new PatchApplyService(
+            _proposalRepository,
+            _applyRepository,
+            CreateValidator(),
+            reader,
+            _approvals);
+
+        var rollback = await rollbackService.RollbackAsync(new PatchRollbackRequest(
+            applied.Id,
+            _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
+        Assert.Equal("old\n", Read("src/App.cs"));
+    }
+
     public static IEnumerable<object[]> FaithfulRollbackCases()
     {
         const string lf = "héllo 世界\nline two\n";
@@ -526,6 +708,114 @@ public sealed class PatchApplyFoundationTests : IDisposable
         Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
         Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, rollback.FailureReasons);
         Assert.Equal("changed later\n", Read("src/Added.cs"));
+    }
+
+    [Fact]
+    public async Task Rollback_AddChangedOnlyByBomIsPreserved()
+    {
+        await InitializeAsync();
+        const string proposedContent = "created\n";
+        var proposal = await SaveProposalAsync([
+            Edit("src/Added.cs", null, proposedContent, PatchProposalFileChangeKind.Add)
+        ]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        var changedBytes = new UTF8Encoding(true, true).GetPreamble()
+            .Concat(new UTF8Encoding(false, true).GetBytes(proposedContent))
+            .ToArray();
+        WriteBytes("src/Added.cs", changedBytes);
+
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+        Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, rollback.FailureReasons);
+        Assert.True(File.Exists(PathFor("src/Added.cs")));
+        Assert.Equal(changedBytes, ReadBytes("src/Added.cs"));
+    }
+
+    [Fact]
+    public async Task Rollback_AddWithActiveWriterDoesNotDeleteFile()
+    {
+        await InitializeAsync();
+        var proposal = await SaveProposalAsync([
+            Edit("src/Added.cs", null, "created\n", PatchProposalFileChangeKind.Add)
+        ]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        var appliedBytes = ReadBytes("src/Added.cs");
+        PatchRollbackResult rollback;
+        using (new FileStream(
+            PathFor("src/Added.cs"),
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.ReadWrite | FileShare.Delete))
+        {
+            rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+            Assert.True(File.Exists(PathFor("src/Added.cs")));
+        }
+
+        Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+        Assert.True(File.Exists(PathFor("src/Added.cs")));
+        Assert.Equal(appliedBytes, ReadBytes("src/Added.cs"));
+    }
+
+    [Fact]
+    public async Task Rollback_ModifyParentSwappedToJunctionDoesNotWriteExternalTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        await InitializeAsync();
+        Write("linked/App.cs", "old\n");
+        var outside = _root + "-modify-rollback-outside";
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "App.cs"), "external sentinel\n");
+        var proposal = await SaveProposalAsync([Edit("linked/App.cs", "old\n", "applied\n")]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+        Directory.Move(PathFor("linked"), PathFor("linked-original"));
+        CreateJunction(PathFor("linked"), outside);
+
+        try
+        {
+            var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+            Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+            Assert.Equal("external sentinel\n", File.ReadAllText(Path.Combine(outside, "App.cs")));
+            Assert.Equal("applied\n", File.ReadAllText(PathFor("linked-original/App.cs")));
+        }
+        finally
+        {
+            if (Directory.Exists(PathFor("linked")))
+            {
+                Directory.Delete(PathFor("linked"));
+            }
+
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
     }
 
     [Fact]
