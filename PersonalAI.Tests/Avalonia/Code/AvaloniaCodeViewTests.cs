@@ -48,6 +48,15 @@ public sealed class AvaloniaCodeViewTests
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", source);
     }
 
+    [Fact]
+    public void ApplyHistoryButtonsExposeStatusThroughTheirAccessibleName()
+    {
+        var source = ReadAvaloniaSource("Views", "Code", "CodeView.axaml");
+
+        Assert.Contains("AutomationProperties.Name=\"{Binding AccessibleSummary}\"", source);
+        Assert.DoesNotContain("AutomationProperties.Name=\"{Binding UpdatedText}\"", source);
+    }
+
     private static string ReadAvaloniaSource(params string[] relativePath)
     {
         var repositoryRoot = GetRepositoryRoot();

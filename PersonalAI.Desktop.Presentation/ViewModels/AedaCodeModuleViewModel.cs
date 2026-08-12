@@ -2288,6 +2288,8 @@ public sealed record AedaCodeApplyItem(
     string UpdatedText,
     AedaCodeApplySummary Summary)
 {
+    public string AccessibleSummary => $"{Status} · {UpdatedText}";
+
     public static AedaCodeApplyItem From(AedaCodeApplySummary summary) =>
         new(
             summary.ApplyResultId,

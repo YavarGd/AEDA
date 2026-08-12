@@ -257,4 +257,22 @@ public sealed class AedaThemeSourceTests
         Assert.DoesNotContain("Command=\"{Binding OpenDashboardCommand}\" Content=\"Dashboard\"", shell);
         Assert.DoesNotContain("Command=\"{Binding OpenChatCommand}\" Content=\"Chat\"", shell);
     }
+
+    [Fact]
+    public void BothApplyHistoryBlocksUseTheAccessibleSummaryAutomationName()
+    {
+        var shell = File.ReadAllText(Path.Combine(
+            RepositoryRoot, "PersonalAI.Desktop.WinUI", "Views", "MainWindow.xaml"));
+
+        var occurrences = 0;
+        var index = 0;
+        while ((index = shell.IndexOf("AutomationProperties.Name=\"{Binding AccessibleSummary}\"", index, StringComparison.Ordinal)) >= 0)
+        {
+            occurrences++;
+            index++;
+        }
+
+        Assert.Equal(2, occurrences);
+        Assert.DoesNotContain("AutomationProperties.Name=\"{Binding UpdatedText}\"", shell);
+    }
 }
