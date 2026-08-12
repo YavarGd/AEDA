@@ -502,6 +502,22 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
     }
 
     [Fact]
+    public void AccessibleSummary_IncludesStatusAndUpdatedText_SoDistinctStatusesAreDistinguishable()
+    {
+        var updatedAtUtc = DateTimeOffset.UtcNow;
+        var applied = AedaCodeApplyItem.From(new AedaCodeApplySummary(
+            PatchApplyResultId.NewId(), PatchProposalId.NewId(), PatchApplyStatus.Applied, 1, updatedAtUtc));
+        var rolledBack = AedaCodeApplyItem.From(new AedaCodeApplySummary(
+            PatchApplyResultId.NewId(), PatchProposalId.NewId(), PatchApplyStatus.RolledBack, 1, updatedAtUtc));
+
+        Assert.Contains(applied.Status.ToString(), applied.AccessibleSummary, StringComparison.Ordinal);
+        Assert.Contains(applied.UpdatedText, applied.AccessibleSummary, StringComparison.Ordinal);
+        Assert.Contains(rolledBack.Status.ToString(), rolledBack.AccessibleSummary, StringComparison.Ordinal);
+        Assert.Contains(rolledBack.UpdatedText, rolledBack.AccessibleSummary, StringComparison.Ordinal);
+        Assert.NotEqual(applied.AccessibleSummary, rolledBack.AccessibleSummary);
+    }
+
+    [Fact]
     public async Task ValidationFlow_ExposesOnlyTemplatesAndSanitizesOutput()
     {
         var registry = CreateRegistry();

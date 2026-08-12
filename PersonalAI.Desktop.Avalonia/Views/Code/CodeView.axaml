@@ -180,7 +180,7 @@
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Stretch"
                             Click="OnApplyResultClick"
-                            AutomationProperties.Name="{Binding UpdatedText}">
+                            AutomationProperties.Name="{Binding AccessibleSummary}">
                       <StackPanel Spacing="2">
                         <TextBlock Text="{Binding Status}" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding UpdatedText}" Classes="metadata" />

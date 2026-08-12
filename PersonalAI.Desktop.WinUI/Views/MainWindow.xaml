@@ -1473,7 +1473,7 @@
                                                     HorizontalAlignment="Stretch"
                                                     HorizontalContentAlignment="Stretch"
                                                     Margin="0,0,0,8"
-                                                    AutomationProperties.Name="{Binding UpdatedText}">
+                                                    AutomationProperties.Name="{Binding AccessibleSummary}">
                                                 <StackPanel Spacing="3">
                                                     <TextBlock Text="{Binding Status}"
                                                                Style="{ThemeResource BodyStrongTextBlockStyle}" />
@@ -1709,7 +1709,7 @@
                                                     HorizontalAlignment="Stretch"
                                                     HorizontalContentAlignment="Stretch"
                                                     Margin="0,0,0,8"
-                                                    AutomationProperties.Name="{Binding UpdatedText}">
+                                                    AutomationProperties.Name="{Binding AccessibleSummary}">
                                                 <StackPanel Spacing="3">
                                                     <TextBlock Text="{Binding Status}"
                                                                Style="{ThemeResource BodyStrongTextBlockStyle}" />

@@ -218,6 +218,54 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
     }
 
+    [Fact]
+    public async Task RolledBackApplyResult_StaysUnavailableAfterRestart_ViaPersistedProposalStatus()
+    {
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var applyResultId = await ApplyProposalAsync(proposal.Id);
+
+        // Roll back once, in the same session that applied it.
+        var registry = OpenRegistry();
+        var firstViewModel = await OpenViewModelWithSessionAsync(registry);
+        var firstHistoryItem = Assert.Single(firstViewModel.ApplyResults);
+        await firstViewModel.SelectApplyResultAsync(firstHistoryItem);
+        Assert.True(firstViewModel.HasRollbackAvailable);
+        await firstViewModel.RollbackSelectedApplyResultCommand.ExecuteAsync(null);
+        Assert.Contains("Rollback completed", firstViewModel.SafeStatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("old\n", Read("src/App.cs"));
+
+        // Simulate a full application restart: discard every in-memory object
+        // (registry, repositories, service, view model) and rebuild them fresh
+        // against the same persisted database.
+        var restartedRegistry = OpenRegistry();
+        var restartedViewModel = await OpenViewModelWithSessionAsync(restartedRegistry);
+
+        var rehydratedItem = Assert.Single(restartedViewModel.ApplyResults);
+        Assert.Equal(applyResultId, rehydratedItem.ApplyResultId);
+        Assert.Equal(1, rehydratedItem.FileCount);
+
+        await restartedViewModel.SelectApplyResultAsync(rehydratedItem);
+
+        // The persisted proposal - not just in-memory rollback state from the
+        // prior session - is what suppresses a repeat destructive rollback.
+        var (persistedProposalRepository, persistedApplyRepository) = OpenRepositories();
+        var persistedProposal = await persistedProposalRepository.GetAsync(proposal.Id);
+        Assert.Equal(PatchProposalStatus.RolledBack, persistedProposal!.Status);
+        var persistedApplyResult = await persistedApplyRepository.GetApplyResultAsync(applyResultId);
+        Assert.NotNull(persistedApplyResult);
+        Assert.NotEmpty(persistedApplyResult!.Files);
+
+        Assert.False(restartedViewModel.HasRollbackAvailable);
+        Assert.False(restartedViewModel.CanShowRollback);
+        Assert.False(restartedViewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+
+        // A repeat rollback attempt must not run as a fresh destructive
+        // operation: the file must remain exactly as the first rollback left it.
+        await restartedViewModel.RollbackSelectedApplyResultCommand.ExecuteAsync(null);
+        Assert.Equal("old\n", Read("src/App.cs"));
+    }
+
     private async Task<PatchApplyResultId> ApplyProposalAsync(PatchProposalId proposalId)
     {
         var (proposalRepository, applyRepository) = OpenRepositories();
