@@ -224,6 +224,59 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
     }
 
     [Fact]
+    public async Task WorkspaceSwitch_ViaTwoWayBindingSettingSelectedWorkspaceFirst_StillClearsOldApplyHistory()
+    {
+        // Reproduces the real Avalonia ordering: the ComboBox's two-way
+        // binding assigns SelectedWorkspace directly, BEFORE the
+        // SelectWorkspaceAsync command runs - unlike every other test in this
+        // file, which only ever invokes the command. A fix that detects the
+        // transition by comparing SelectedWorkspace against the command's
+        // own argument is blind to this ordering, because by the time the
+        // command runs the two are already equal.
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        await ApplyProposalAsync(proposal.Id);
+
+        var otherRoot = Path.Combine(_root, "other-workspace-binding-order");
+        Directory.CreateDirectory(otherRoot);
+        var otherWorkspaceId = WorkspaceId.NewId();
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo");
+        registry.Register(otherWorkspaceId, otherRoot, "OtherRepo");
+
+        var viewModel = await OpenViewModelWithSessionAsync(registry);
+        var historyItem = Assert.Single(viewModel.ApplyResults);
+        await viewModel.SelectApplyResultAsync(historyItem);
+        Assert.NotEmpty(viewModel.ApplyResults);
+        Assert.True(viewModel.HasRollbackAvailable);
+
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == otherWorkspaceId);
+
+        // Step 1: simulate the two-way binding assigning the property FIRST,
+        // with no command involved yet.
+        viewModel.SelectedWorkspace = workspaceB;
+
+        // Step 2: assert synchronously, before the command ever runs, that
+        // the old workspace's Apply-history/rollback state is already gone.
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.DoesNotContain(viewModel.ApplyResults, item => item.ApplyResultId == historyItem.ApplyResultId);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.CanShowRollback);
+
+        // Step 3: now the command runs, exactly as it would after the
+        // binding has already changed the property.
+        await viewModel.SelectWorkspaceAsync(workspaceB);
+
+        // Step 4: the old workspace's entries must still be absent, and no
+        // stale rollback state may have returned.
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.DoesNotContain(viewModel.ApplyResults, item => item.ApplyResultId == historyItem.ApplyResultId);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.CanShowRollback);
+        Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task WorkspaceSwitch_ToWorkspaceWithItsOwnHistory_ShowsOnlyThatWorkspacesApplyResults()
     {
         Write("src/App.cs", "old\n");

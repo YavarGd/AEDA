@@ -485,6 +485,25 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(WorkspaceSummary))]
     private AedaCodeWorkspaceItem? _selectedWorkspace;
 
+    /// <summary>
+    /// The workspace whose Apply-history/rollback presentation state
+    /// (<see cref="ApplyResults"/> etc.) is currently valid, or null if that
+    /// state has been cleared and not yet reloaded. Tracked independently of
+    /// <see cref="SelectedWorkspace"/> because Avalonia's two-way binding can
+    /// set <see cref="SelectedWorkspace"/> before <see cref="SelectWorkspaceAsync"/>
+    /// runs, making a same-value comparison against the command's argument
+    /// unreliable for detecting a genuine transition.
+    /// </summary>
+    private WorkspaceId? _applyHistoryWorkspaceId;
+
+    /// <summary>
+    /// Set by <see cref="OnSelectedWorkspaceChanging"/> whenever the
+    /// workspace identity genuinely transitions, and consumed by
+    /// <see cref="SelectWorkspaceAsync"/> to decide whether to run its own
+    /// transition-only side effects (context clearing, dashboard reload).
+    /// </summary>
+    private bool _workspaceTransitionPending;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SessionStatusText))]
     private AedaCodeSession? _session;
@@ -704,18 +723,21 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         AedaCodeWorkspaceItem? workspace,
         CancellationToken cancellationToken = default)
     {
-        var workspaceChanged = SelectedWorkspace?.WorkspaceId != workspace?.WorkspaceId;
+        // This assignment is a no-op (and triggers no Changing/Changed
+        // notifications) if two-way binding already set SelectedWorkspace to
+        // this same workspace before the command ran - the real transition
+        // detection and Apply-history clearing already happened in
+        // OnSelectedWorkspaceChanging, whenever the identity actually
+        // changed, regardless of which caller triggered it.
         SelectedWorkspace = workspace;
+        var workspaceChanged = _workspaceTransitionPending;
+        _workspaceTransitionPending = false;
+
         ClearProposalDetail();
         if (workspaceChanged)
         {
             ClearSelectedContext();
             ContextFileCandidates.Clear();
-            // Apply history is workspace-scoped presentation state: clear it
-            // synchronously (before any await) so the previous workspace's
-            // entries can never remain on screen, even transiently, once the
-            // user has switched away from it.
-            ApplyResults.Clear();
         }
 
         if (workspace is null)
@@ -727,12 +749,15 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
         await LoadWorkspaceWorkflowAsync(cancellationToken);
 
-        if (workspaceChanged && Session is { } activeSession && activeSession.WorkspaceId == workspace.WorkspaceId)
+        if (Session is { } activeSession &&
+            activeSession.WorkspaceId == workspace.WorkspaceId &&
+            _applyHistoryWorkspaceId != workspace.WorkspaceId)
         {
             // The active session already belongs to the newly selected
             // workspace (e.g. switching back to a workspace whose session is
-            // still live), so its persisted apply history can be safely
-            // reloaded through the existing authoritative dashboard path.
+            // still live) and its persisted apply history has not already
+            // been loaded, so it can be safely reloaded through the existing
+            // authoritative dashboard path.
             var targetWorkspaceId = workspace.WorkspaceId;
             var dashboard = await _moduleService.GetDashboardAsync(activeSession.Id, cancellationToken);
             if (SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
@@ -740,7 +765,8 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             {
                 // Guard against a rapid second workspace switch completing
                 // first: only apply this dashboard if the user is still on
-                // the workspace it was loaded for.
+                // the workspace it was loaded for. ApplyDashboard (invoked by
+                // the Dashboard setter) records _applyHistoryWorkspaceId.
                 Dashboard = dashboard;
             }
         }
@@ -1599,6 +1625,27 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value) => NotifyCommandStates();
 
+    partial void OnSelectedWorkspaceChanging(AedaCodeWorkspaceItem? oldValue, AedaCodeWorkspaceItem? newValue)
+    {
+        if (oldValue?.WorkspaceId == newValue?.WorkspaceId)
+        {
+            return;
+        }
+
+        // The workspace identity is genuinely transitioning - whether this
+        // assignment came from Avalonia's two-way binding (which can run
+        // before the SelectWorkspaceAsync command executes) or from the
+        // command itself. Clear workspace-scoped Apply-history presentation
+        // state right here, synchronously, before SelectedWorkspace actually
+        // changes, so the previous workspace's entries can never remain
+        // associated with the new one - regardless of who triggered the
+        // assignment or in what order.
+        ApplyResults.Clear();
+        ClearActionState();
+        _applyHistoryWorkspaceId = null;
+        _workspaceTransitionPending = true;
+    }
+
     partial void OnSelectedWorkspaceChanged(AedaCodeWorkspaceItem? value)
     {
         OnPropertyChanged(nameof(HasRollbackAvailable));
@@ -1796,6 +1843,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             ValidationRuns.Add(AedaCodeValidationRunItem.From(run));
         }
+
+        // Recorded last: this dashboard's ApplyResults are now authoritative
+        // for this workspace, regardless of whether the SelectedWorkspace
+        // reassignment above re-triggered a clear via OnSelectedWorkspaceChanging.
+        _applyHistoryWorkspaceId = dashboard.Workspace.WorkspaceId;
     }
 
     private void AddOrUpdateApplyResult(PatchApplyResult result)
