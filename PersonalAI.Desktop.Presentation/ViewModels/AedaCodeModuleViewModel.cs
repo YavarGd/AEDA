@@ -504,6 +504,18 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     /// </summary>
     private bool _workspaceTransitionPending;
 
+    /// <summary>
+    /// Monotonic counter incremented every time the workspace identity
+    /// genuinely transitions (see <see cref="OnSelectedWorkspaceChanging"/>).
+    /// Every workspace-scoped asynchronous operation that mutates
+    /// presentation state must capture this value (alongside the target
+    /// workspace id) before awaiting, and re-check it against the current
+    /// value before committing results - a mismatch means the user has since
+    /// moved to a different workspace (or back to the same one through a new
+    /// transition) and the stale result must not be applied.
+    /// </summary>
+    private long _workspaceGeneration;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SessionStatusText))]
     private AedaCodeSession? _session;
@@ -659,13 +671,28 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+
         try
         {
             IsBusy = true;
-            Session = await _moduleService.StartSessionAsync(
-                SelectedWorkspace.WorkspaceId,
+            var session = await _moduleService.StartSessionAsync(
+                targetWorkspaceId,
                 "Supervised Code workflow",
                 cancellationToken);
+
+            if (SelectedWorkspace?.WorkspaceId != targetWorkspaceId || _workspaceGeneration != generation)
+            {
+                // The user switched to a different workspace before this
+                // session finished starting. The backend session was created
+                // successfully, but it must not be surfaced (reselecting the
+                // old workspace or populating its dashboard) under whatever
+                // workspace is now current.
+                return;
+            }
+
+            Session = session;
             await RefreshDashboardAsync(cancellationToken);
             SafeStatusMessage = "AEDA Code session ready.";
         }
@@ -688,12 +715,21 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
         LoadRegisteredWorkspaces();
-        if (Session is not null)
+        if (Session is not null && Session.WorkspaceId == SelectedWorkspace?.WorkspaceId)
         {
+            // The active session belongs to the currently selected
+            // workspace: its dashboard is the authoritative source.
             await RefreshDashboardAsync(cancellationToken);
         }
         else if (SelectedWorkspace is not null)
         {
+            // Either there is no active session, or it belongs to a
+            // different workspace than the one currently selected (e.g. the
+            // user switched away after starting a session elsewhere). The
+            // currently selected workspace is the presentation authority, so
+            // refresh its own workflow instead of applying a mismatched
+            // session's dashboard or silently reselecting the session's
+            // workspace.
             await LoadWorkspaceWorkflowAsync(cancellationToken);
         }
 
@@ -711,10 +747,29 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
-        Dashboard = await _moduleService.GetDashboardAsync(
-            Session.Id,
-            cancellationToken);
-        ApplyDashboard(Dashboard);
+        // Capture the session's own target identity and the current
+        // generation before awaiting: the user may switch workspaces (or
+        // switch away and back, advancing the generation) while this
+        // dashboard is loading.
+        var sessionId = Session.Id;
+        var targetWorkspaceId = Session.WorkspaceId;
+        var generation = _workspaceGeneration;
+
+        var dashboard = await _moduleService.GetDashboardAsync(sessionId, cancellationToken);
+
+        if (SelectedWorkspace?.WorkspaceId != targetWorkspaceId ||
+            _workspaceGeneration != generation ||
+            dashboard.Workspace.WorkspaceId != targetWorkspaceId)
+        {
+            // The user has moved to a different workspace since this refresh
+            // started (or the session simply doesn't belong to the currently
+            // selected workspace to begin with) - a mismatched dashboard
+            // must never be applied under, or reselect, another workspace.
+            SafeStatusMessage = "AEDA Code session belongs to a different workspace.";
+            return;
+        }
+
+        Dashboard = dashboard;
         SafeStatusMessage = "AEDA Code dashboard refreshed.";
     }
 
@@ -759,14 +814,17 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             // been loaded, so it can be safely reloaded through the existing
             // authoritative dashboard path.
             var targetWorkspaceId = workspace.WorkspaceId;
+            var reloadGeneration = _workspaceGeneration;
             var dashboard = await _moduleService.GetDashboardAsync(activeSession.Id, cancellationToken);
             if (SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+                _workspaceGeneration == reloadGeneration &&
                 dashboard.Workspace.WorkspaceId == targetWorkspaceId)
             {
                 // Guard against a rapid second workspace switch completing
                 // first: only apply this dashboard if the user is still on
-                // the workspace it was loaded for. ApplyDashboard (invoked by
-                // the Dashboard setter) records _applyHistoryWorkspaceId.
+                // the workspace (and generation) it was loaded for.
+                // ApplyDashboard (invoked by the Dashboard setter) records
+                // _applyHistoryWorkspaceId.
                 Dashboard = dashboard;
             }
         }
@@ -1219,34 +1277,64 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        // Capture the target identity and everything the request needs up
+        // front: SelectedWorkspace/SelectedProposal/the approval state may
+        // all change (or belong to a newer selection entirely) while this
+        // apply is in flight.
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var request = new PatchApplyRequest(
+            SelectedProposal.ProposalId,
+            targetWorkspaceId,
+            ApplyApprovalRequest,
+            ApplyApprovalDecision);
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId && _workspaceGeneration == generation;
+
         try
         {
             IsBusy = true;
-            ApplyResult = await _moduleService.ApplyApprovedProposalAsync(
-                new PatchApplyRequest(
-                    SelectedProposal.ProposalId,
-                    SelectedWorkspace.WorkspaceId,
-                    ApplyApprovalRequest,
-                    ApplyApprovalDecision),
-                cancellationToken);
-            AddOrUpdateApplyResult(ApplyResult);
-            SafeStatusMessage = ApplyResult.Status == PatchApplyStatus.Applied
-                ? "Proposal applied."
-                : "Apply completed with safe blockers.";
+            var result = await _moduleService.ApplyApprovedProposalAsync(request, cancellationToken);
+
+            if (IsCurrentOperation() && result.WorkspaceId == targetWorkspaceId)
+            {
+                ApplyResult = result;
+                AddOrUpdateApplyResult(result);
+                SafeStatusMessage = result.Status == PatchApplyStatus.Applied
+                    ? "Proposal applied."
+                    : "Apply completed with safe blockers.";
+                ClearApplyApprovalState();
+            }
+            // else: the user switched workspaces while this apply was in
+            // flight. PatchApplyService already persisted the result
+            // server-side (untouched by this repair) - it will appear the
+            // next time this workspace's Apply history is legitimately
+            // reloaded. It must not be surfaced, and the now-current
+            // workspace's own status/approval state must not be disturbed,
+            // by this stale completion.
+
             await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Apply cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Apply cancelled.";
+                ClearApplyApprovalState();
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Apply failed safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Apply failed safely.";
+                ClearApplyApprovalState();
+            }
         }
         finally
         {
             IsBusy = false;
-            ClearApplyApprovalState();
             NotifyAll();
         }
     }
@@ -1644,6 +1732,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         ClearActionState();
         _applyHistoryWorkspaceId = null;
         _workspaceTransitionPending = true;
+        _workspaceGeneration++;
     }
 
     partial void OnSelectedWorkspaceChanged(AedaCodeWorkspaceItem? value)
@@ -1757,10 +1846,36 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        // Capture the target identity once, up front. Both service calls
+        // below are awaited, and SelectedWorkspace/_workspaceGeneration may
+        // change out from under us between them (or before either
+        // completes) if the user switches workspaces while this load is in
+        // flight - re-reading the mutable property after an await would let
+        // a stale request commit under a different workspace's bindings.
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+
         var proposals = await _moduleService.ListProposalSummariesAsync(
-            SelectedWorkspace.WorkspaceId,
+            targetWorkspaceId,
             SummaryLimit,
             cancellationToken);
+
+        var templates = await _moduleService.ListValidationTemplatesAsync(
+            targetWorkspaceId,
+            cancellationToken);
+
+        if (SelectedWorkspace?.WorkspaceId != targetWorkspaceId || _workspaceGeneration != generation)
+        {
+            // The user has moved to a different workspace (or transitioned
+            // away and back) since this load started; discard this stale
+            // result silently rather than committing mixed or out-of-date
+            // proposals/templates under whatever workspace is now selected.
+            return;
+        }
+
+        // Commit the complete workspace snapshot together, only now that
+        // both reads have succeeded and the workspace/generation is still
+        // current - never a partially-cleared or mixed-workspace state.
         Proposals.Clear();
         foreach (var proposal in proposals
                      .OrderByDescending(proposal => proposal.UpdatedAtUtc)
@@ -1770,9 +1885,6 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
 
         ValidationTemplates.Clear();
-        var templates = await _moduleService.ListValidationTemplatesAsync(
-            SelectedWorkspace.WorkspaceId,
-            cancellationToken);
         foreach (var template in templates)
         {
             ValidationTemplates.Add(AedaCodeValidationTemplateItem.From(template));
@@ -1814,11 +1926,18 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         SafeStatusMessage = status;
     }
 
+    /// <summary>
+    /// Applies a dashboard's data to the dashboard-owned presentation
+    /// collections. This method never touches <see cref="SelectedWorkspace"/>
+    /// - that is user/navigation state, and a session dashboard is data that
+    /// must never override a newer user selection. Every caller MUST verify,
+    /// immediately before invoking this (i.e. before assigning
+    /// <see cref="Dashboard"/>, whose setter triggers this), that
+    /// <c>dashboard.Workspace.WorkspaceId</c> still matches the currently
+    /// selected workspace and the current <see cref="_workspaceGeneration"/>.
+    /// </summary>
     private void ApplyDashboard(AedaCodeDashboardModel dashboard)
     {
-        SelectedWorkspace = Workspaces.FirstOrDefault(workspace =>
-            workspace.WorkspaceId == dashboard.Workspace.WorkspaceId)
-            ?? SelectedWorkspace;
         Proposals.Clear();
         foreach (var proposal in dashboard.Proposals
                      .OrderByDescending(proposal => proposal.UpdatedAtUtc)
@@ -1844,9 +1963,9 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ValidationRuns.Add(AedaCodeValidationRunItem.From(run));
         }
 
-        // Recorded last: this dashboard's ApplyResults are now authoritative
-        // for this workspace, regardless of whether the SelectedWorkspace
-        // reassignment above re-triggered a clear via OnSelectedWorkspaceChanging.
+        // The caller has already validated that this dashboard belongs to
+        // the currently selected workspace and generation, so its
+        // ApplyResults are now authoritative for that workspace.
         _applyHistoryWorkspaceId = dashboard.Workspace.WorkspaceId;
     }
 

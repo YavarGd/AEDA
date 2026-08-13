@@ -428,6 +428,338 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
     }
 
     [Fact]
+    public async Task DelayedProposalListForStaleWorkspace_DoesNotMixIntoNewlySelectedWorkspaceState()
+    {
+        var workspaceBRoot = Path.Combine(_root, "workspace-mixed-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var service = new PersistedApplyModuleService(CreateApplyService(proposalRepository, applyRepository), proposalRepository);
+
+        var proposalAId = PatchProposalId.NewId();
+        var proposalBId = PatchProposalId.NewId();
+        var risk = new AedaCodeRiskBadge(PatchProposalRisk.Low, "Low", "small_text_change");
+        service.ProposalsByWorkspace[_workspaceId] =
+            [new AedaCodeProposalSummary(proposalAId, "Proposal A", PatchProposalStatus.ReadyForReview, risk, ["src/App.cs"], DateTimeOffset.UtcNow)];
+        service.ProposalsByWorkspace[workspaceBId] =
+            [new AedaCodeProposalSummary(proposalBId, "Proposal B", PatchProposalStatus.ReadyForReview, risk, ["src/Other.cs"], DateTimeOffset.UtcNow)];
+        service.TemplatesByWorkspace[_workspaceId] =
+            [new ValidationCommandTemplate("template-a", "Template A", "dotnet", ["test"], TimeSpan.FromMinutes(1), "src/App.cs")];
+        service.TemplatesByWorkspace[workspaceBId] =
+            [new ValidationCommandTemplate("template-b", "Template B", "dotnet", ["test"], TimeSpan.FromMinutes(1), "src/Other.cs")];
+
+        var viewModel = BuildViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+
+        // Begin loading A, but delay its proposal-list retrieval so it is
+        // still in flight when the user switches to B.
+        var delayedProposalLoad = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextProposalList = workspaceId =>
+        {
+            delayedProposalLoad.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        var switchToA = viewModel.SelectWorkspaceAsync(workspaceA);
+        var captured = await delayedProposalLoad.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(_workspaceId, captured);
+        Assert.False(switchToA.IsCompleted);
+
+        // Switch to B before A's proposal list resolves; B's own load is not
+        // delayed and completes fully.
+        await viewModel.SelectWorkspaceAsync(workspaceB);
+        Assert.Single(viewModel.Proposals, item => item.ProposalId == proposalBId);
+        Assert.Single(viewModel.ValidationTemplates, item => item.Id == "template-b");
+
+        // Now release A's delayed proposal list (its subsequent template
+        // request, for the still-stale workspace, resolves immediately).
+        // The whole stale snapshot must be discarded silently - never
+        // committed under B, and never mixed with B's own state.
+        gate.SetResult();
+        await switchToA;
+
+        Assert.DoesNotContain(viewModel.Proposals, item => item.ProposalId == proposalAId);
+        Assert.Single(viewModel.Proposals, item => item.ProposalId == proposalBId);
+        Assert.DoesNotContain(viewModel.ValidationTemplates, item => item.Id == "template-a");
+        Assert.Single(viewModel.ValidationTemplates, item => item.Id == "template-b");
+        Assert.Equal(workspaceBId, viewModel.SelectedWorkspace!.WorkspaceId);
+    }
+
+    [Fact]
+    public async Task RefreshWithSessionBelongingToDifferentWorkspace_DoesNotApplyOrReselectThatWorkspace()
+    {
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        await ApplyProposalAsync(proposal.Id);
+
+        var workspaceBRoot = Path.Combine(_root, "workspace-refresh-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var viewModel = await OpenViewModelWithSessionAsync(registry);
+        Assert.Single(viewModel.ApplyResults);
+        Assert.Equal(_workspaceId, viewModel.Session!.WorkspaceId);
+
+        // Switch to B without starting a session there: the active session
+        // still belongs to A.
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId));
+        Assert.Empty(viewModel.ApplyResults);
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        // B must remain selected; A's dashboard/history must not have been
+        // applied beneath it, and ApplyDashboard must not have silently
+        // reselected A.
+        Assert.Equal(workspaceBId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.Empty(viewModel.Proposals);
+    }
+
+    [Fact]
+    public async Task DelayedStartSessionForStaleWorkspace_DoesNotReselectOrPopulateThatWorkspace()
+    {
+        var workspaceBRoot = Path.Combine(_root, "workspace-start-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var service = new PersistedApplyModuleService(CreateApplyService(proposalRepository, applyRepository), proposalRepository);
+        var viewModel = BuildViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+
+        await viewModel.SelectWorkspaceAsync(workspaceA);
+
+        var delayedStart = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextStartSession = workspaceId =>
+        {
+            delayedStart.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        var startA = viewModel.StartSessionCommand.ExecuteAsync(null);
+        var captured = await delayedStart.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(_workspaceId, captured);
+        Assert.False(startA.IsCompleted);
+        Assert.Null(viewModel.Session);
+
+        // Switch to B before A's session finishes starting.
+        await viewModel.SelectWorkspaceAsync(workspaceB);
+        Assert.Null(viewModel.Session);
+        Assert.Empty(viewModel.ApplyResults);
+
+        // Release A's delayed session start.
+        gate.SetResult();
+        await startA;
+
+        // B remains selected, with no session and no dashboard/history
+        // committed under it as a result of A's stale completion.
+        Assert.Equal(workspaceBId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Null(viewModel.Session);
+        Assert.Empty(viewModel.ApplyResults);
+    }
+
+    [Fact]
+    public async Task DelayedApplyCompletionForStaleWorkspace_DoesNotSurfaceUnderNewlySelectedWorkspace()
+    {
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+
+        var workspaceBRoot = Path.Combine(_root, "workspace-apply-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        // AllowApplyOnceAsync decides against the view model's own approval
+        // store, while RequestApplyApprovalAsync issues the request through
+        // whatever store the module service's PatchApplyService was built
+        // with - share one store between both so the decision round-trips,
+        // exactly as production composition wires a single approval store
+        // throughout.
+        var sharedApprovals = new InMemoryApprovalCheckpointStore();
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var reader = CreateReader();
+        var validator = new PatchApplyValidator(proposalRepository, reader, CreateResolver());
+        var patchApplyService = new PatchApplyService(proposalRepository, applyRepository, validator, reader, sharedApprovals);
+        var service = new PersistedApplyModuleService(patchApplyService, proposalRepository);
+        var viewModel = BuildViewModel(registry, service, sharedApprovals);
+        await viewModel.InitializeAsync();
+
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+
+        await viewModel.SelectWorkspaceAsync(workspaceA);
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+
+        var proposalItem = new AedaCodeProposalItem(
+            proposal.Id,
+            proposal.Title,
+            proposal.Status,
+            "Low",
+            "small",
+            proposal.Files.Count,
+            "just now",
+            "safe",
+            new AedaCodeProposalSummary(
+                proposal.Id,
+                proposal.Title,
+                proposal.Status,
+                new AedaCodeRiskBadge(PatchProposalRisk.Low, "Low", "small_text_change"),
+                proposal.Files.Select(file => file.RelativePath).ToArray(),
+                proposal.UpdatedAtUtc));
+        await viewModel.SelectProposalAsync(proposalItem);
+        await viewModel.DryRunSelectedProposalCommand.ExecuteAsync(null);
+        await viewModel.RequestApplyApprovalCommand.ExecuteAsync(null);
+        await viewModel.AllowApplyOnceCommand.ExecuteAsync(null);
+
+        // Delay the Apply completion until after the backend result already
+        // exists (persisted), but before it is returned to the view model.
+        var delayedApply = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextApplyCompletion = request =>
+        {
+            delayedApply.SetResult(request.WorkspaceId);
+            return gate.Task;
+        };
+
+        var applyA = viewModel.ApplyApprovedProposalCommand.ExecuteAsync(null);
+        var capturedApply = await delayedApply.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(_workspaceId, capturedApply);
+        Assert.False(applyA.IsCompleted);
+
+        // Switch to B while A's apply result is held behind the gate.
+        await viewModel.SelectWorkspaceAsync(workspaceB);
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.False(viewModel.HasRollbackAvailable);
+
+        gate.SetResult();
+        await applyA;
+
+        // B's visible Apply history/current result must remain untouched by
+        // A's stale completion.
+        Assert.Equal(workspaceBId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.CanShowRollback);
+
+        // The persisted result is not discarded or corrupted: it is
+        // available the next time A is legitimately reloaded.
+        var (persistedProposalRepository, persistedApplyRepository) = OpenRepositories();
+        var applyResults = await persistedApplyRepository.ListRecentApplyResultsAsync(50, CancellationToken.None);
+        var persisted = Assert.Single(applyResults, result => result.ProposalId == proposal.Id);
+        Assert.Equal(_workspaceId, persisted.WorkspaceId);
+        Assert.Equal(PatchApplyStatus.Applied, persisted.Status);
+    }
+
+    [Fact]
+    public async Task RapidWorkspaceSwitch_AtoBtoC_CompletingInReverseOrder_LeavesOnlyCState()
+    {
+        var workspaceBRoot = Path.Combine(_root, "workspace-rapid-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+        var workspaceCRoot = Path.Combine(_root, "workspace-rapid-c");
+        Directory.CreateDirectory(workspaceCRoot);
+        var workspaceCId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+        registry.Register(workspaceCId, workspaceCRoot, "Repo C");
+
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var service = new PersistedApplyModuleService(CreateApplyService(proposalRepository, applyRepository), proposalRepository);
+
+        var proposalAId = PatchProposalId.NewId();
+        var proposalBId = PatchProposalId.NewId();
+        var proposalCId = PatchProposalId.NewId();
+        var risk = new AedaCodeRiskBadge(PatchProposalRisk.Low, "Low", "small_text_change");
+        service.ProposalsByWorkspace[_workspaceId] =
+            [new AedaCodeProposalSummary(proposalAId, "Proposal A", PatchProposalStatus.ReadyForReview, risk, ["src/A.cs"], DateTimeOffset.UtcNow)];
+        service.ProposalsByWorkspace[workspaceBId] =
+            [new AedaCodeProposalSummary(proposalBId, "Proposal B", PatchProposalStatus.ReadyForReview, risk, ["src/B.cs"], DateTimeOffset.UtcNow)];
+        service.ProposalsByWorkspace[workspaceCId] =
+            [new AedaCodeProposalSummary(proposalCId, "Proposal C", PatchProposalStatus.ReadyForReview, risk, ["src/C.cs"], DateTimeOffset.UtcNow)];
+
+        var viewModel = BuildViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+        var workspaceC = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceCId);
+
+        // Delay A's proposal list so A's overall load outlives B's and C's.
+        var gateA = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayedA = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextProposalList = workspaceId =>
+        {
+            delayedA.SetResult(workspaceId);
+            return gateA.Task;
+        };
+
+        var switchToA = viewModel.SelectWorkspaceAsync(workspaceA);
+        await delayedA.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(switchToA.IsCompleted);
+
+        // B is selected next; delay its proposal list too, so it also
+        // outlives what follows.
+        var gateB = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayedB = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextProposalList = workspaceId =>
+        {
+            delayedB.SetResult(workspaceId);
+            return gateB.Task;
+        };
+
+        var switchToB = viewModel.SelectWorkspaceAsync(workspaceB);
+        await delayedB.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(switchToB.IsCompleted);
+
+        // Finally select C, whose own load is not delayed and completes
+        // immediately.
+        await viewModel.SelectWorkspaceAsync(workspaceC);
+        Assert.Single(viewModel.Proposals, item => item.ProposalId == proposalCId);
+
+        // Complete in reverse order: A's load resolves first, then B's -
+        // both stale relative to the current (C) generation.
+        gateA.SetResult();
+        await switchToA;
+        Assert.Single(viewModel.Proposals, item => item.ProposalId == proposalCId);
+        Assert.Equal(workspaceCId, viewModel.SelectedWorkspace!.WorkspaceId);
+
+        gateB.SetResult();
+        await switchToB;
+
+        // Final presentation must contain only C's state.
+        Assert.Equal(workspaceCId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Single(viewModel.Proposals, item => item.ProposalId == proposalCId);
+        Assert.DoesNotContain(viewModel.Proposals, item => item.ProposalId == proposalAId);
+        Assert.DoesNotContain(viewModel.Proposals, item => item.ProposalId == proposalBId);
+    }
+
+    [Fact]
     public async Task RolledBackApplyResult_StaysUnavailableAfterRestart_ViaPersistedProposalStatus()
     {
         Write("src/App.cs", "old\n");
@@ -547,7 +879,8 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
 
     private static AedaCodeModuleViewModel BuildViewModel(
         WorkspaceRegistry registry,
-        IAedaCodeModuleService service)
+        IAedaCodeModuleService service,
+        IApprovalCheckpointStore? approvalStore = null)
     {
         var capabilities = BackendCapabilityRegistry.CreateDefault(
             hasTaskRuntime: true,
@@ -574,7 +907,7 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             hasTaskArtifactLinks: true);
         var moduleRegistry = new AedaModuleRegistry(
             [AedaCodeModuleDescriptorFactory.Create(capabilities)]);
-        var approvalStore = new InMemoryApprovalCheckpointStore();
+        approvalStore ??= new InMemoryApprovalCheckpointStore();
         return new AedaCodeModuleViewModel(
             service,
             moduleRegistry,
@@ -650,11 +983,24 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
     {
         private readonly Dictionary<AedaCodeSessionId, WorkspaceId> _sessions = [];
 
-        public Task<AedaCodeSession> StartSessionAsync(
+        /// <summary>
+        /// When set, the next <see cref="StartSessionAsync"/> call for the
+        /// given workspace awaits this before returning, then clears itself.
+        /// Lets tests simulate a slow session start.
+        /// </summary>
+        public Func<WorkspaceId, Task>? DelayNextStartSession;
+
+        public async Task<AedaCodeSession> StartSessionAsync(
             WorkspaceId workspaceId,
             string? safeSummary = null,
             CancellationToken cancellationToken = default)
         {
+            if (DelayNextStartSession is { } delay)
+            {
+                DelayNextStartSession = null;
+                await delay(workspaceId);
+            }
+
             var session = new AedaCodeSession(
                 AedaCodeSessionId.NewId(),
                 workspaceId,
@@ -668,7 +1014,7 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
                 AedaCodeSessionStatus.Active,
                 safeSummary ?? "Session");
             _sessions[session.Id] = workspaceId;
-            return Task.FromResult(session);
+            return session;
         }
 
         public Task<IReadOnlyList<AedaCodeSession>> ListRecentSessionsAsync(
@@ -709,13 +1055,53 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<AedaCodeProposalSummary>> ListProposalSummariesAsync(
-            WorkspaceId workspaceId, int limit = 50, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<AedaCodeProposalSummary>>([]);
+        /// <summary>
+        /// Per-workspace proposal/template fixtures a test can populate so
+        /// <see cref="ListProposalSummariesAsync"/>/<see cref="ListValidationTemplatesAsync"/>
+        /// return distinguishable, workspace-specific data instead of always
+        /// empty lists.
+        /// </summary>
+        public Dictionary<WorkspaceId, IReadOnlyList<AedaCodeProposalSummary>> ProposalsByWorkspace { get; } = [];
 
-        public Task<IReadOnlyList<ValidationCommandTemplate>> ListValidationTemplatesAsync(
-            WorkspaceId workspaceId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<ValidationCommandTemplate>>([]);
+        public Dictionary<WorkspaceId, IReadOnlyList<ValidationCommandTemplate>> TemplatesByWorkspace { get; } = [];
+
+        /// <summary>
+        /// When set, the next <see cref="ListProposalSummariesAsync"/> call
+        /// for the given workspace awaits this before returning, then clears
+        /// itself.
+        /// </summary>
+        public Func<WorkspaceId, Task>? DelayNextProposalList;
+
+        /// <summary>
+        /// When set, the next <see cref="ListValidationTemplatesAsync"/> call
+        /// for the given workspace awaits this before returning, then clears
+        /// itself.
+        /// </summary>
+        public Func<WorkspaceId, Task>? DelayNextTemplateList;
+
+        public async Task<IReadOnlyList<AedaCodeProposalSummary>> ListProposalSummariesAsync(
+            WorkspaceId workspaceId, int limit = 50, CancellationToken cancellationToken = default)
+        {
+            if (DelayNextProposalList is { } delay)
+            {
+                DelayNextProposalList = null;
+                await delay(workspaceId);
+            }
+
+            return ProposalsByWorkspace.TryGetValue(workspaceId, out var proposals) ? proposals : [];
+        }
+
+        public async Task<IReadOnlyList<ValidationCommandTemplate>> ListValidationTemplatesAsync(
+            WorkspaceId workspaceId, CancellationToken cancellationToken = default)
+        {
+            if (DelayNextTemplateList is { } delay)
+            {
+                DelayNextTemplateList = null;
+                await delay(workspaceId);
+            }
+
+            return TemplatesByWorkspace.TryGetValue(workspaceId, out var templates) ? templates : [];
+        }
 
         public Task<PatchApplyPlan> DryRunApplyAsync(
             PatchApplyRequest request, CancellationToken cancellationToken = default) =>
@@ -725,9 +1111,27 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             PatchProposalId proposalId, WorkspaceId workspaceId, CancellationToken cancellationToken = default) =>
             applyService.RequestApplyApprovalAsync(proposalId, workspaceId, cancellationToken);
 
-        public Task<PatchApplyResult> ApplyApprovedProposalAsync(
-            PatchApplyRequest request, CancellationToken cancellationToken = default) =>
-            applyService.ApplyAsync(request, cancellationToken);
+        /// <summary>
+        /// When set, the next <see cref="ApplyApprovedProposalAsync"/> call
+        /// awaits this AFTER the real apply has already completed (the
+        /// backend result already exists/is persisted) but BEFORE returning
+        /// it to the caller, then clears itself. Lets tests simulate a slow
+        /// apply completion without affecting persisted state.
+        /// </summary>
+        public Func<PatchApplyRequest, Task>? DelayNextApplyCompletion;
+
+        public async Task<PatchApplyResult> ApplyApprovedProposalAsync(
+            PatchApplyRequest request, CancellationToken cancellationToken = default)
+        {
+            var result = await applyService.ApplyAsync(request, cancellationToken);
+            if (DelayNextApplyCompletion is { } delay)
+            {
+                DelayNextApplyCompletion = null;
+                await delay(request);
+            }
+
+            return result;
+        }
 
         public Task<PatchProposal?> GetProposalAsync(
             PatchProposalId proposalId, CancellationToken cancellationToken = default) =>
