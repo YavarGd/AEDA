@@ -336,25 +336,37 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId));
         await viewModel.StartSessionCommand.ExecuteAsync(null);
         Assert.Single(viewModel.ApplyResults);
+        var sessionAId = viewModel.Session!.Id;
 
         await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceCId));
-        await viewModel.StartSessionCommand.ExecuteAsync(null);
         Assert.Empty(viewModel.ApplyResults);
+        Assert.Equal(sessionAId, viewModel.Session!.Id);
 
-        // Re-select A (its session is still active, so this arms the
-        // matching-session dashboard reload), but delay that reload so the
-        // user can rapidly re-select C again before it resolves.
+        // Re-select A while its session is still active, and prove that A's
+        // matching-session dashboard load is the call held behind the gate.
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        service.DelayNextDashboardLoad = () => gate.Task;
+        var delayedLoad = new TaskCompletionSource<(AedaCodeSessionId SessionId, WorkspaceId WorkspaceId)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextDashboardLoad = (sessionId, workspaceId) =>
+        {
+            delayedLoad.SetResult((sessionId, workspaceId));
+            return gate.Task;
+        };
 
         var switchToA = viewModel.SelectWorkspaceAsync(
             viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId));
-        var switchToC = viewModel.SelectWorkspaceAsync(
+        var capturedLoad = await delayedLoad.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(sessionAId, capturedLoad.SessionId);
+        Assert.Equal(_workspaceId, capturedLoad.WorkspaceId);
+        Assert.False(switchToA.IsCompleted);
+
+        await viewModel.SelectWorkspaceAsync(
             viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceCId));
+        Assert.Equal(workspaceCId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Empty(viewModel.ApplyResults);
 
         gate.SetResult();
         await switchToA;
-        await switchToC;
 
         // C was selected last: A's delayed dashboard must not have been
         // allowed to populate ApplyResults out from under it.
@@ -696,18 +708,18 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         /// before proceeding, then clears itself. Lets tests simulate a slow
         /// dashboard load to exercise the workspace-switch race guard.
         /// </summary>
-        public Func<Task>? DelayNextDashboardLoad;
+        public Func<AedaCodeSessionId, WorkspaceId, Task>? DelayNextDashboardLoad;
 
         public async Task<AedaCodeDashboardModel> GetDashboardAsync(
             AedaCodeSessionId sessionId, CancellationToken cancellationToken = default)
         {
+            var workspaceId = _sessions[sessionId];
             if (DelayNextDashboardLoad is { } delay)
             {
                 DelayNextDashboardLoad = null;
-                await delay();
+                await delay(sessionId, workspaceId);
             }
 
-            var workspaceId = _sessions[sessionId];
             var recent = await applyService.ListRecentApplyResultsAsync(50, cancellationToken);
             var applySummaries = recent
                 .Where(result => result.WorkspaceId == workspaceId)
