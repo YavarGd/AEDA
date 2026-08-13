@@ -216,6 +216,150 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         Assert.False(viewModel.HasRollbackAvailable);
         Assert.False(viewModel.CanShowRollback);
         Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+
+        // The previous workspace's Apply-history entries must not remain
+        // visible/announced under the newly selected workspace.
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.DoesNotContain(viewModel.ApplyResults, item => item.ApplyResultId == historyItem.ApplyResultId);
+    }
+
+    [Fact]
+    public async Task WorkspaceSwitch_ToWorkspaceWithItsOwnHistory_ShowsOnlyThatWorkspacesApplyResults()
+    {
+        Write("src/App.cs", "old\n");
+        var proposalA = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var applyResultIdA = await ApplyProposalAsync(proposalA.Id);
+
+        var workspaceBRoot = Path.Combine(_root, "workspace-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+        Write("src/Other.cs", "b-old\n", workspaceBRoot);
+        var proposalB = await SaveProposalAsync(
+            [Edit("src/Other.cs", "b-old\n", "b-new\n")], workspaceBId);
+        var applyResultIdB = await ApplyProposalAsync(proposalB.Id, workspaceBId, workspaceBRoot);
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var viewModel = await OpenViewModelWithSessionAsync(registry);
+        Assert.Single(viewModel.ApplyResults, item => item.ApplyResultId == applyResultIdA);
+
+        // Give Workspace B its own active session so switching to it can
+        // reload its persisted history through the existing dashboard path.
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId));
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+
+        Assert.Single(viewModel.ApplyResults, item => item.ApplyResultId == applyResultIdB);
+        Assert.DoesNotContain(viewModel.ApplyResults, item => item.ApplyResultId == applyResultIdA);
+    }
+
+    [Fact]
+    public async Task WorkspaceSwitch_BackAndForthBetweenActiveSessions_ReloadsCorrectlyWithoutDuplicates()
+    {
+        Write("src/App.cs", "old\n");
+        var proposalA = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var applyResultIdA = await ApplyProposalAsync(proposalA.Id);
+
+        var workspaceBRoot = Path.Combine(_root, "workspace-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+        Write("src/Other.cs", "b-old\n", workspaceBRoot);
+        var proposalB = await SaveProposalAsync(
+            [Edit("src/Other.cs", "b-old\n", "b-new\n")], workspaceBId);
+        var applyResultIdB = await ApplyProposalAsync(proposalB.Id, workspaceBId, workspaceBRoot);
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var viewModel = await OpenViewModelWithSessionAsync(registry);
+        Assert.Single(viewModel.ApplyResults, item => item.ApplyResultId == applyResultIdA);
+
+        // Switch to B without starting a session there: A's own session
+        // (from OpenViewModelWithSessionAsync) remains the view model's only
+        // active session, so B correctly shows no history of its own yet.
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId));
+        Assert.Empty(viewModel.ApplyResults);
+
+        // Switch back to A: its session is still the active one, so the
+        // matching-session reload path must bring A's history back with no
+        // duplicates and no B entries (B has none loaded to begin with).
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId));
+
+        var current = viewModel.ApplyResults.ToArray();
+        Assert.Single(current, item => item.ApplyResultId == applyResultIdA);
+        Assert.DoesNotContain(current, item => item.ApplyResultId == applyResultIdB);
+        Assert.Equal(current.Length, current.Select(item => item.ApplyResultId).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task WorkspaceSwitch_ToNullWorkspace_ClearsApplyHistoryAndRollbackState()
+    {
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        await ApplyProposalAsync(proposal.Id);
+
+        var registry = OpenRegistry();
+        var viewModel = await OpenViewModelWithSessionAsync(registry);
+        var historyItem = Assert.Single(viewModel.ApplyResults);
+        await viewModel.SelectApplyResultAsync(historyItem);
+        Assert.True(viewModel.HasRollbackAvailable);
+
+        await viewModel.SelectWorkspaceAsync(null);
+
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.CanShowRollback);
+    }
+
+    [Fact]
+    public async Task RapidWorkspaceReselection_DelayedLoadForStaleWorkspaceCannotPopulateApplyResultsUnderCurrentWorkspace()
+    {
+        Write("src/App.cs", "old\n");
+        var proposalA = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        await ApplyProposalAsync(proposalA.Id);
+
+        var workspaceCRoot = Path.Combine(_root, "workspace-c");
+        Directory.CreateDirectory(workspaceCRoot);
+        var workspaceCId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceCId, workspaceCRoot, "Repo C");
+
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var service = new PersistedApplyModuleService(CreateApplyService(proposalRepository, applyRepository), proposalRepository);
+        var viewModel = BuildViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId));
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+        Assert.Single(viewModel.ApplyResults);
+
+        await viewModel.SelectWorkspaceAsync(viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceCId));
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+        Assert.Empty(viewModel.ApplyResults);
+
+        // Re-select A (its session is still active, so this arms the
+        // matching-session dashboard reload), but delay that reload so the
+        // user can rapidly re-select C again before it resolves.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextDashboardLoad = () => gate.Task;
+
+        var switchToA = viewModel.SelectWorkspaceAsync(
+            viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId));
+        var switchToC = viewModel.SelectWorkspaceAsync(
+            viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceCId));
+
+        gate.SetResult();
+        await switchToA;
+        await switchToC;
+
+        // C was selected last: A's delayed dashboard must not have been
+        // allowed to populate ApplyResults out from under it.
+        Assert.Equal(workspaceCId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Empty(viewModel.ApplyResults);
     }
 
     [Fact]
@@ -266,16 +410,20 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         Assert.Equal("old\n", Read("src/App.cs"));
     }
 
-    private async Task<PatchApplyResultId> ApplyProposalAsync(PatchProposalId proposalId)
+    private async Task<PatchApplyResultId> ApplyProposalAsync(
+        PatchProposalId proposalId,
+        WorkspaceId? workspaceId = null,
+        string? root = null)
     {
+        var id = workspaceId ?? _workspaceId;
         var (proposalRepository, applyRepository) = OpenRepositories();
         var approvals = new InMemoryApprovalCheckpointStore();
-        var reader = CreateReader();
-        var validator = new PatchApplyValidator(proposalRepository, reader, CreateResolver());
+        var reader = CreateReader(id, root);
+        var validator = new PatchApplyValidator(proposalRepository, reader, CreateResolver(id, root));
         var applyService = new PatchApplyService(proposalRepository, applyRepository, validator, reader, approvals);
-        var approval = await applyService.RequestApplyApprovalAsync(proposalId, _workspaceId);
+        var approval = await applyService.RequestApplyApprovalAsync(proposalId, id);
         var decision = await approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
-        var applied = await applyService.ApplyAsync(new PatchApplyRequest(proposalId, _workspaceId, approval, decision));
+        var applied = await applyService.ApplyAsync(new PatchApplyRequest(proposalId, id, approval, decision));
         return applied.Id;
     }
 
@@ -288,17 +436,19 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         return new PatchApplyService(proposalRepository, applyRepository, validator, reader, new InMemoryApprovalCheckpointStore());
     }
 
-    private FileSystemWorkspaceReader CreateReader()
+    private FileSystemWorkspaceReader CreateReader(WorkspaceId? workspaceId = null, string? root = null)
     {
+        var id = workspaceId ?? _workspaceId;
         var registry = new WorkspaceRegistry();
-        registry.Register(_workspaceId, _root, "Repo");
+        registry.Register(id, root ?? _root, "Repo");
         return new FileSystemWorkspaceReader(registry, new WorkspacePathResolver(registry), new WorkspaceToolOptions());
     }
 
-    private WorkspacePathResolver CreateResolver()
+    private WorkspacePathResolver CreateResolver(WorkspaceId? workspaceId = null, string? root = null)
     {
+        var id = workspaceId ?? _workspaceId;
         var registry = new WorkspaceRegistry();
-        registry.Register(_workspaceId, _root, "Repo");
+        registry.Register(id, root ?? _root, "Repo");
         return new WorkspacePathResolver(registry);
     }
 
@@ -375,13 +525,15 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         PatchProposalFileChangeKind kind = PatchProposalFileChangeKind.Modify) =>
         new(path, original, proposed, kind);
 
-    private async Task<PatchProposal> SaveProposalAsync(IReadOnlyList<PatchProposalFileEdit> edits)
+    private async Task<PatchProposal> SaveProposalAsync(
+        IReadOnlyList<PatchProposalFileEdit> edits,
+        WorkspaceId? workspaceId = null)
     {
         var files = edits.Select(edit => new UnifiedDiffBuilder().BuildFileDiff(edit)).ToArray();
         var now = DateTimeOffset.UtcNow;
         var proposal = new PatchProposal(
             PatchProposalId.NewId(),
-            _workspaceId,
+            workspaceId ?? _workspaceId,
             "Apply proposal",
             "Apply safely",
             PatchProposalStatus.ReadyForReview,
@@ -397,17 +549,17 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         return proposal;
     }
 
-    private string PathFor(string relativePath) =>
-        Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+    private string PathFor(string relativePath, string? root = null) =>
+        Path.Combine(root ?? _root, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-    private void Write(string relativePath, string content)
+    private void Write(string relativePath, string content, string? root = null)
     {
-        var path = PathFor(relativePath);
+        var path = PathFor(relativePath, root);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
     }
 
-    private string Read(string relativePath) => File.ReadAllText(PathFor(relativePath));
+    private string Read(string relativePath, string? root = null) => File.ReadAllText(PathFor(relativePath, root));
 
     public void Dispose()
     {
@@ -539,9 +691,22 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        /// <summary>
+        /// When set, the next <see cref="GetDashboardAsync"/> call awaits this
+        /// before proceeding, then clears itself. Lets tests simulate a slow
+        /// dashboard load to exercise the workspace-switch race guard.
+        /// </summary>
+        public Func<Task>? DelayNextDashboardLoad;
+
         public async Task<AedaCodeDashboardModel> GetDashboardAsync(
             AedaCodeSessionId sessionId, CancellationToken cancellationToken = default)
         {
+            if (DelayNextDashboardLoad is { } delay)
+            {
+                DelayNextDashboardLoad = null;
+                await delay();
+            }
+
             var workspaceId = _sessions[sessionId];
             var recent = await applyService.ListRecentApplyResultsAsync(50, cancellationToken);
             var applySummaries = recent
