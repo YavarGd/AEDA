@@ -711,6 +711,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         {
             ClearSelectedContext();
             ContextFileCandidates.Clear();
+            // Apply history is workspace-scoped presentation state: clear it
+            // synchronously (before any await) so the previous workspace's
+            // entries can never remain on screen, even transiently, once the
+            // user has switched away from it.
+            ApplyResults.Clear();
         }
 
         if (workspace is null)
@@ -721,6 +726,25 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
 
         await LoadWorkspaceWorkflowAsync(cancellationToken);
+
+        if (workspaceChanged && Session is { } activeSession && activeSession.WorkspaceId == workspace.WorkspaceId)
+        {
+            // The active session already belongs to the newly selected
+            // workspace (e.g. switching back to a workspace whose session is
+            // still live), so its persisted apply history can be safely
+            // reloaded through the existing authoritative dashboard path.
+            var targetWorkspaceId = workspace.WorkspaceId;
+            var dashboard = await _moduleService.GetDashboardAsync(activeSession.Id, cancellationToken);
+            if (SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+                dashboard.Workspace.WorkspaceId == targetWorkspaceId)
+            {
+                // Guard against a rapid second workspace switch completing
+                // first: only apply this dashboard if the user is still on
+                // the workspace it was loaded for.
+                Dashboard = dashboard;
+            }
+        }
+
         SafeStatusMessage = "Workspace workflow loaded.";
         NotifyAll();
     }
