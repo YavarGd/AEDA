@@ -5,6 +5,7 @@ using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Tests.Ui;
 
+[Collection("NativeUiAutomation")]
 public sealed class ClipboardCopySelectedTextProviderTests
 {
     private static readonly ActiveWindowReference Foreground = new(

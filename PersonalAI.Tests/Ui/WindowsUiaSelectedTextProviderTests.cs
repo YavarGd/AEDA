@@ -4,6 +4,7 @@ using PersonalAI.Infrastructure.Windows;
 
 namespace PersonalAI.Tests.Ui;
 
+[Collection("NativeUiAutomation")]
 public sealed class WindowsUiaSelectedTextProviderTests
 {
     private static readonly ActiveWindowReference Foreground = new(

@@ -3,6 +3,7 @@ using PersonalAI.Infrastructure.Context;
 
 namespace PersonalAI.Tests.Ui;
 
+[Collection("NativeUiAutomation")]
 public sealed class ExternalForegroundWindowMonitorTests
 {
     [Fact]
