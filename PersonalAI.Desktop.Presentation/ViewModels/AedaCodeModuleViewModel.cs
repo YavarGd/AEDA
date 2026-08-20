@@ -850,15 +850,41 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        if (SelectedWorkspace is null)
+        {
+            ClearProposalDetail();
+            NotifyAll();
+            return;
+        }
+
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetProposalId = proposal.ProposalId;
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            SelectedProposal?.ProposalId == targetProposalId;
+
         try
         {
             var detail = await _moduleService.GetProposalAsync(
-                proposal.ProposalId,
+                targetProposalId,
                 cancellationToken);
+            if (!IsCurrentOperation())
+            {
+                return;
+            }
+
             if (detail is null)
             {
                 SafeStatusMessage = "Selected proposal is no longer available.";
                 ClearProposalDetail();
+                return;
+            }
+
+            if (detail.WorkspaceId != targetWorkspaceId)
+            {
                 return;
             }
 
@@ -879,12 +905,18 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Proposal load cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Proposal load cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Proposal detail is temporarily unavailable.";
-            ClearProposalDetail();
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Proposal detail is temporarily unavailable.";
+                ClearProposalDetail();
+            }
         }
         finally
         {
@@ -989,16 +1021,28 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var request = new AedaCodeContextSearchRequest(
+            targetWorkspaceId,
+            ContextFileSearchQuery,
+            SelectedContextFiles.Select(file => file.RelativePath).ToArray());
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId && _workspaceGeneration == generation;
+
         try
         {
             IsSearchingContext = true;
             ContextFileCandidates.Clear();
-            var result = await _moduleService.SearchContextFilesAsync(
-                new AedaCodeContextSearchRequest(
-                    SelectedWorkspace.WorkspaceId,
-                    ContextFileSearchQuery,
-                    SelectedContextFiles.Select(file => file.RelativePath).ToArray()),
-                cancellationToken);
+            var result = await _moduleService.SearchContextFilesAsync(request, cancellationToken);
+            if (!IsCurrentOperation() ||
+                result.WorkspaceId != targetWorkspaceId ||
+                result.Candidates.Any(candidate => candidate.WorkspaceId != targetWorkspaceId))
+            {
+                return;
+            }
+
             foreach (var candidate in result.Candidates)
             {
                 ContextFileCandidates.Add(candidate);
@@ -1010,11 +1054,17 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Context file search cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Context file search cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Could not search context files safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Could not search context files safely.";
+            }
         }
         finally
         {
@@ -1028,10 +1078,19 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         AedaCodeContextFileCandidate? candidate,
         CancellationToken cancellationToken = default)
     {
-        if (SelectedWorkspace is null || candidate is null)
+        if (SelectedWorkspace is null ||
+            candidate is null ||
+            candidate.WorkspaceId != SelectedWorkspace.WorkspaceId)
         {
             return;
         }
+
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetRelativePath = candidate.RelativePath;
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId && _workspaceGeneration == generation;
 
         if (SelectedContextFiles.Any(file => string.Equals(
                 file.RelativePath,
@@ -1051,11 +1110,19 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         try
         {
             var pack = await _moduleService.ReadFilesAsync(
-                SelectedWorkspace.WorkspaceId,
-                [candidate.RelativePath],
+                targetWorkspaceId,
+                [targetRelativePath],
                 cancellationToken);
+            if (!IsCurrentOperation() ||
+                pack.WorkspaceId != targetWorkspaceId ||
+                pack.Files.Any(file => file.WorkspaceId != targetWorkspaceId))
+            {
+                return;
+            }
+
             var file = pack.Files.SingleOrDefault();
-            if (file is null)
+            if (file is null ||
+                !string.Equals(file.RelativePath, targetRelativePath, StringComparison.OrdinalIgnoreCase))
             {
                 SafeStatusMessage = "One selected file is no longer available. Remove it or refresh context.";
                 return;
@@ -1075,19 +1142,32 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                 file.Content.Length,
                 file.IsTruncated ? "file_truncated" : null));
             await RefreshTargetSnippetCandidatesAsync(cancellationToken);
-            SafeStatusMessage = "Context file selected. No files changed.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Context file selected. No files changed.";
+            }
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Context file add cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Context file add cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "One selected file is no longer available. Remove it or refresh context.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "One selected file is no longer available. Remove it or refresh context.";
+            }
         }
         finally
         {
-            RefreshContextCandidateSelectionState();
+            if (IsCurrentOperation())
+            {
+                RefreshContextCandidateSelectionState();
+            }
+
             NotifyAll();
         }
     }
@@ -1163,33 +1243,57 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetProposalId = SelectedProposal.ProposalId;
+        var request = new PatchApplyRequest(targetProposalId, targetWorkspaceId);
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            SelectedProposal?.ProposalId == targetProposalId;
+
         try
         {
             IsBusy = true;
-            DryRunPlan = await _moduleService.DryRunApplyAsync(
-                new PatchApplyRequest(
-                    SelectedProposal.ProposalId,
-                    SelectedWorkspace.WorkspaceId),
-                cancellationToken);
+            var plan = await _moduleService.DryRunApplyAsync(request, cancellationToken);
+            if (!IsCurrentOperation() ||
+                plan.WorkspaceId != targetWorkspaceId ||
+                plan.ProposalId != targetProposalId)
+            {
+                return;
+            }
+
+            DryRunPlan = plan;
             if (DryRunPlan.Status != PatchApplyStatus.DryRunPassed)
             {
                 ClearApplyApprovalState();
             }
 
-            SafeStatusMessage = IsDryRunStale
+            var status = IsDryRunStale
                 ? "Proposal is stale. Create a fresh proposal from the current file state."
                 : DryRunPlan.Status == PatchApplyStatus.DryRunPassed
                     ? "Dry run passed."
                     : "Dry run completed with safe blockers.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+            await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+            if (IsCurrentOperation() && ReferenceEquals(DryRunPlan, plan))
+            {
+                SafeStatusMessage = status;
+            }
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Dry run cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Dry run cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Dry run failed safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Dry run failed safely.";
+            }
         }
         finally
         {
@@ -1206,23 +1310,48 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetProposalId = SelectedProposal.ProposalId;
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            SelectedProposal?.ProposalId == targetProposalId;
+
         try
         {
-            ApplyApprovalRequest = await _moduleService.RequestApplyApprovalAsync(
-                SelectedProposal.ProposalId,
-                SelectedWorkspace.WorkspaceId,
+            var request = await _moduleService.RequestApplyApprovalAsync(
+                targetProposalId,
+                targetWorkspaceId,
                 cancellationToken);
+            if (!IsCurrentOperation() ||
+                !IsApplyApprovalRequestFor(request, targetWorkspaceId, targetProposalId))
+            {
+                return;
+            }
+
+            ApplyApprovalRequest = request;
             ApplyApprovalDecision = null;
-            SafeStatusMessage = "Apply approval requested.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+            await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+            if (IsCurrentOperation() && ApplyApprovalRequest?.RequestId == request.RequestId)
+            {
+                SafeStatusMessage = "Apply approval requested.";
+            }
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Apply approval request cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Apply approval request cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Could not request apply approval safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Could not request apply approval safely.";
+            }
         }
         finally
         {
@@ -1233,36 +1362,86 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanDecideApplyApproval))]
     public async Task AllowApplyOnceAsync(CancellationToken cancellationToken = default)
     {
-        if (ApplyApprovalRequest is null)
+        if (ApplyApprovalRequest is null || SelectedWorkspace is null || SelectedProposal is null)
         {
             return;
         }
 
-        ApplyApprovalDecision = await _approvalStore.DecideAsync(
-            ApplyApprovalRequest,
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetProposalId = SelectedProposal.ProposalId;
+        var request = ApplyApprovalRequest;
+        if (!IsApplyApprovalRequestFor(request, targetWorkspaceId, targetProposalId))
+        {
+            return;
+        }
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            SelectedProposal?.ProposalId == targetProposalId &&
+            ApplyApprovalRequest?.RequestId == request.RequestId;
+
+        var decision = await _approvalStore.DecideAsync(
+            request,
             ApprovalDecisionKind.AllowOnce,
             "Allowed from AEDA Code workflow.",
             cancellationToken);
-        SafeStatusMessage = "Apply approved once.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+        if (!IsCurrentOperation() || decision.RequestId != request.RequestId)
+        {
+            return;
+        }
+
+        ApplyApprovalDecision = decision;
+        await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+        if (IsCurrentOperation() && ApplyApprovalDecision?.DecisionId == decision.DecisionId)
+        {
+            SafeStatusMessage = "Apply approved once.";
+        }
+
         NotifyAll();
     }
 
     [RelayCommand(CanExecute = nameof(CanDecideApplyApproval))]
     public async Task DenyApplyApprovalAsync(CancellationToken cancellationToken = default)
     {
-        if (ApplyApprovalRequest is null)
+        if (ApplyApprovalRequest is null || SelectedWorkspace is null || SelectedProposal is null)
         {
             return;
         }
 
-        ApplyApprovalDecision = await _approvalStore.DecideAsync(
-            ApplyApprovalRequest,
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetProposalId = SelectedProposal.ProposalId;
+        var request = ApplyApprovalRequest;
+        if (!IsApplyApprovalRequestFor(request, targetWorkspaceId, targetProposalId))
+        {
+            return;
+        }
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            SelectedProposal?.ProposalId == targetProposalId &&
+            ApplyApprovalRequest?.RequestId == request.RequestId;
+
+        var decision = await _approvalStore.DecideAsync(
+            request,
             ApprovalDecisionKind.Deny,
             "Denied from AEDA Code workflow.",
             cancellationToken);
-        SafeStatusMessage = "Apply approval denied.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+        if (!IsCurrentOperation() || decision.RequestId != request.RequestId)
+        {
+            return;
+        }
+
+        ApplyApprovalDecision = decision;
+        await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+        if (IsCurrentOperation() && ApplyApprovalDecision?.DecisionId == decision.DecisionId)
+        {
+            SafeStatusMessage = "Apply approval denied.";
+        }
+
         NotifyAll();
     }
 
@@ -1347,30 +1526,61 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetTemplateId = SelectedValidationTemplate.Id;
+        var targetProposalId = SelectedProposal?.ProposalId;
+        var targetApplyResultId = ApplyResult?.Id;
+        var request = new ValidationRunRequest(
+            targetWorkspaceId,
+            targetTemplateId,
+            ".",
+            targetProposalId,
+            targetApplyResultId);
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            SelectedValidationTemplate?.Id == targetTemplateId &&
+            SelectedProposal?.ProposalId == targetProposalId &&
+            ApplyResult?.Id == targetApplyResultId;
+
         try
         {
-            ValidationRun = await _moduleService.CreateValidationRunAsync(
-                new ValidationRunRequest(
-                    SelectedWorkspace.WorkspaceId,
-                    SelectedValidationTemplate.Id,
-                    ".",
-                    SelectedProposal?.ProposalId,
-                    ApplyResult?.Id),
-                cancellationToken);
-            AddOrUpdateValidationRun(ValidationRun);
+            var run = await _moduleService.CreateValidationRunAsync(request, cancellationToken);
+            if (!IsCurrentOperation() ||
+                run.WorkspaceId != targetWorkspaceId ||
+                run.TemplateId != targetTemplateId ||
+                run.ProposalId != targetProposalId ||
+                run.ApplyResultId != targetApplyResultId)
+            {
+                return;
+            }
+
+            ValidationRun = run;
+            AddOrUpdateValidationRun(run);
             ValidationApprovalRequest = null;
             ValidationApprovalDecision = null;
             ValidationOutputPreview = "Validation run created. Request approval before running it.";
-            SafeStatusMessage = "Validation run created.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+            await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+            if (IsCurrentOperation() && ValidationRun?.Id == run.Id)
+            {
+                SafeStatusMessage = "Validation run created.";
+            }
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Validation run creation cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Validation run creation cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Validation run could not be created safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Validation run could not be created safely.";
+            }
         }
         finally
         {
@@ -1381,27 +1591,54 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRequestValidationApproval))]
     public async Task RequestValidationApprovalAsync(CancellationToken cancellationToken = default)
     {
-        if (ValidationRun is null)
+        if (ValidationRun is null ||
+            SelectedWorkspace is null ||
+            ValidationRun.WorkspaceId != SelectedWorkspace.WorkspaceId)
         {
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetRunId = ValidationRun.Id;
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            ValidationRun?.Id == targetRunId &&
+            ValidationRun.WorkspaceId == targetWorkspaceId;
+
         try
         {
-            ValidationApprovalRequest = await _moduleService.RequestValidationApprovalAsync(
-                ValidationRun.Id,
+            var request = await _moduleService.RequestValidationApprovalAsync(
+                targetRunId,
                 cancellationToken);
+            if (!IsCurrentOperation() || !IsValidationApprovalRequestFor(request, targetWorkspaceId, targetRunId))
+            {
+                return;
+            }
+
+            ValidationApprovalRequest = request;
             ValidationApprovalDecision = null;
-            SafeStatusMessage = "Validation approval requested.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+            await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+            if (IsCurrentOperation() && ValidationApprovalRequest?.RequestId == request.RequestId)
+            {
+                SafeStatusMessage = "Validation approval requested.";
+            }
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Validation approval request cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Validation approval request cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Could not request validation approval safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Could not request validation approval safely.";
+            }
         }
         finally
         {
@@ -1412,36 +1649,90 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanDecideValidationApproval))]
     public async Task AllowValidationOnceAsync(CancellationToken cancellationToken = default)
     {
-        if (ValidationApprovalRequest is null)
+        if (ValidationApprovalRequest is null || ValidationRun is null || SelectedWorkspace is null)
         {
             return;
         }
 
-        ValidationApprovalDecision = await _approvalStore.DecideAsync(
-            ValidationApprovalRequest,
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetRunId = ValidationRun.Id;
+        var request = ValidationApprovalRequest;
+        if (ValidationRun.WorkspaceId != targetWorkspaceId ||
+            !IsValidationApprovalRequestFor(request, targetWorkspaceId, targetRunId))
+        {
+            return;
+        }
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            ValidationRun?.Id == targetRunId &&
+            ValidationRun.WorkspaceId == targetWorkspaceId &&
+            ValidationApprovalRequest?.RequestId == request.RequestId;
+
+        var decision = await _approvalStore.DecideAsync(
+            request,
             ApprovalDecisionKind.AllowOnce,
             "Allowed from AEDA Code workflow.",
             cancellationToken);
-        SafeStatusMessage = "Validation approved once.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+        if (!IsCurrentOperation() || decision.RequestId != request.RequestId)
+        {
+            return;
+        }
+
+        ValidationApprovalDecision = decision;
+        await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+        if (IsCurrentOperation() && ValidationApprovalDecision?.DecisionId == decision.DecisionId)
+        {
+            SafeStatusMessage = "Validation approved once.";
+        }
+
         NotifyAll();
     }
 
     [RelayCommand(CanExecute = nameof(CanDecideValidationApproval))]
     public async Task DenyValidationApprovalAsync(CancellationToken cancellationToken = default)
     {
-        if (ValidationApprovalRequest is null)
+        if (ValidationApprovalRequest is null || ValidationRun is null || SelectedWorkspace is null)
         {
             return;
         }
 
-        ValidationApprovalDecision = await _approvalStore.DecideAsync(
-            ValidationApprovalRequest,
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetRunId = ValidationRun.Id;
+        var request = ValidationApprovalRequest;
+        if (ValidationRun.WorkspaceId != targetWorkspaceId ||
+            !IsValidationApprovalRequestFor(request, targetWorkspaceId, targetRunId))
+        {
+            return;
+        }
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            ValidationRun?.Id == targetRunId &&
+            ValidationRun.WorkspaceId == targetWorkspaceId &&
+            ValidationApprovalRequest?.RequestId == request.RequestId;
+
+        var decision = await _approvalStore.DecideAsync(
+            request,
             ApprovalDecisionKind.Deny,
             "Denied from AEDA Code workflow.",
             cancellationToken);
-        SafeStatusMessage = "Validation approval denied.";
-        await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+        if (!IsCurrentOperation() || decision.RequestId != request.RequestId)
+        {
+            return;
+        }
+
+        ValidationApprovalDecision = decision;
+        await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+        if (IsCurrentOperation() && ValidationApprovalDecision?.DecisionId == decision.DecisionId)
+        {
+            SafeStatusMessage = "Validation approval denied.";
+        }
+
         NotifyAll();
     }
 
@@ -1449,38 +1740,79 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     public async Task RunApprovedValidationAsync(CancellationToken cancellationToken = default)
     {
         if (ValidationRun is null ||
+            SelectedWorkspace is null ||
             ValidationApprovalRequest is null ||
-            ValidationApprovalDecision is null)
+            ValidationApprovalDecision is null ||
+            ValidationRun.WorkspaceId != SelectedWorkspace.WorkspaceId ||
+            !ValidationApprovalDecision.IsAllowed ||
+            ValidationApprovalDecision.RequestId != ValidationApprovalRequest.RequestId ||
+            !IsValidationApprovalRequestFor(
+                ValidationApprovalRequest,
+                SelectedWorkspace.WorkspaceId,
+                ValidationRun.Id))
         {
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetRunId = ValidationRun.Id;
+        var request = ValidationApprovalRequest;
+        var decision = ValidationApprovalDecision;
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            ValidationRun?.Id == targetRunId &&
+            ValidationRun.WorkspaceId == targetWorkspaceId &&
+            ValidationApprovalRequest?.RequestId == request.RequestId &&
+            ValidationApprovalDecision?.DecisionId == decision.DecisionId;
+
         try
         {
             IsBusy = true;
-            ValidationRun = await _moduleService.RunApprovedValidationAsync(
-                ValidationRun.Id,
-                ValidationApprovalRequest,
-                ValidationApprovalDecision,
+            var run = await _moduleService.RunApprovedValidationAsync(
+                targetRunId,
+                request,
+                decision,
                 cancellationToken);
-            AddOrUpdateValidationRun(ValidationRun);
-            ValidationOutputPreview = BuildValidationOutput(ValidationRun);
-            SafeStatusMessage = "Validation run completed.";
-            await RefreshCodeTasksPreservingStatusAsync(cancellationToken);
+            if (!IsCurrentOperation() || run.Id != targetRunId || run.WorkspaceId != targetWorkspaceId)
+            {
+                return;
+            }
+
+            ValidationRun = run;
+            AddOrUpdateValidationRun(run);
+            ValidationOutputPreview = BuildValidationOutput(run);
+            await LoadRecentCodeTasksAsync(cancellationToken, refreshSelectedTimeline: true);
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Validation run completed.";
+            }
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Validation run cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Validation run cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Validation failed safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Validation failed safely.";
+            }
         }
         finally
         {
             IsBusy = false;
-            ValidationApprovalRequest = null;
-            ValidationApprovalDecision = null;
+            if (IsCurrentOperation())
+            {
+                ValidationApprovalRequest = null;
+                ValidationApprovalDecision = null;
+            }
+
             NotifyAll();
         }
     }
@@ -1680,18 +2012,34 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
     private bool CanRequestValidationApproval() =>
         !IsBusy &&
-        ValidationRun is { Status: ValidationRunStatus.Created };
+        SelectedWorkspace is not null &&
+        ValidationRun is { Status: ValidationRunStatus.Created } &&
+        ValidationRun.WorkspaceId == SelectedWorkspace.WorkspaceId;
 
     private bool CanDecideValidationApproval() =>
         !IsBusy &&
+        SelectedWorkspace is not null &&
+        ValidationRun is not null &&
+        ValidationRun.WorkspaceId == SelectedWorkspace.WorkspaceId &&
         ValidationApprovalRequest is not null &&
-        ValidationApprovalDecision is null;
+        ValidationApprovalDecision is null &&
+        IsValidationApprovalRequestFor(
+            ValidationApprovalRequest,
+            SelectedWorkspace.WorkspaceId,
+            ValidationRun.Id);
 
     private bool CanRunApprovedValidation() =>
         !IsBusy &&
+        SelectedWorkspace is not null &&
         ValidationRun is not null &&
+        ValidationRun.WorkspaceId == SelectedWorkspace.WorkspaceId &&
         ValidationApprovalRequest is not null &&
-        ValidationApprovalDecision?.IsAllowed == true;
+        ValidationApprovalDecision?.IsAllowed == true &&
+        ValidationApprovalDecision.RequestId == ValidationApprovalRequest.RequestId &&
+        IsValidationApprovalRequestFor(
+            ValidationApprovalRequest,
+            SelectedWorkspace.WorkspaceId,
+            ValidationRun.Id);
 
     private bool CanRollback() => !IsBusy && CanShowRollback && SelectedWorkspace is not null;
 
@@ -1704,11 +2052,30 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return false;
         }
 
-        var expected = $"patch-apply:{SelectedWorkspace.WorkspaceId}:{SelectedProposal.ProposalId}";
-        return ApplyApprovalRequest.Scope.Kind == ApprovalKind.ApproveFutureApply &&
-            ApplyApprovalRequest.Scope.NormalizedResourceScope.Equals(
-                expected,
-                StringComparison.OrdinalIgnoreCase);
+        return IsApplyApprovalRequestFor(
+            ApplyApprovalRequest,
+            SelectedWorkspace.WorkspaceId,
+            SelectedProposal.ProposalId);
+    }
+
+    private static bool IsApplyApprovalRequestFor(
+        ApprovalRequest request,
+        WorkspaceId workspaceId,
+        PatchProposalId proposalId)
+    {
+        var expected = $"patch-apply:{workspaceId}:{proposalId}";
+        return request.Scope.Kind == ApprovalKind.ApproveFutureApply &&
+            request.Scope.NormalizedResourceScope.Equals(expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsValidationApprovalRequestFor(
+        ApprovalRequest request,
+        WorkspaceId workspaceId,
+        ValidationRunId runId)
+    {
+        var expected = $"validation-run:{workspaceId}:{runId}";
+        return request.Scope.Kind == ApprovalKind.ValidationRun &&
+            request.Scope.NormalizedResourceScope.Equals(expected, StringComparison.OrdinalIgnoreCase);
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyCommandStates();
@@ -1729,6 +2096,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         // associated with the new one - regardless of who triggered the
         // assignment or in what order.
         ApplyResults.Clear();
+        ValidationRuns.Clear();
         ClearActionState();
         _applyHistoryWorkspaceId = null;
         _workspaceTransitionPending = true;
@@ -1805,11 +2173,24 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var selectedRelativePaths = SelectedContextFiles.Select(file => file.RelativePath).ToArray();
+
         var candidates = await _moduleService.ListTargetSnippetCandidatesAsync(
             new AedaCodeTargetSnippetRequest(
-                SelectedWorkspace.WorkspaceId,
-                SelectedContextFiles.Select(file => file.RelativePath).ToArray()),
+                targetWorkspaceId,
+                selectedRelativePaths),
             cancellationToken);
+        if (SelectedWorkspace?.WorkspaceId != targetWorkspaceId ||
+            _workspaceGeneration != generation ||
+            !selectedRelativePaths.SequenceEqual(
+                SelectedContextFiles.Select(file => file.RelativePath),
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         foreach (var candidate in candidates)
         {
             TargetSnippetCandidates.Add(candidate);

@@ -1366,6 +1366,9 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
 
     private sealed class FakeAedaCodeModuleService : IAedaCodeModuleService
     {
+        private ValidationRun? _validationRun;
+        private WorkspaceId? _listedWorkspaceId;
+
         public IReadOnlyList<AedaCodeProposalSummary> ProposalSummaries { get; set; } = [];
 
         public PatchProposal? ProposalDetail { get; set; }
@@ -1560,10 +1563,15 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         }
 
         public Task<PatchProposal?> GetProposalAsync(PatchProposalId proposalId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(ProposalDetail);
+            Task.FromResult(ProposalDetail is null || _listedWorkspaceId is null
+                ? ProposalDetail
+                : ProposalDetail with { WorkspaceId = _listedWorkspaceId.Value });
 
-        public Task<IReadOnlyList<AedaCodeProposalSummary>> ListProposalSummariesAsync(WorkspaceId workspaceId, int limit = 50, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<AedaCodeProposalSummary>>(ProposalSummaries.Take(limit).ToArray());
+        public Task<IReadOnlyList<AedaCodeProposalSummary>> ListProposalSummariesAsync(WorkspaceId workspaceId, int limit = 50, CancellationToken cancellationToken = default)
+        {
+            _listedWorkspaceId = workspaceId;
+            return Task.FromResult<IReadOnlyList<AedaCodeProposalSummary>>(ProposalSummaries.Take(limit).ToArray());
+        }
 
         public Task<IReadOnlyList<ValidationCommandTemplate>> ListValidationTemplatesAsync(WorkspaceId workspaceId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Templates);
@@ -1627,8 +1635,9 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
                 DateTimeOffset.UtcNow));
         }
 
-        public Task<ValidationRun> CreateValidationRunAsync(ValidationRunRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ValidationRun(
+        public Task<ValidationRun> CreateValidationRunAsync(ValidationRunRequest request, CancellationToken cancellationToken = default)
+        {
+            _validationRun = new ValidationRun(
                 ValidationRunId.NewId(),
                 request.WorkspaceId,
                 request.TemplateId,
@@ -1639,13 +1648,18 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
                 null,
                 [],
                 DateTimeOffset.UtcNow,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow);
+            return Task.FromResult(_validationRun!);
+        }
 
         public async Task<ApprovalRequest> RequestValidationApprovalAsync(ValidationRunId runId, CancellationToken cancellationToken = default)
         {
             ValidationApprovalRequestCount++;
+            var run = _validationRun is { } current && current.Id == runId
+                ? current
+                : throw new InvalidOperationException("validation_run_missing");
             var request = ApprovalRequest.Create(
-                new ApprovalScope(TaskId.NewId(), ApprovalKind.ValidationRun, $"validation-run:test:{runId}"),
+                new ApprovalScope(new TaskId(runId.Value), ApprovalKind.ValidationRun, $"validation-run:{run.WorkspaceId}:{runId}"),
                 "Approve validation",
                 "Approve validation.");
             return await (ApprovalStore ?? throw new InvalidOperationException("approval_store_missing"))
@@ -1655,23 +1669,21 @@ public sealed class AedaCodeWorkflowViewModelTests : IDisposable
         public Task<ValidationRun> RunApprovedValidationAsync(ValidationRunId runId, ApprovalRequest approvalRequest, ApprovalDecision approvalDecision, CancellationToken cancellationToken = default)
         {
             ValidationRunCount++;
-            return Task.FromResult(new ValidationRun(
-                runId,
-                WorkspaceId.NewId(),
-                "dotnet-test-personalai",
-                ".",
-                ValidationRunStatus.Succeeded,
-                null,
-                null,
-                new ValidationCommandResult(
+            var current = _validationRun is { } run && run.Id == runId
+                ? run
+                : throw new InvalidOperationException("validation_run_missing");
+            _validationRun = current with
+            {
+                Status = ValidationRunStatus.Succeeded,
+                CommandResult = new ValidationCommandResult(
                     0,
                     ValidationRunStatus.Succeeded,
                     new ValidationOutputChunk(@"ok C:\secret password: hunter2", false),
                     new ValidationOutputChunk(string.Empty, false),
                     TimeSpan.FromSeconds(1)),
-                [],
-                DateTimeOffset.UtcNow,
-                DateTimeOffset.UtcNow));
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            return Task.FromResult(_validationRun!);
         }
 
         public Task<AedaCodeDashboardModel> GetDashboardAsync(AedaCodeSessionId sessionId, CancellationToken cancellationToken = default) =>
