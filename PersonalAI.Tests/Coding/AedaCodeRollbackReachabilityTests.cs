@@ -807,6 +807,386 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         Assert.Equal("old\n", Read("src/App.cs"));
     }
 
+    [Fact]
+    public async Task SelectProposalAsync_DelayedDetailForStaleWorkspace_DoesNotSurfaceUnderNewlySelectedWorkspace()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<PatchProposalId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextProposalDetail = proposalId =>
+        {
+            started.SetResult(proposalId);
+            return gate.Task;
+        };
+
+        var selectA = fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        Assert.Equal(fixture.ProposalA.Id, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var workspaceBStatus = fixture.ViewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await selectA;
+
+        Assert.Equal(fixture.WorkspaceB.WorkspaceId, fixture.ViewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Null(fixture.ViewModel.SelectedProposalDetail);
+        Assert.Empty(fixture.ViewModel.ProposalFiles);
+        Assert.Contains("Select a proposal", fixture.ViewModel.UnifiedDiffPreview, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Select a proposal", fixture.ViewModel.ValidationPlanText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("No proposal selected.", fixture.ViewModel.HashStatusText);
+        Assert.Equal("No source context loaded.", fixture.ViewModel.SourceSummaryText);
+        Assert.Equal("template-b", fixture.ViewModel.SelectedValidationTemplate?.Id);
+        Assert.Equal(workspaceBStatus, fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task SelectProposalAsync_AtoBtoA_OldGenerationCannotOverwriteNewSelection()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        var oldDetail = fixture.ProposalA with { Title = "Old A detail" };
+        var newDetail = fixture.ProposalA with { Title = "New A detail" };
+        PatchProposal currentDetail = oldDetail;
+        fixture.Service.ProposalDetailFactory = proposalId =>
+            proposalId == fixture.ProposalA.Id ? currentDetail : fixture.ProposalB;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextProposalDetail = _ =>
+        {
+            started.SetResult();
+            return gate.Task;
+        };
+
+        var oldSelection = fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceA);
+        currentDetail = newDetail;
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        Assert.Equal("New A detail", fixture.ViewModel.SelectedProposalDetail?.Title);
+
+        gate.SetResult();
+        await oldSelection;
+
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, fixture.ViewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Equal("New A detail", fixture.ViewModel.SelectedProposalDetail?.Title);
+        Assert.Equal("Proposal detail loaded.", fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task SearchContextFilesAsync_DelayedResultsForStaleWorkspace_DoesNotPopulateCandidatesUnderNewWorkspace()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextContextSearch = request =>
+        {
+            started.SetResult(request.WorkspaceId);
+            return gate.Task;
+        };
+
+        var searchA = fixture.ViewModel.SearchContextFilesAsync();
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var workspaceBStatus = fixture.ViewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await searchA;
+
+        Assert.Empty(fixture.ViewModel.ContextFileCandidates);
+        Assert.Empty(fixture.ViewModel.SelectedContextFiles);
+        Assert.Empty(fixture.ViewModel.TargetSnippetCandidates);
+        Assert.Null(fixture.ViewModel.SelectedTargetSnippet);
+        Assert.Equal(workspaceBStatus, fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task AddContextFileAsync_DelayedReadForStaleWorkspace_DoesNotPopulateSelectedContextUnderNewWorkspace()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SearchContextFilesAsync();
+        var candidateA = fixture.ViewModel.ContextFileCandidates.Single();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextFileRead = (workspaceId, _) =>
+        {
+            started.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        var addA = fixture.ViewModel.AddContextFileAsync(candidateA);
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var workspaceBStatus = fixture.ViewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await addA;
+
+        Assert.Empty(fixture.ViewModel.SelectedContextFiles);
+        Assert.Empty(fixture.ViewModel.ContextFileCandidates);
+        Assert.Empty(fixture.ViewModel.TargetSnippetCandidates);
+        Assert.Null(fixture.ViewModel.SelectedTargetSnippet);
+        Assert.Equal(workspaceBStatus, fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task DryRunSelectedProposalAsync_DelayedResultForStaleWorkspace_DoesNotOverwriteNewWorkspaceState()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextDryRun = request =>
+        {
+            started.SetResult(request.WorkspaceId);
+            return gate.Task;
+        };
+
+        var dryRunA = fixture.ViewModel.DryRunSelectedProposalAsync();
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var workspaceBStatus = fixture.ViewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await dryRunA;
+
+        Assert.Equal("Dry run not started.", fixture.ViewModel.DryRunStatusText);
+        Assert.Equal("Apply approval not requested.", fixture.ViewModel.ApplyApprovalStatusText);
+        Assert.Equal(workspaceBStatus, fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task ApplyApprovalCompletionForStaleWorkspace_DoesNotReplaceOrClearCurrentWorkspaceApprovalState()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        await fixture.ViewModel.DryRunSelectedProposalAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextApplyApprovalRequest = (_, workspaceId) =>
+        {
+            started.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        var approvalA = fixture.ViewModel.RequestApplyApprovalAsync();
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalB.Id));
+        await fixture.ViewModel.DryRunSelectedProposalAsync();
+        await fixture.ViewModel.RequestApplyApprovalAsync();
+        await fixture.ViewModel.AllowApplyOnceAsync();
+        Assert.True(fixture.ViewModel.ApplyApprovedProposalCommand.CanExecute(null));
+        var workspaceBStatus = fixture.ViewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await approvalA;
+
+        Assert.Equal("Apply approval granted once.", fixture.ViewModel.ApplyApprovalStatusText);
+        Assert.True(fixture.ViewModel.ApplyApprovedProposalCommand.CanExecute(null));
+        Assert.Equal(workspaceBStatus, fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task ValidationCreationForStaleWorkspace_DoesNotSurfaceUnderNewWorkspace()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextValidationCreation = request =>
+        {
+            started.SetResult(request.WorkspaceId);
+            return gate.Task;
+        };
+
+        var createA = fixture.ViewModel.CreateValidationRunAsync();
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var workspaceBStatus = fixture.ViewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await createA;
+
+        Assert.Empty(fixture.ViewModel.ValidationRuns);
+        Assert.Equal("No validation run selected.", fixture.ViewModel.ValidationResultText);
+        Assert.Equal("Validation approval not requested.", fixture.ViewModel.ValidationApprovalStatusText);
+        Assert.DoesNotContain("A validation", fixture.ViewModel.ValidationOutputPreview, StringComparison.Ordinal);
+        Assert.Equal(workspaceBStatus, fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task ValidationApprovalForStaleWorkspace_DoesNotRemainExecutableUnderNewWorkspace()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        await fixture.ViewModel.CreateValidationRunAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<ValidationRunId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextValidationApprovalRequest = runId =>
+        {
+            started.SetResult(runId);
+            return gate.Task;
+        };
+
+        var approvalA = fixture.ViewModel.RequestValidationApprovalAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+
+        gate.SetResult();
+        await approvalA;
+
+        Assert.Equal("No validation run selected.", fixture.ViewModel.ValidationResultText);
+        Assert.Equal("Validation approval not requested.", fixture.ViewModel.ValidationApprovalStatusText);
+        Assert.False(fixture.ViewModel.RunApprovedValidationCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task RunApprovedValidationAsync_CannotExecuteStaleValidationRunUnderNewlySelectedWorkspace()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        await fixture.ViewModel.CreateValidationRunAsync();
+        await fixture.ViewModel.RequestValidationApprovalAsync();
+        await fixture.ViewModel.AllowValidationOnceAsync();
+        Assert.True(fixture.ViewModel.RunApprovedValidationCommand.CanExecute(null));
+
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var workspaceBStatus = fixture.ViewModel.SafeStatusMessage;
+        Assert.False(fixture.ViewModel.RunApprovedValidationCommand.CanExecute(null));
+        await fixture.ViewModel.RunApprovedValidationAsync();
+
+        Assert.Equal(0, fixture.Service.ValidationExecutionCount);
+        Assert.False(fixture.ViewModel.RunApprovedValidationCommand.CanExecute(null));
+        Assert.DoesNotContain("A validation output", fixture.ViewModel.ValidationOutputPreview, StringComparison.Ordinal);
+        Assert.Equal(workspaceBStatus, fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task CurrentWorkspaceOperationsStillCompleteNormally()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        await fixture.ViewModel.SearchContextFilesAsync();
+        await fixture.ViewModel.AddContextFileAsync(fixture.ViewModel.ContextFileCandidates.Single());
+        await fixture.ViewModel.DryRunSelectedProposalAsync();
+        await fixture.ViewModel.RequestApplyApprovalAsync();
+        await fixture.ViewModel.AllowApplyOnceAsync();
+        await fixture.ViewModel.CreateValidationRunAsync();
+        await fixture.ViewModel.RequestValidationApprovalAsync();
+        await fixture.ViewModel.AllowValidationOnceAsync();
+        Assert.True(fixture.ViewModel.RunApprovedValidationCommand.CanExecute(null));
+        await fixture.ViewModel.RunApprovedValidationAsync();
+
+        Assert.Equal(fixture.ProposalA.Id, fixture.ViewModel.SelectedProposalDetail?.Id);
+        Assert.Single(fixture.ViewModel.SelectedContextFiles);
+        Assert.Contains(nameof(PatchApplyStatus.DryRunPassed), fixture.ViewModel.DryRunStatusText, StringComparison.Ordinal);
+        Assert.Contains(nameof(ValidationRunStatus.Succeeded), fixture.ViewModel.ValidationResultText, StringComparison.Ordinal);
+        Assert.Contains("A validation output", fixture.ViewModel.ValidationOutputPreview, StringComparison.Ordinal);
+        Assert.Equal(1, fixture.Service.ValidationExecutionCount);
+        Assert.Equal("Validation run completed.", fixture.ViewModel.SafeStatusMessage);
+    }
+
+    private async Task<CorrelationFixture> CreateCorrelationFixtureAsync()
+    {
+        var workspaceBRoot = Path.Combine(_root, "workspace-correlation-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var proposalA = await SaveProposalAsync([Edit("src/A.cs", "old A\n", "new A\n")]);
+        var proposalB = await SaveProposalAsync(
+            [Edit("src/B.cs", "old B\n", "new B\n")],
+            workspaceBId);
+        var sharedApprovals = new InMemoryApprovalCheckpointStore();
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var reader = CreateReader();
+        var validator = new PatchApplyValidator(proposalRepository, reader, CreateResolver());
+        var patchApplyService = new PatchApplyService(
+            proposalRepository,
+            applyRepository,
+            validator,
+            reader,
+            sharedApprovals);
+        var service = new PersistedApplyModuleService(patchApplyService, proposalRepository)
+        {
+            ApprovalStore = sharedApprovals,
+            DryRunPlanFactory = request => new PatchApplyPlan(
+                request.ProposalId,
+                request.WorkspaceId,
+                PatchApplyStatus.DryRunPassed,
+                [],
+                [],
+                RequiresApproval: true),
+            ContextCandidates =
+            [
+                CreateContextCandidate(_workspaceId, "src/A.cs"),
+                CreateContextCandidate(workspaceBId, "src/B.cs")
+            ],
+            TargetSnippetCandidates =
+            [
+                new AedaCodeTargetSnippetCandidate(
+                    "snippet-a",
+                    "src/A.cs",
+                    "A",
+                    "class A",
+                    1,
+                    1,
+                    7,
+                    false,
+                    "class A")
+            ]
+        };
+        var risk = new AedaCodeRiskBadge(PatchProposalRisk.Low, "Low", "small_text_change");
+        service.ProposalsByWorkspace[_workspaceId] =
+            [new AedaCodeProposalSummary(proposalA.Id, proposalA.Title, proposalA.Status, risk, ["src/A.cs"], proposalA.UpdatedAtUtc)];
+        service.ProposalsByWorkspace[workspaceBId] =
+            [new AedaCodeProposalSummary(proposalB.Id, proposalB.Title, proposalB.Status, risk, ["src/B.cs"], proposalB.UpdatedAtUtc)];
+        service.TemplatesByWorkspace[_workspaceId] =
+            [new ValidationCommandTemplate("template-a", "Template A", "dotnet", ["test"], TimeSpan.FromMinutes(1), "src/A.cs")];
+        service.TemplatesByWorkspace[workspaceBId] =
+            [new ValidationCommandTemplate("template-b", "Template B", "dotnet", ["test"], TimeSpan.FromMinutes(1), "src/B.cs")];
+
+        var viewModel = BuildViewModel(registry, service, sharedApprovals);
+        await viewModel.InitializeAsync();
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+        await viewModel.SelectWorkspaceAsync(workspaceA);
+        return new CorrelationFixture(viewModel, service, workspaceA, workspaceB, proposalA, proposalB);
+    }
+
+    private static AedaCodeContextFileCandidate CreateContextCandidate(WorkspaceId workspaceId, string relativePath) =>
+        new(
+            workspaceId,
+            relativePath,
+            Path.GetFileName(relativePath),
+            Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? ".",
+            Path.GetExtension(relativePath),
+            "C#",
+            "13 B",
+            13,
+            true,
+            false,
+            null);
+
+    private sealed record CorrelationFixture(
+        AedaCodeModuleViewModel ViewModel,
+        PersistedApplyModuleService Service,
+        AedaCodeWorkspaceItem WorkspaceA,
+        AedaCodeWorkspaceItem WorkspaceB,
+        PatchProposal ProposalA,
+        PatchProposal ProposalB);
+
     private async Task<PatchApplyResultId> ApplyProposalAsync(
         PatchProposalId proposalId,
         WorkspaceId? workspaceId = null,
@@ -982,6 +1362,35 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         IPatchProposalRepository proposalRepository) : IAedaCodeModuleService
     {
         private readonly Dictionary<AedaCodeSessionId, WorkspaceId> _sessions = [];
+        private readonly Dictionary<ValidationRunId, ValidationRun> _validationRuns = [];
+
+        public IApprovalCheckpointStore? ApprovalStore { private get; set; }
+
+        public Func<PatchProposalId, PatchProposal?>? ProposalDetailFactory { get; set; }
+
+        public Func<PatchProposalId, Task>? DelayNextProposalDetail;
+
+        public IReadOnlyList<AedaCodeContextFileCandidate> ContextCandidates { get; set; } = [];
+
+        public Func<AedaCodeContextSearchRequest, Task>? DelayNextContextSearch;
+
+        public Func<WorkspaceId, IReadOnlyList<string>, Task>? DelayNextFileRead;
+
+        public IReadOnlyList<AedaCodeTargetSnippetCandidate> TargetSnippetCandidates { get; set; } = [];
+
+        public Func<PatchApplyRequest, PatchApplyPlan>? DryRunPlanFactory { get; set; }
+
+        public Func<PatchApplyRequest, Task>? DelayNextDryRun;
+
+        public Func<PatchProposalId, WorkspaceId, Task>? DelayNextApplyApprovalRequest;
+
+        public Func<ValidationRunRequest, Task>? DelayNextValidationCreation;
+
+        public Func<ValidationRunId, Task>? DelayNextValidationApprovalRequest;
+
+        public Func<ValidationRunId, Task>? DelayNextValidationExecution;
+
+        public int ValidationExecutionCount { get; private set; }
 
         /// <summary>
         /// When set, the next <see cref="StartSessionAsync"/> call for the
@@ -1025,21 +1434,65 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             WorkspaceId workspaceId, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AedaCodeWorkspaceSummary(workspaceId, "Repo", true));
 
-        public Task<CodeContextPack> ReadFilesAsync(
-            WorkspaceId workspaceId, IReadOnlyList<string> relativePaths, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        public async Task<CodeContextPack> ReadFilesAsync(
+            WorkspaceId workspaceId, IReadOnlyList<string> relativePaths, CancellationToken cancellationToken = default)
+        {
+            var files = relativePaths.Select(path => new CodeContextFile(
+                workspaceId,
+                path,
+                "class App { }",
+                "context-hash",
+                "utf-8",
+                13,
+                false,
+                false)).ToArray();
+            if (DelayNextFileRead is { } delay)
+            {
+                DelayNextFileRead = null;
+                await delay(workspaceId, relativePaths);
+            }
+
+            return new CodeContextPack(workspaceId, files, [], [], false);
+        }
 
         public Task<CodeContextPack> SearchAsync(
             CodeContextSearchRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<AedaCodeContextSearchResult> SearchContextFilesAsync(
-            AedaCodeContextSearchRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        public async Task<AedaCodeContextSearchResult> SearchContextFilesAsync(
+            AedaCodeContextSearchRequest request, CancellationToken cancellationToken = default)
+        {
+            AedaCodeContextFileCandidate[] candidates = ContextCandidates.Count == 0
+                ? [new AedaCodeContextFileCandidate(
+                    request.WorkspaceId,
+                    "src/App.cs",
+                    "App.cs",
+                    "src",
+                    ".cs",
+                    "C#",
+                    "13 B",
+                    13,
+                    true,
+                    false,
+                    null)]
+                : ContextCandidates.Where(candidate => candidate.WorkspaceId == request.WorkspaceId).ToArray();
+            if (DelayNextContextSearch is { } delay)
+            {
+                DelayNextContextSearch = null;
+                await delay(request);
+            }
+
+            return new AedaCodeContextSearchResult(request.WorkspaceId, candidates, false, []);
+        }
 
         public Task<IReadOnlyList<AedaCodeTargetSnippetCandidate>> ListTargetSnippetCandidatesAsync(
             AedaCodeTargetSnippetRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            Task.FromResult<IReadOnlyList<AedaCodeTargetSnippetCandidate>>(
+                TargetSnippetCandidates
+                    .Where(candidate => request.SelectedRelativePaths.Contains(
+                        candidate.RelativePath,
+                        StringComparer.OrdinalIgnoreCase))
+                    .ToArray());
 
         public Task<CodeChangePlan> CreatePlanAsync(
             CodeChangeRequest request, CodeContextPack context, CancellationToken cancellationToken = default) =>
@@ -1103,13 +1556,33 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             return TemplatesByWorkspace.TryGetValue(workspaceId, out var templates) ? templates : [];
         }
 
-        public Task<PatchApplyPlan> DryRunApplyAsync(
-            PatchApplyRequest request, CancellationToken cancellationToken = default) =>
-            applyService.DryRunAsync(request, cancellationToken);
+        public async Task<PatchApplyPlan> DryRunApplyAsync(
+            PatchApplyRequest request, CancellationToken cancellationToken = default)
+        {
+            var plan = DryRunPlanFactory is null
+                ? await applyService.DryRunAsync(request, cancellationToken)
+                : DryRunPlanFactory(request);
+            if (DelayNextDryRun is { } delay)
+            {
+                DelayNextDryRun = null;
+                await delay(request);
+            }
 
-        public Task<ApprovalRequest> RequestApplyApprovalAsync(
-            PatchProposalId proposalId, WorkspaceId workspaceId, CancellationToken cancellationToken = default) =>
-            applyService.RequestApplyApprovalAsync(proposalId, workspaceId, cancellationToken);
+            return plan;
+        }
+
+        public async Task<ApprovalRequest> RequestApplyApprovalAsync(
+            PatchProposalId proposalId, WorkspaceId workspaceId, CancellationToken cancellationToken = default)
+        {
+            var request = await applyService.RequestApplyApprovalAsync(proposalId, workspaceId, cancellationToken);
+            if (DelayNextApplyApprovalRequest is { } delay)
+            {
+                DelayNextApplyApprovalRequest = null;
+                await delay(proposalId, workspaceId);
+            }
+
+            return request;
+        }
 
         /// <summary>
         /// When set, the next <see cref="ApplyApprovedProposalAsync"/> call
@@ -1133,9 +1606,20 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             return result;
         }
 
-        public Task<PatchProposal?> GetProposalAsync(
-            PatchProposalId proposalId, CancellationToken cancellationToken = default) =>
-            proposalRepository.GetAsync(proposalId, cancellationToken);
+        public async Task<PatchProposal?> GetProposalAsync(
+            PatchProposalId proposalId, CancellationToken cancellationToken = default)
+        {
+            var proposal = ProposalDetailFactory is null
+                ? await proposalRepository.GetAsync(proposalId, cancellationToken)
+                : ProposalDetailFactory(proposalId);
+            if (DelayNextProposalDetail is { } delay)
+            {
+                DelayNextProposalDetail = null;
+                await delay(proposalId);
+            }
+
+            return proposal;
+        }
 
         public Task<PatchApplyResult?> GetApplyResultAsync(
             PatchApplyResultId applyResultId, CancellationToken cancellationToken = default) =>
@@ -1145,20 +1629,81 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             PatchRollbackRequest request, CancellationToken cancellationToken = default) =>
             applyService.RollbackAsync(request, cancellationToken);
 
-        public Task<ValidationRun> CreateValidationRunAsync(
-            ValidationRunRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        public async Task<ValidationRun> CreateValidationRunAsync(
+            ValidationRunRequest request, CancellationToken cancellationToken = default)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var run = new ValidationRun(
+                ValidationRunId.NewId(),
+                request.WorkspaceId,
+                request.TemplateId,
+                ".",
+                ValidationRunStatus.Created,
+                request.ProposalId,
+                request.ApplyResultId,
+                null,
+                [],
+                now,
+                now);
+            _validationRuns[run.Id] = run;
+            if (DelayNextValidationCreation is { } delay)
+            {
+                DelayNextValidationCreation = null;
+                await delay(request);
+            }
 
-        public Task<ApprovalRequest> RequestValidationApprovalAsync(
-            ValidationRunId runId, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            return run;
+        }
 
-        public Task<ValidationRun> RunApprovedValidationAsync(
+        public async Task<ApprovalRequest> RequestValidationApprovalAsync(
+            ValidationRunId runId, CancellationToken cancellationToken = default)
+        {
+            var run = _validationRuns[runId];
+            var request = ApprovalRequest.Create(
+                new ApprovalScope(
+                    new TaskId(runId.Value),
+                    ApprovalKind.ValidationRun,
+                    $"validation-run:{run.WorkspaceId}:{runId}"),
+                "Approve validation",
+                "Approve validation.");
+            request = await (ApprovalStore ?? throw new InvalidOperationException("approval_store_missing"))
+                .RequestAsync(request, cancellationToken);
+            if (DelayNextValidationApprovalRequest is { } delay)
+            {
+                DelayNextValidationApprovalRequest = null;
+                await delay(runId);
+            }
+
+            return request;
+        }
+
+        public async Task<ValidationRun> RunApprovedValidationAsync(
             ValidationRunId runId,
             ApprovalRequest approvalRequest,
             ApprovalDecision approvalDecision,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            ValidationExecutionCount++;
+            var run = _validationRuns[runId] with
+            {
+                Status = ValidationRunStatus.Succeeded,
+                CommandResult = new ValidationCommandResult(
+                    0,
+                    ValidationRunStatus.Succeeded,
+                    new ValidationOutputChunk("A validation output", false),
+                    new ValidationOutputChunk(string.Empty, false),
+                    TimeSpan.FromMilliseconds(10)),
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            _validationRuns[runId] = run;
+            if (DelayNextValidationExecution is { } delay)
+            {
+                DelayNextValidationExecution = null;
+                await delay(runId);
+            }
+
+            return run;
+        }
 
         /// <summary>
         /// When set, the next <see cref="GetDashboardAsync"/> call awaits this
