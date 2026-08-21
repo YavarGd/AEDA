@@ -10,14 +10,29 @@
   </Style>
 
   <Style Selector="Button.assistLauncher Path.launcherSurface">
-    <Setter Property="Fill" Value="{DynamicResource ElevatedSurfaceBrush}" />
+    <Setter Property="Fill" Value="{DynamicResource ShellSurfaceBrush}" />
     <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
     <Setter Property="StrokeThickness" Value="1.5" />
   </Style>
 
+  <Style Selector="Button.assistLauncher Ellipse.launcherMark">
+    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher Path.launcherMarkOutline, Button.assistLauncher Ellipse.launcherMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+  </Style>
+
   <Style Selector="Button.assistLauncher:pointerover Path.launcherSurface">
-    <Setter Property="Stroke" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="Fill" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
     <Setter Property="StrokeThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher:focus-visible Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource FocusRingBrush}" />
+    <Setter Property="StrokeThickness" Value="2.5" />
   </Style>
 
   <Style Selector="Button.assistLauncher:pressed Path.launcherSurface">
@@ -28,16 +43,38 @@
     <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
   </Style>
 
+  <Style Selector="Button.assistLauncher.listening Ellipse.launcherMark, Button.assistLauncher.listening Path.launcherMarkOutline, Button.assistLauncher.listening Ellipse.launcherMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
+    <Setter Property="Fill" Value="{DynamicResource ListeningBrush}" />
+  </Style>
+
   <Style Selector="Button.assistLauncher.thinking Path.launcherSurface">
     <Setter Property="Stroke" Value="{DynamicResource WarningBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.ready Path.launcherSurface">
+  <Style Selector="Button.assistLauncher.thinking Ellipse.launcherMark">
+    <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher.actionReady Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher.actionReady Path.launcherMarkOutline">
     <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
   </Style>
 
   <Style Selector="Button.assistLauncher.error Path.launcherSurface">
     <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher.error Ellipse.launcherMark, Button.assistLauncher.error Path.launcherMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
+    <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher:disabled">
+    <Setter Property="Opacity" Value="0.45" />
   </Style>
 
   <Style Selector="Border.assistSurface.listening">
@@ -48,7 +85,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
   </Style>
 
-  <Style Selector="Border.assistSurface.ready">
+  <Style Selector="Border.assistSurface.actionReady">
     <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
   </Style>
 

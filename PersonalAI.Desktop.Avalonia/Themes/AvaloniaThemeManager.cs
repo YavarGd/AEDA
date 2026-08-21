@@ -99,8 +99,12 @@ public sealed class AvaloniaThemeManager : IDisposable
         SetBrush(application, "ElevatedSurfaceBrush", palette.ElevatedSurface);
         SetBrush(application, "CardSurfaceBrush", palette.CardSurface);
         SetBrush(application, "SubtleSurfaceBrush", palette.SubtleSurface);
+        SetBrush(application, "SurfaceAltBrush", palette.SurfaceAlt);
+        SetBrush(application, "AccentSoftBrush", palette.AccentSoft);
+        SetBrush(application, "AccentTextBrush", palette.AccentText);
         SetBrush(application, "PrimaryTextBrush", palette.PrimaryText);
         SetBrush(application, "SecondaryTextBrush", palette.SecondaryText);
+        SetBrush(application, "TertiaryTextBrush", palette.MutedText);
         SetBrush(application, "MutedTextBrush", palette.MutedText);
         SetBrush(application, "BorderBrush", palette.Border);
         SetBrush(application, "StrongBorderBrush", palette.StrongBorder);
@@ -133,6 +137,9 @@ public sealed record AedaPalette(
     string ElevatedSurface,
     string CardSurface,
     string SubtleSurface,
+    string SurfaceAlt,
+    string AccentSoft,
+    string AccentText,
     string PrimaryText,
     string SecondaryText,
     string MutedText,
@@ -149,11 +156,11 @@ public sealed record AedaPalette(
 {
     public string Navigation => ShellSurface;
 
-    public string UserBubble => SubtleSurface;
+    public string UserBubble => AccentSoft;
 
     public string AssistantBubble => ElevatedSurface;
 
-    public string CodeBackground => CardSurface;
+    public string CodeBackground => SurfaceAlt;
 
     public string Metadata => MutedText;
 
@@ -161,36 +168,36 @@ public sealed record AedaPalette(
 
     public static AedaPalette SystemMica { get; } = new(
         false,
-        "#EEF1F5", "#F7F8FA", "#FBFCFE", "#FFFFFF", "#F4F6F8", "#E9EDF2",
-        "#1D2025", "#505862", "#737B85", "#D7DBE2", "#B9C0CA",
-        "#4B76A8", "#3E6898", "#31577F", "#5C8A57", "#B77A2F", "#B44949",
-        "#2F91B8", "#2E73C8");
+        "#EEF0F2", "#FFFFFF", "#EEF0F2", "#FFFFFF", "#FFFFFF", "#F6F7F9",
+        "#F6F7F9", "#E4EBF3", "#1B222A", "#1B222A", "#5B6572", "#8A93A0",
+        "#DCE1E6", "#DCE1E6", "#4C6FA0", "#4C6FA0", "#4C6FA0", "#3E8F5B",
+        "#B4842A", "#B4483E", "#2E86A8", "#4C6FA0");
 
     public static AedaPalette Graphite { get; } = new(
         true,
         "#16181C", "#202329", "#1B1E23", "#292D34", "#24272D", "#30343C",
-        "#F1F2F4", "#C4C7CD", "#9CA1AA", "#3B4049", "#555C68",
+        "#24272D", "#302E3B", "#F1F2F4", "#F1F2F4", "#C4C7CD", "#9CA1AA", "#3B4049", "#555C68",
         "#8D84BC", "#A198D0", "#766DA8", "#74A36B", "#C6924E", "#D66565",
         "#4E9DB6", "#B0A5E8");
 
     public static AedaPalette MineralStone { get; } = new(
         false,
-        "#DED5C5", "#E9E0D0", "#F3EEE4", "#FAF7F0", "#F6F1E8", "#E7E1D5",
-        "#282A24", "#55584B", "#767665", "#D2C7B5", "#B4A88F",
-        "#6D7746", "#5E683A", "#50592F", "#718653", "#B47A36", "#B65E4C",
-        "#5E8F84", "#637248");
+        "#EFEAE1", "#FBF7F0", "#EFEAE1", "#FBF7F0", "#FBF7F0", "#F4EEE3",
+        "#F4EEE3", "#E7ECDF", "#2B2620", "#2B2620", "#6B6255", "#9A9082",
+        "#E0D6C4", "#E0D6C4", "#6B7F5C", "#6B7F5C", "#6B7F5C", "#5C7A3E",
+        "#B4842A", "#A85C42", "#3B7F86", "#6B7F5C");
 
     public static AedaPalette SharpAlmond { get; } = new(
         true,
-        "#11151A", "#171C21", "#1C2228", "#232A31", "#20262C", "#292F37",
-        "#F2F0F5", "#C7C3CD", "#9995A2", "#353C45", "#505865",
-        "#9D78E5", "#AF8DF0", "#865FCF", "#7EA866", "#D69A48", "#D65E61",
-        "#45AFC1", "#B28AF2");
+        "#15131A", "#1D1B23", "#15131A", "#1D1B23", "#1D1B23", "#24222C",
+        "#24222C", "#2C2740", "#17151C", "#F1EEF6", "#A9A5B4", "#77738A",
+        "#34313D", "#34313D", "#9C8CE0", "#9C8CE0", "#9C8CE0", "#6FCB8F",
+        "#E0A94B", "#E08079", "#5FC2D9", "#B3A6EA");
 
     public static AedaPalette HighContrast { get; } = new(
         true,
         "#000000", "#000000", "#000000", "#000000", "#000000", "#1A1A1A",
-        "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF",
+        "#1A1A1A", "#1A1A1A", "#000000", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF",
         "#00FFFF", "#FFFFFF", "#00FFFF", "#00FF00", "#FFFF00", "#FF4040",
         "#00FFFF", "#FFFF00");
 }

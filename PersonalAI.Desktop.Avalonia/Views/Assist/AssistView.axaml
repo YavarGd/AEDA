@@ -26,22 +26,55 @@
             ToolTip.Tip="Ask AEDA"
             AutomationProperties.Name="Ask AEDA">
       <Grid Width="52" Height="52">
-        <Path x:Name="AssistLauncherGeometry"
-              Classes="launcherSurface"
-              Data="M 26,3 C 30,3 32,6 34,10 L 48,36 C 52,43 47,49 39,49 L 13,49 C 5,49 0,43 4,36 L 18,10 C 20,6 22,3 26,3 Z" />
-        <Border Width="20"
-                Height="20"
-                CornerRadius="7"
-                Background="{DynamicResource AccentBrush}"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center">
-          <TextBlock Text="A"
-                     Foreground="White"
-                     FontSize="12"
-                     FontWeight="Bold"
+        <Viewbox Width="52" Height="52">
+          <Grid Width="64" Height="64">
+            <Path x:Name="AssistLauncherGeometry"
+                  Classes="launcherSurface"
+                  Data="M32 6 C34.2 6 36.2 7.2 37.3 9.2 L56.4 44.3 C58.6 48.2 55.8 53 51.3 53 L12.7 53 C8.2 53 5.4 48.2 7.6 44.3 L26.7 9.2 C27.8 7.2 29.8 6 32 6 Z" />
+
+            <!-- Shape changes supplement state color for non-color recognition. -->
+            <Ellipse x:Name="AssistIdleMark"
+                     Classes="launcherMark"
+                     Width="7" Height="7"
                      HorizontalAlignment="Center"
                      VerticalAlignment="Center" />
-        </Border>
+            <Grid x:Name="AssistListeningMark"
+                  IsVisible="False"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+              <Ellipse Classes="launcherMarkOutline" Width="14" Height="14" />
+              <Ellipse Classes="launcherMark" Width="5" Height="5"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Grid>
+            <StackPanel x:Name="AssistThinkingMark"
+                        IsVisible="False"
+                        Orientation="Horizontal"
+                        Spacing="3"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+              <Ellipse Classes="launcherMark" Width="4" Height="4" />
+              <Ellipse Classes="launcherMark" Width="4" Height="4" />
+              <Ellipse Classes="launcherMark" Width="4" Height="4" />
+            </StackPanel>
+            <Path x:Name="AssistActionReadyMark"
+                  Classes="launcherMarkOutline"
+                  IsVisible="False"
+                  Data="M24,32 L30,38 L41,26"
+                  StrokeThickness="3"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center" />
+            <Grid x:Name="AssistErrorMark"
+                  IsVisible="False"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+              <Path Classes="launcherMarkOutline"
+                    Data="M32,23 L32,34"
+                    StrokeThickness="3" />
+              <Ellipse Classes="launcherMark" Width="4" Height="4"
+                       Margin="0,18,0,0" />
+            </Grid>
+          </Grid>
+        </Viewbox>
       </Grid>
     </Button>
 

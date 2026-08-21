@@ -8,41 +8,126 @@
   </Style>
 
   <Style Selector="ListBox.shellNavigation ListBoxItem">
-    <Setter Property="MinHeight" Value="{DynamicResource MinimumTargetSize}" />
-    <Setter Property="Padding" Value="14,8" />
-    <Setter Property="Margin" Value="2,6" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSmall}" />
-    <Setter Property="BorderThickness" Value="0,0,0,3" />
+    <Setter Property="MinHeight" Value="{DynamicResource NavigationTargetSize}" />
+    <Setter Property="Padding" Value="16,10" />
+    <Setter Property="Margin" Value="3,6" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="BorderThickness" Value="0" />
     <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Template">
       <ControlTemplate>
-        <Border Background="{TemplateBinding Background}"
-                BorderBrush="{TemplateBinding BorderBrush}"
-                BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="{TemplateBinding CornerRadius}"
-                Padding="{TemplateBinding Padding}">
-          <ContentPresenter Content="{TemplateBinding Content}"
-                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
-        </Border>
+        <Grid>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+          <Border Classes="selectionIndicator"
+                  Width="24"
+                  Height="3"
+                  CornerRadius="0,0,2,2"
+                  Background="Transparent"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top" />
+        </Grid>
       </ControlTemplate>
     </Setter>
   </Style>
 
-  <!-- Bold text plus a persistent lower marker makes selection non-color-only. -->
+  <Style Selector="ListBox.shellNavigation ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.shellNavigation ListBoxItem:pressed">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    <Setter Property="Opacity" Value="0.88" />
+  </Style>
+
+  <!-- Bold text plus a persistent top marker makes selection non-color-only. -->
   <Style Selector="ListBox.shellNavigation ListBoxItem:selected">
-    <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
+  <Style Selector="ListBox.shellNavigation ListBoxItem:selected Border.selectionIndicator">
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.shellNavigation ListBoxItem:disabled">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+
+  <Style Selector="ListBox.shellNavigation ListBoxItem.lowFrequency">
+    <Setter Property="Margin" Value="18,6,3,6" />
+  </Style>
+
+  <Style Selector="ListBox.shellNavigation Path.navIcon">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Stroke" Value="{DynamicResource SecondaryTextBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.shellNavigation ListBoxItem:selected Path.navIcon">
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.shellNavigation StackPanel.navContent">
+    <Setter Property="Spacing" Value="5" />
+  </Style>
+
+  <Style Selector="ListBox.shellNavigation TextBlock.navLabel">
+    <Setter Property="FontSize" Value="12.5" />
+  </Style>
+
   <Style Selector="Window.medium ListBox.shellNavigation ListBoxItem">
-    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="Padding" Value="13,9" />
+    <Setter Property="Margin" Value="2,4" />
+    <Setter Property="CornerRadius" Value="9" />
+  </Style>
+
+  <Style Selector="Window.medium ListBox.shellNavigation ListBoxItem.lowFrequency">
+    <Setter Property="Margin" Value="12,4,2,4" />
+  </Style>
+
+  <Style Selector="Window.medium ListBox.shellNavigation Path.navIcon">
+    <Setter Property="Width" Value="19" />
+    <Setter Property="Height" Value="19" />
+  </Style>
+
+  <Style Selector="Window.medium ListBox.shellNavigation StackPanel.navContent">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+
+  <Style Selector="Window.medium ListBox.shellNavigation TextBlock.navLabel">
+    <Setter Property="FontSize" Value="12" />
   </Style>
 
   <Style Selector="Window.compact ListBox.shellNavigation ListBoxItem">
-    <Setter Property="Padding" Value="8,8" />
-    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="Margin" Value="1,2" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="Window.compact ListBox.shellNavigation ListBoxItem.lowFrequency">
+    <Setter Property="Margin" Value="4,2,1,2" />
+  </Style>
+
+  <Style Selector="Window.compact ListBox.shellNavigation Path.navIcon">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+  </Style>
+
+  <Style Selector="Window.compact ListBox.shellNavigation StackPanel.navContent">
+    <Setter Property="Spacing" Value="3" />
+  </Style>
+
+  <Style Selector="Window.compact ListBox.shellNavigation TextBlock.navLabel">
+    <Setter Property="FontSize" Value="11" />
   </Style>
 </Styles>

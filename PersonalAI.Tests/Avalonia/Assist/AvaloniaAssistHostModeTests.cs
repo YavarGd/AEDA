@@ -82,6 +82,31 @@ public sealed class AvaloniaAssistHostModeTests
     }
 
     [Fact]
+    public void CompactLauncherKeepsNativeBoundsAndDistinctStateShapes()
+    {
+        var markup = ReadSource(
+            "PersonalAI.Desktop.Avalonia", "Views", "Assist", "AssistView.axaml");
+        var view = ReadSource(
+            "PersonalAI.Desktop.Avalonia", "Views", "Assist", "AssistView.axaml.cs");
+        var window = ReadSource(
+            "PersonalAI.Desktop.Avalonia", "Platform", "Windows", "Assist", "AvaloniaAssistWindow.cs");
+
+        Assert.Contains("<Grid Width=\"52\" Height=\"52\">", markup);
+        Assert.Contains("private const double IdleSize = 52", window);
+        Assert.Contains("Width = IdleSize", window);
+        Assert.Contains("Height = IdleSize", window);
+        Assert.Contains("M32 6 C34.2 6 36.2 7.2", markup);
+        Assert.All(new[]
+        {
+            "AssistIdleMark", "AssistListeningMark", "AssistThinkingMark",
+            "AssistActionReadyMark", "AssistErrorMark"
+        }, mark => Assert.Contains($"x:Name=\"{mark}\"", markup));
+        Assert.All(new[] { "listening", "thinking", "actionReady", "error" },
+            state => Assert.Contains($"Classes.Set(\"{state}\"", view));
+        Assert.DoesNotContain("AEDA_VISUAL_QA_ASSIST_STATE", view);
+    }
+
+    [Fact]
     public void ConversationListItemsExposeTheTitleNotTheRecordToString()
     {
         var markup = ReadSource(

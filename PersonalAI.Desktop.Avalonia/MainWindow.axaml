@@ -14,53 +14,57 @@
         AutomationProperties.Name="AEDA main window">
 
   <!-- Split-bars shell. Module views remain mounted unchanged in the center host. -->
-  <Grid RowDefinitions="64,*,64">
+  <Grid x:Name="ShellGrid">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="64" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="72" />
+    </Grid.RowDefinitions>
     <Border x:Name="TopShellRegion"
             Grid.Row="0"
             Background="{DynamicResource ShellSurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1"
             BoxShadow="{DynamicResource ShellElevation}">
-      <Grid Margin="20,0" ColumnDefinitions="Auto,*">
+      <Grid x:Name="TopBarLayout" Margin="32,0" ColumnDefinitions="Auto,*">
         <StackPanel Orientation="Horizontal"
-                    Spacing="10"
+                    Spacing="8"
                     VerticalAlignment="Center">
-          <Border Width="28"
-                  Height="28"
-                  CornerRadius="9"
-                  Background="{DynamicResource AccentBrush}">
-            <TextBlock Text="A"
-                       Foreground="White"
-                       FontSize="16"
-                       FontWeight="Bold"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center" />
-          </Border>
-          <TextBlock Text="AEDA"
-                     FontSize="20"
+          <!-- Repository-owned AEDA app mark; displayed at native UI scale. -->
+          <Image x:Name="BrandMark"
+                 Source="/Assets/AedaAppIcon.ico"
+                 Width="24"
+                 Height="24"
+                 Stretch="Uniform"
+                 AutomationProperties.Name="AEDA mark" />
+          <TextBlock x:Name="BrandWordmark"
+                     Text="AEDA"
+                     FontSize="17"
                      FontWeight="SemiBold"
                      VerticalAlignment="Center" />
         </StackPanel>
 
-        <!-- No global search command exists in this milestone; keep the slot honest. -->
+        <!-- No global search command exists in this milestone; show page context only. -->
         <Border x:Name="PageContextRegion"
                 Grid.Column="1"
                 MaxWidth="420"
-                Margin="24,10"
-                Padding="16,8"
+                Margin="16,0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Background="{DynamicResource SubtleSurfaceBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="{DynamicResource RadiusMedium}"
                 IsTabStop="False"
                 AutomationProperties.Name="Current page">
-          <TextBlock x:Name="PageTitle"
-                     Text="Home"
-                     FontWeight="SemiBold"
-                     HorizontalAlignment="Center"
-                     TextTrimming="CharacterEllipsis" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock x:Name="BreadcrumbBrand"
+                       Text="AEDA"
+                       Foreground="{DynamicResource TertiaryTextBrush}" />
+            <TextBlock x:Name="BreadcrumbSeparator"
+                       Text="/"
+                       Foreground="{DynamicResource TertiaryTextBrush}" />
+            <TextBlock x:Name="PageTitle"
+                       Text="Home"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
         </Border>
       </Grid>
     </Border>
@@ -93,10 +97,8 @@
           </ItemsPanelTemplate>
         </ListBox.ItemsPanel>
         <ListBoxItem x:Name="DashboardNavItem"
-                     Content="Home"
                      AutomationProperties.Name="Home" />
         <ListBoxItem x:Name="ChatNavItem"
-                     Content="Chat"
                      AutomationProperties.Name="General chat" />
         <!-- Registered Code, Memory, Research, Task Center, Assist and Settings routes
              are appended without changing their commands, views or data contexts. -->
