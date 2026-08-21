@@ -6,7 +6,7 @@
     <RootNamespace>PersonalAI.Desktop.Avalonia</RootNamespace>
     <AssemblyName>AEDA</AssemblyName>
     <Product>AEDA</Product>
-    <ApplicationIcon>..\PersonalAI.Desktop.WinUI\Assets\AedaAppIcon.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\AedaAppIcon.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
@@ -30,6 +30,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="..\PersonalAI.Desktop.WinUI\Assets\AedaAppIcon.ico" Link="Assets\AedaAppIcon.ico" />
+    <AvaloniaResource Include="Assets\AedaAppIcon.ico" />
   </ItemGroup>
 </Project>

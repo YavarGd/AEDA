@@ -26,11 +26,6 @@ public sealed class WindowsIdentityCutoverTests
         Assert.Contains("<Product>AEDA</Product>", project);
         Assert.Contains("new WindowsStartupRegistrationService()", composition);
         Assert.DoesNotContain("DeferredStartupRegistrationService", composition);
-        var rollbackRegistration = ReadSource(
-            "PersonalAI.Desktop.WinUI",
-            "Services",
-            "WindowsStartupRegistrationService.cs");
-        Assert.Contains("new(() => null)", rollbackRegistration);
         Assert.Contains("PersonalAI.Desktop.Avalonia", launcher);
         Assert.Contains("AEDA.exe", launcher);
         Assert.Contains(
@@ -39,17 +34,14 @@ public sealed class WindowsIdentityCutoverTests
     }
 
     [Fact]
-    public void BothWindowsBinariesUseTheSharedAedaMutexAndBoundedActivation()
+    public void TheAvaloniaBinaryUsesTheSharedAedaMutexAndBoundedActivation()
     {
         var avaloniaProgram = ReadSource("PersonalAI.Desktop.Avalonia", "Program.cs");
-        var winUiApp = ReadSource("PersonalAI.Desktop.WinUI", "App.xaml.cs");
 
         Assert.Equal("Local\\AEDA.SingleInstance", WindowsSingleInstanceService.MutexName);
         Assert.Contains("new WindowsSingleInstanceService()", avaloniaProgram);
-        Assert.Contains("new WindowsSingleInstanceService()", winUiApp);
         Assert.Contains("PersonalAiActivationClient.TryActivatePrimaryAsync()", avaloniaProgram);
-        Assert.Contains("PersonalAiActivationClient.TryActivatePrimaryAsync()", winUiApp);
-        Assert.DoesNotContain("PersonalAI.WinUI.SingleInstance", avaloniaProgram + winUiApp);
+        Assert.DoesNotContain("PersonalAI.WinUI.SingleInstance", avaloniaProgram);
     }
 
     [Fact]
