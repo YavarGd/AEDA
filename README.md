@@ -52,8 +52,7 @@ The application keeps settings and local data under the current Windows user's L
 - `PersonalAI.Core` — application contracts and policies.
 - `PersonalAI.Infrastructure` — SQLite persistence, workspace, coding, context, and worker implementations.
 - `PersonalAI.Providers` — Ollama and OpenAI-compatible provider adapters.
-- `PersonalAI.Desktop.Avalonia` — production Windows desktop application.
-- `PersonalAI.Desktop.WinUI` — retained Windows rollback application.
+- `PersonalAI.Desktop.Avalonia` — sole active Windows desktop application. The prior WinUI desktop project was retired; see `docs/migration/winui-retirement.md`.
 - `PersonalAI.Tests` — automated tests.
 - `workers/speech` — optional FastAPI/faster-whisper speech worker.
 - `integrations/vscode-personalai` — optional VS Code integration.
