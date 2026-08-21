@@ -516,6 +516,18 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
     /// </summary>
     private long _workspaceGeneration;
 
+    /// <summary>
+    /// Monotonic counter identifying the most recently started
+    /// <see cref="SearchContextFilesAsync"/> call, independent of
+    /// <see cref="_workspaceGeneration"/>. Two overlapping searches in the
+    /// same workspace (no workspace switch involved) don't advance the
+    /// workspace generation, so this counter is what lets an earlier
+    /// search's <c>finally</c> block tell whether a newer search has since
+    /// started and avoid clearing <see cref="IsSearchingContext"/> out from
+    /// under it.
+    /// </summary>
+    private long _contextSearchOperationId;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SessionStatusText))]
     private AedaCodeSession? _session;
@@ -937,6 +949,21 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         _proposalCreationCancellation = new CancellationTokenSource();
         var cancellationToken = _proposalCreationCancellation.Token;
 
+        // Capture the target identity before the first await: the user may
+        // switch workspaces (or switch away and back, advancing the
+        // generation) while this creation is running in the background via
+        // Task.Run below. The backend creation is intentionally NOT
+        // cancelled on a workspace switch - only an explicit
+        // CancelProposalCreation() cancels it - so it must be allowed to run
+        // to completion and persist server-side; only its presentation
+        // (progress updates and the final result) must be withheld once
+        // stale.
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId && _workspaceGeneration == generation;
+
         try
         {
             IsBusy = true;
@@ -948,7 +975,7 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             ProposalCreationFailure = null;
             SafeStatusMessage = "Creating proposal only. No files will be changed.";
             var request = new AedaCodeProposalCreationRequest(
-                SelectedWorkspace.WorkspaceId,
+                targetWorkspaceId,
                 ProposalRequest,
                 string.IsNullOrWhiteSpace(ProposalTitle) ? null : ProposalTitle,
                 SelectedContextFiles.Count == 0
@@ -960,13 +987,38 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
                             : new AedaCodeSelectedTargetSnippet(
                                 SelectedTargetSnippet.Id,
                                 SelectedTargetSnippet.RelativePath)));
-            var progress = new Progress<AedaCodeProposalCreationProgress>(OnProposalCreationProgress);
+            // Progress<T> already marshals each Report call back to this
+            // thread (it captures the SynchronizationContext at construction
+            // time), so the only thing this wrapper adds is the staleness
+            // check - reports for a creation that is no longer current (the
+            // user has since switched workspaces) must never reach
+            // OnProposalCreationProgress and overwrite the now-current
+            // workspace's phase/status text.
+            var progress = new Progress<AedaCodeProposalCreationProgress>(update =>
+            {
+                if (IsCurrentOperation())
+                {
+                    OnProposalCreationProgress(update);
+                }
+            });
             var result = await Task.Run(
                 () => _moduleService.CreateProposalFromRequestAsync(
                     request,
                     progress,
                     cancellationToken),
                 cancellationToken);
+
+            if (!IsCurrentOperation())
+            {
+                // The user switched workspaces (or transitioned away and
+                // back) while this creation was in flight. The proposal was
+                // already created and persisted server-side - it will
+                // appear the next time this workspace's proposals are
+                // legitimately reloaded. It must not be surfaced, and the
+                // now-current workspace's own state must not be disturbed,
+                // by this stale completion.
+                return;
+            }
 
             AddOrUpdateProposal(result.Summary);
             ProposalRequest = string.Empty;
@@ -981,29 +1033,43 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            ProposalCreationPhase = AedaCodeProposalCreationPhase.Cancelled;
-            ProposalCreationFailure = AedaCodeProposalCreationFailure.FromReason(
-                AedaCodeProposalCreationFailureReason.ModelCancelled);
-            SafeStatusMessage = "Proposal creation cancelled. No files changed.";
+            if (IsCurrentOperation())
+            {
+                ProposalCreationPhase = AedaCodeProposalCreationPhase.Cancelled;
+                ProposalCreationFailure = AedaCodeProposalCreationFailure.FromReason(
+                    AedaCodeProposalCreationFailureReason.ModelCancelled);
+                SafeStatusMessage = "Proposal creation cancelled. No files changed.";
+            }
         }
         catch (AedaCodeProposalCreationException exception)
         {
-            ProposalCreationPhase = exception.Failure.Reason == AedaCodeProposalCreationFailureReason.ModelCancelled
-                ? AedaCodeProposalCreationPhase.Cancelled
-                : AedaCodeProposalCreationPhase.Failed;
-            ProposalCreationRetryAttempted = exception.Failure.RetryAttempted;
-            ProposalCreationSchemaIssueCode = exception.Failure.SchemaIssueCode;
-            ProposalCreationFailure = exception.Failure;
-            SafeStatusMessage = exception.Failure.UserMessage;
+            if (IsCurrentOperation())
+            {
+                ProposalCreationPhase = exception.Failure.Reason == AedaCodeProposalCreationFailureReason.ModelCancelled
+                    ? AedaCodeProposalCreationPhase.Cancelled
+                    : AedaCodeProposalCreationPhase.Failed;
+                ProposalCreationRetryAttempted = exception.Failure.RetryAttempted;
+                ProposalCreationSchemaIssueCode = exception.Failure.SchemaIssueCode;
+                ProposalCreationFailure = exception.Failure;
+                SafeStatusMessage = exception.Failure.UserMessage;
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            ProposalCreationPhase = AedaCodeProposalCreationPhase.Failed;
-            ProposalCreationFailure = MapProposalCreationFailure(exception);
-            SafeStatusMessage = ProposalCreationFailure.UserMessage;
+            if (IsCurrentOperation())
+            {
+                ProposalCreationPhase = AedaCodeProposalCreationPhase.Failed;
+                ProposalCreationFailure = MapProposalCreationFailure(exception);
+                SafeStatusMessage = ProposalCreationFailure.UserMessage;
+            }
         }
         finally
         {
+            // Nothing else in another workspace ever sets IsCreatingProposal
+            // (only this method does), so unconditionally clearing it (and
+            // IsBusy, which this method also owns exclusively while it
+            // runs) here cannot stomp a legitimate current value - it only
+            // ever un-sticks the working indicator.
             IsCreatingProposal = false;
             IsBusy = false;
             _proposalCreationCancellation?.Dispose();
@@ -1023,6 +1089,13 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
 
         var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
         var generation = _workspaceGeneration;
+        // A second call to this same command (same workspace, same
+        // generation) can be issued before an earlier one has resolved -
+        // e.g. the user retypes the query. _workspaceGeneration alone can't
+        // distinguish the two since neither changed, so a dedicated counter
+        // tracks which call is the newest; only that call's finally block
+        // may clear IsSearchingContext.
+        var operationId = ++_contextSearchOperationId;
         var request = new AedaCodeContextSearchRequest(
             targetWorkspaceId,
             ContextFileSearchQuery,
@@ -1068,7 +1141,14 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
         finally
         {
-            IsSearchingContext = false;
+            if (_contextSearchOperationId == operationId)
+            {
+                // Only clear the indicator if no newer search has started
+                // since this one began - otherwise this stale completion
+                // would hide the still-running newer search's indicator.
+                IsSearchingContext = false;
+            }
+
             NotifyAll();
         }
     }
@@ -1825,14 +1905,40 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        // Capture the target identity before awaiting: the user may switch
+        // workspaces (or select a different apply result) while this
+        // rollback is in flight. The backend rollback is intentionally NOT
+        // cancelled on a workspace switch - it has already run destructive,
+        // persisted file operations - so it must be allowed to complete;
+        // only its presentation must be withheld once stale.
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetApplyResultId = ApplyResult.Id;
+        var request = new PatchRollbackRequest(targetApplyResultId, targetWorkspaceId);
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId &&
+            _workspaceGeneration == generation &&
+            ApplyResult?.Id == targetApplyResultId;
+
         try
         {
             IsBusy = true;
-            RollbackResult = await _moduleService.RollbackAsync(
-                new PatchRollbackRequest(
-                    ApplyResult.Id,
-                    SelectedWorkspace.WorkspaceId),
-                cancellationToken);
+            var result = await _moduleService.RollbackAsync(request, cancellationToken);
+
+            if (!IsCurrentOperation() || result.ApplyResultId != targetApplyResultId)
+            {
+                // The user switched workspaces (or selected a different
+                // apply result) while this rollback was in flight. The
+                // backend rollback already persisted - it will appear
+                // correctly the next time this workspace's Apply history is
+                // legitimately reloaded. It must not be surfaced, and the
+                // now-current workspace's own state must not be disturbed,
+                // by this stale completion.
+                return;
+            }
+
+            RollbackResult = result;
             SafeStatusMessage = RollbackResult.Status == PatchApplyStatus.RolledBack
                 ? "Rollback completed."
                 : "Rollback completed with safe blockers.";
@@ -1840,11 +1946,17 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Rollback cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Rollback cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            SafeStatusMessage = "Rollback failed safely.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Rollback failed safely.";
+            }
         }
         finally
         {
@@ -1874,11 +1986,29 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             return;
         }
 
+        // Capture the target identity before either await below: the user
+        // may switch workspaces (or select a different apply result) while
+        // either service call is in flight.
+        var targetWorkspaceId = SelectedWorkspace.WorkspaceId;
+        var generation = _workspaceGeneration;
+        var targetApplyResultId = item.ApplyResultId;
+
+        bool IsCurrentOperation() =>
+            SelectedWorkspace?.WorkspaceId == targetWorkspaceId && _workspaceGeneration == generation;
+
         try
         {
             IsBusy = true;
-            var result = await _moduleService.GetApplyResultAsync(item.ApplyResultId, cancellationToken);
-            if (result is null || result.WorkspaceId != SelectedWorkspace.WorkspaceId)
+            var result = await _moduleService.GetApplyResultAsync(targetApplyResultId, cancellationToken);
+            if (!IsCurrentOperation())
+            {
+                // The user has since moved to a different workspace (or
+                // generation) - this apply result, whether found or not,
+                // must not replace or clear whatever is now selected.
+                return;
+            }
+
+            if (result is null || result.WorkspaceId != targetWorkspaceId)
             {
                 ApplyResult = null;
                 RollbackResult = null;
@@ -1888,6 +2018,11 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
             }
 
             var proposal = await _moduleService.GetProposalAsync(result.ProposalId, cancellationToken);
+            if (!IsCurrentOperation())
+            {
+                return;
+            }
+
             ApplyResult = result;
             RollbackResult = null;
             _selectedApplyResultAlreadyRolledBack = proposal?.Status == PatchProposalStatus.RolledBack;
@@ -1895,14 +2030,20 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Apply result load cancelled.";
+            if (IsCurrentOperation())
+            {
+                SafeStatusMessage = "Apply result load cancelled.";
+            }
         }
         catch (Exception exception) when (IsSafeFailure(exception))
         {
-            ApplyResult = null;
-            RollbackResult = null;
-            _selectedApplyResultAlreadyRolledBack = false;
-            SafeStatusMessage = "Apply result is temporarily unavailable.";
+            if (IsCurrentOperation())
+            {
+                ApplyResult = null;
+                RollbackResult = null;
+                _selectedApplyResultAlreadyRolledBack = false;
+                SafeStatusMessage = "Apply result is temporarily unavailable.";
+            }
         }
         finally
         {
@@ -2090,14 +2231,24 @@ public sealed partial class AedaCodeModuleViewModel : ObservableObject
         // The workspace identity is genuinely transitioning - whether this
         // assignment came from Avalonia's two-way binding (which can run
         // before the SelectWorkspaceAsync command executes) or from the
-        // command itself. Clear workspace-scoped Apply-history presentation
-        // state right here, synchronously, before SelectedWorkspace actually
-        // changes, so the previous workspace's entries can never remain
-        // associated with the new one - regardless of who triggered the
-        // assignment or in what order.
+        // command itself. Clear every workspace-scoped presentation
+        // snapshot right here, synchronously, before SelectedWorkspace
+        // actually changes, so the previous workspace's proposals,
+        // validation templates, selection/detail/context/approval/rollback
+        // state, and Apply-history can never remain visible under the new
+        // one - regardless of who triggered the assignment, in what order,
+        // or how slowly (or unsuccessfully) the new workspace's own load
+        // completes.
+        Proposals.Clear();
+        ValidationTemplates.Clear();
+        SelectedValidationTemplate = null;
+        ContextFileCandidates.Clear();
+        SelectedContextFiles.Clear();
+        TargetSnippetCandidates.Clear();
+        SelectedTargetSnippet = null;
+        ClearProposalDetail();
         ApplyResults.Clear();
         ValidationRuns.Clear();
-        ClearActionState();
         _applyHistoryWorkspaceId = null;
         _workspaceTransitionPending = true;
         _workspaceGeneration++;

@@ -1095,6 +1095,502 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
         Assert.Equal("Validation run completed.", fixture.ViewModel.SafeStatusMessage);
     }
 
+    [Fact]
+    public async Task WorkspaceSwitch_SlowNewWorkspaceLoad_ClearsOldProposalAndTemplateSnapshotImmediately()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        await fixture.ViewModel.SearchContextFilesAsync();
+        await fixture.ViewModel.AddContextFileAsync(fixture.ViewModel.ContextFileCandidates.Single());
+        await fixture.ViewModel.DryRunSelectedProposalAsync();
+        await fixture.ViewModel.RequestApplyApprovalAsync();
+        await fixture.ViewModel.AllowApplyOnceAsync();
+
+        Assert.NotEmpty(fixture.ViewModel.Proposals);
+        Assert.NotEmpty(fixture.ViewModel.ValidationTemplates);
+        Assert.NotNull(fixture.ViewModel.SelectedProposal);
+        Assert.NotNull(fixture.ViewModel.SelectedProposalDetail);
+        Assert.NotEmpty(fixture.ViewModel.SelectedContextFiles);
+        Assert.True(fixture.ViewModel.ApplyApprovedProposalCommand.CanExecute(null));
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextProposalList = workspaceId =>
+        {
+            started.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        var switchToB = fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        Assert.Equal(fixture.WorkspaceB.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        // Assert synchronously, before B's delayed load resolves:
+        // SelectedWorkspace already reads B, and A's entire snapshot must
+        // already be gone - never left visible until B's slow load
+        // finishes.
+        Assert.Equal(fixture.WorkspaceB.WorkspaceId, fixture.ViewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Empty(fixture.ViewModel.Proposals);
+        Assert.Empty(fixture.ViewModel.ValidationTemplates);
+        Assert.False(fixture.ViewModel.HasProposals);
+        Assert.False(fixture.ViewModel.HasValidationTemplates);
+        Assert.Null(fixture.ViewModel.SelectedProposal);
+        Assert.Null(fixture.ViewModel.SelectedProposalDetail);
+        Assert.False(fixture.ViewModel.HasProposal);
+        Assert.Empty(fixture.ViewModel.ProposalFiles);
+        Assert.Contains("Select a proposal", fixture.ViewModel.UnifiedDiffPreview, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(fixture.ViewModel.ContextFileCandidates);
+        Assert.Empty(fixture.ViewModel.SelectedContextFiles);
+        Assert.Empty(fixture.ViewModel.TargetSnippetCandidates);
+        Assert.Null(fixture.ViewModel.SelectedTargetSnippet);
+        Assert.Equal("Dry run not started.", fixture.ViewModel.DryRunStatusText);
+        Assert.Equal("Apply approval not requested.", fixture.ViewModel.ApplyApprovalStatusText);
+        Assert.False(fixture.ViewModel.HasRollbackAvailable);
+        Assert.False(fixture.ViewModel.ApplyApprovedProposalCommand.CanExecute(null));
+
+        gate.SetResult();
+        await switchToB;
+
+        Assert.Equal(fixture.WorkspaceB.WorkspaceId, fixture.ViewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Single(fixture.ViewModel.Proposals, item => item.ProposalId == fixture.ProposalB.Id);
+    }
+
+    [Fact]
+    public async Task WorkspaceSwitch_LoadFailure_DoesNotRestorePreviousWorkspaceSnapshot()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        Assert.NotEmpty(fixture.ViewModel.Proposals);
+        Assert.NotEmpty(fixture.ViewModel.ValidationTemplates);
+
+        fixture.Service.DelayNextProposalList = _ =>
+            throw new InvalidOperationException("workspace_load_failed");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB));
+
+        // Even though B's own load failed, the previously-selected
+        // workspace's snapshot was already cleared synchronously before the
+        // load began - the failure must never leave A's stale snapshot
+        // visible under B.
+        Assert.Equal(fixture.WorkspaceB.WorkspaceId, fixture.ViewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Empty(fixture.ViewModel.Proposals);
+        Assert.Empty(fixture.ViewModel.ValidationTemplates);
+        Assert.DoesNotContain(fixture.ViewModel.Proposals, item => item.ProposalId == fixture.ProposalA.Id);
+    }
+
+    [Fact]
+    public async Task WorkspaceNullSelection_ClearsAllWorkspaceScopedSnapshots()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        await fixture.ViewModel.SelectProposalAsync(
+            fixture.ViewModel.Proposals.Single(item => item.ProposalId == fixture.ProposalA.Id));
+        await fixture.ViewModel.SearchContextFilesAsync();
+        await fixture.ViewModel.AddContextFileAsync(fixture.ViewModel.ContextFileCandidates.Single());
+        await fixture.ViewModel.DryRunSelectedProposalAsync();
+        await fixture.ViewModel.RequestApplyApprovalAsync();
+        await fixture.ViewModel.AllowApplyOnceAsync();
+
+        Assert.NotEmpty(fixture.ViewModel.Proposals);
+        Assert.NotEmpty(fixture.ViewModel.ValidationTemplates);
+        Assert.NotNull(fixture.ViewModel.SelectedProposal);
+        Assert.NotEmpty(fixture.ViewModel.SelectedContextFiles);
+        Assert.True(fixture.ViewModel.ApplyApprovedProposalCommand.CanExecute(null));
+
+        await fixture.ViewModel.SelectWorkspaceAsync(null);
+
+        Assert.Null(fixture.ViewModel.SelectedWorkspace);
+        Assert.Empty(fixture.ViewModel.Proposals);
+        Assert.Empty(fixture.ViewModel.ValidationTemplates);
+        Assert.Null(fixture.ViewModel.SelectedProposal);
+        Assert.Null(fixture.ViewModel.SelectedProposalDetail);
+        Assert.Empty(fixture.ViewModel.ProposalFiles);
+        Assert.Contains("Select a proposal", fixture.ViewModel.UnifiedDiffPreview, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(fixture.ViewModel.ContextFileCandidates);
+        Assert.Empty(fixture.ViewModel.SelectedContextFiles);
+        Assert.Empty(fixture.ViewModel.TargetSnippetCandidates);
+        Assert.Null(fixture.ViewModel.SelectedTargetSnippet);
+        Assert.Empty(fixture.ViewModel.ApplyResults);
+        Assert.Empty(fixture.ViewModel.ValidationRuns);
+        Assert.Equal("Dry run not started.", fixture.ViewModel.DryRunStatusText);
+        Assert.Equal("Apply approval not requested.", fixture.ViewModel.ApplyApprovalStatusText);
+        Assert.False(fixture.ViewModel.HasRollbackAvailable);
+        Assert.False(fixture.ViewModel.ApplyApprovedProposalCommand.CanExecute(null));
+        Assert.Equal("Select a registered workspace.", fixture.ViewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task CreateProposalAsync_DelayedProgressForStaleWorkspace_DoesNotOverwriteCurrentWorkspaceStatus()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        fixture.ViewModel.ProposalRequest = "Add a safe helper.";
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextProposalCreation = workspaceId =>
+        {
+            started.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        // Install a synchronous SynchronizationContext for the duration of
+        // the Progress<T> construction inside CreateProposalAsync, so
+        // Report() calls invoke their callback immediately/deterministically
+        // instead of being posted asynchronously to the thread pool (the
+        // default when no context is present) - this test needs to inject a
+        // "late" progress report at a precisely controlled point in time.
+        var previousContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new ImmediateSynchronizationContext());
+        Task createA;
+        try
+        {
+            createA = fixture.ViewModel.CreateProposalAsync();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
+
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var statusBeforeStaleProgress = fixture.ViewModel.SafeStatusMessage;
+        var phaseBeforeStaleProgress = fixture.ViewModel.ProposalCreationPhase;
+
+        // A progress update for A's (now-stale) creation arrives while B is
+        // the current workspace - it must not overwrite B's status/phase.
+        fixture.Service.LastProgress?.Report(
+            new AedaCodeProposalCreationProgress(AedaCodeProposalCreationPhase.CallingCodingModel));
+
+        Assert.Equal(statusBeforeStaleProgress, fixture.ViewModel.SafeStatusMessage);
+        Assert.Equal(phaseBeforeStaleProgress, fixture.ViewModel.ProposalCreationPhase);
+        Assert.NotEqual(AedaCodeProposalCreationPhase.CallingCodingModel, fixture.ViewModel.ProposalCreationPhase);
+
+        gate.SetResult();
+        await createA;
+    }
+
+    [Fact]
+    public async Task CreateProposalAsync_DelayedCompletionForStaleWorkspace_DoesNotInsertProposalIntoCurrentWorkspace()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        fixture.ViewModel.ProposalRequest = "Add a safe helper.";
+        var proposalCountBeforeCreation = fixture.Service.ProposalsByWorkspace[fixture.WorkspaceA.WorkspaceId].Count;
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextProposalCreation = workspaceId =>
+        {
+            started.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        var createA = fixture.ViewModel.CreateProposalAsync();
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        // The delay hook fires only after the fake has already "persisted"
+        // the new proposal into ProposalsByWorkspace, proving the backend
+        // creation is not gated by presentation correlation.
+        Assert.Equal(
+            proposalCountBeforeCreation + 1,
+            fixture.Service.ProposalsByWorkspace[fixture.WorkspaceA.WorkspaceId].Count);
+
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        var proposalIdsBeforeStaleCompletion = fixture.ViewModel.Proposals
+            .Select(item => item.ProposalId)
+            .ToArray();
+
+        gate.SetResult();
+        await createA;
+
+        Assert.Equal(fixture.WorkspaceB.WorkspaceId, fixture.ViewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Equal(
+            proposalIdsBeforeStaleCompletion,
+            fixture.ViewModel.Proposals.Select(item => item.ProposalId).ToArray());
+        Assert.Single(fixture.ViewModel.Proposals, item => item.ProposalId == fixture.ProposalB.Id);
+
+        // The backend proposal remains persisted under A even though it
+        // never surfaced under B.
+        Assert.Equal(
+            proposalCountBeforeCreation + 1,
+            fixture.Service.ProposalsByWorkspace[fixture.WorkspaceA.WorkspaceId].Count);
+    }
+
+    [Fact]
+    public async Task CreateProposalAsync_AtoBtoA_OldGenerationCannotCommit()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+        fixture.ViewModel.ProposalRequest = "Add a safe helper.";
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<WorkspaceId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextProposalCreation = workspaceId =>
+        {
+            started.SetResult(workspaceId);
+            return gate.Task;
+        };
+
+        var createA = fixture.ViewModel.CreateProposalAsync();
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceB);
+        await fixture.ViewModel.SelectWorkspaceAsync(fixture.WorkspaceA);
+
+        var proposalIdsBeforeStaleCompletion = fixture.ViewModel.Proposals
+            .Select(item => item.ProposalId)
+            .ToArray();
+
+        gate.SetResult();
+        await createA;
+
+        // The old (first-visit) generation's completion must not commit,
+        // even though the workspace id matches A again.
+        Assert.Equal(fixture.WorkspaceA.WorkspaceId, fixture.ViewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Equal(
+            proposalIdsBeforeStaleCompletion,
+            fixture.ViewModel.Proposals.Select(item => item.ProposalId).ToArray());
+        Assert.Equal("Add a safe helper.", fixture.ViewModel.ProposalRequest);
+    }
+
+    [Fact]
+    public async Task SelectApplyResultAsync_DelayedOldWorkspaceResult_CannotClearOrReplaceCurrentSelection()
+    {
+        Write("src/App.cs", "old\n");
+        var proposalA = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var applyResultIdA = await ApplyProposalAsync(proposalA.Id);
+
+        var workspaceBRoot = Path.Combine(_root, "workspace-select-apply-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+        Write("src/Other.cs", "b-old\n", workspaceBRoot);
+        var proposalB = await SaveProposalAsync([Edit("src/Other.cs", "b-old\n", "b-new\n")], workspaceBId);
+        var applyResultIdB = await ApplyProposalAsync(proposalB.Id, workspaceBId, workspaceBRoot);
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var service = new PersistedApplyModuleService(CreateApplyService(proposalRepository, applyRepository), proposalRepository);
+        var viewModel = BuildViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+
+        await viewModel.SelectWorkspaceAsync(workspaceA);
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+        var historyItemA = Assert.Single(viewModel.ApplyResults);
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<PatchApplyResultId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextApplyResultGet = applyResultId =>
+        {
+            started.SetResult(applyResultId);
+            return gate.Task;
+        };
+
+        var selectA1 = viewModel.SelectApplyResultAsync(historyItemA);
+        Assert.Equal(applyResultIdA, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(selectA1.IsCompleted);
+
+        // Switch to B and establish B's own legitimate selection while A1's
+        // load is still held behind the gate.
+        await viewModel.SelectWorkspaceAsync(workspaceB);
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+        var historyItemB = Assert.Single(viewModel.ApplyResults);
+        await viewModel.SelectApplyResultAsync(historyItemB);
+        Assert.True(viewModel.HasRollbackAvailable);
+        var statusBeforeStale = viewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await selectA1;
+
+        // B's selection/rollback/status must remain exactly as before A1's
+        // stale completion.
+        Assert.Equal(workspaceBId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.True(viewModel.HasRollbackAvailable);
+        Assert.Equal(statusBeforeStale, viewModel.SafeStatusMessage);
+        Assert.Single(viewModel.ApplyResults, item => item.ApplyResultId == applyResultIdB);
+    }
+
+    [Fact]
+    public async Task SelectApplyResultAsync_AtoBtoA_OldGenerationCannotCommit()
+    {
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var applyResultId = await ApplyProposalAsync(proposal.Id);
+
+        var workspaceBRoot = Path.Combine(_root, "workspace-select-apply-atobtoa-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var service = new PersistedApplyModuleService(CreateApplyService(proposalRepository, applyRepository), proposalRepository);
+        var viewModel = BuildViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+
+        await viewModel.SelectWorkspaceAsync(workspaceA);
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+        var historyItemA = Assert.Single(viewModel.ApplyResults);
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<PatchApplyResultId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextApplyResultGet = applyResultId2 =>
+        {
+            started.SetResult(applyResultId2);
+            return gate.Task;
+        };
+
+        var selectA1 = viewModel.SelectApplyResultAsync(historyItemA);
+        Assert.Equal(applyResultId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        await viewModel.SelectWorkspaceAsync(workspaceB);
+        await viewModel.SelectWorkspaceAsync(workspaceA);
+
+        Assert.Equal("No apply result.", viewModel.ApplyResultText);
+        Assert.False(viewModel.HasRollbackAvailable);
+
+        gate.SetResult();
+        await selectA1;
+
+        // The old (first-visit) generation's completion must not commit,
+        // even though the workspace id matches A again.
+        Assert.Equal(workspaceA.WorkspaceId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.Equal("No apply result.", viewModel.ApplyResultText);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.RollbackSelectedApplyResultCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task RollbackSelectedApplyResultAsync_CompletionAfterWorkspaceSwitch_PersistsBackendButDoesNotSurfaceUnderNewWorkspace()
+    {
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        var applyResultId = await ApplyProposalAsync(proposal.Id);
+
+        var workspaceBRoot = Path.Combine(_root, "workspace-rollback-switch-b");
+        Directory.CreateDirectory(workspaceBRoot);
+        var workspaceBId = WorkspaceId.NewId();
+
+        var registry = new WorkspaceRegistry();
+        registry.Register(_workspaceId, _root, "Repo A");
+        registry.Register(workspaceBId, workspaceBRoot, "Repo B");
+
+        var (proposalRepository, applyRepository) = OpenRepositories();
+        var service = new PersistedApplyModuleService(CreateApplyService(proposalRepository, applyRepository), proposalRepository);
+        var viewModel = BuildViewModel(registry, service);
+        await viewModel.InitializeAsync();
+
+        var workspaceA = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == _workspaceId);
+        var workspaceB = viewModel.Workspaces.Single(workspace => workspace.WorkspaceId == workspaceBId);
+
+        await viewModel.SelectWorkspaceAsync(workspaceA);
+        await viewModel.StartSessionCommand.ExecuteAsync(null);
+        var historyItem = Assert.Single(viewModel.ApplyResults);
+        await viewModel.SelectApplyResultAsync(historyItem);
+        Assert.True(viewModel.HasRollbackAvailable);
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource<PatchApplyResultId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.DelayNextRollback = request =>
+        {
+            started.SetResult(request.ApplyResultId);
+            return gate.Task;
+        };
+
+        var rollbackA = viewModel.RollbackSelectedApplyResultCommand.ExecuteAsync(null);
+        Assert.Equal(applyResultId, await started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(rollbackA.IsCompleted);
+
+        await viewModel.SelectWorkspaceAsync(workspaceB);
+        Assert.Empty(viewModel.ApplyResults);
+        Assert.False(viewModel.HasRollbackAvailable);
+        var statusB = viewModel.SafeStatusMessage;
+
+        gate.SetResult();
+        await rollbackA;
+
+        Assert.Equal(workspaceBId, viewModel.SelectedWorkspace!.WorkspaceId);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.Equal(statusB, viewModel.SafeStatusMessage);
+        Assert.Empty(viewModel.ApplyResults);
+
+        // The backend rollback persisted despite never surfacing under B.
+        Assert.Equal("old\n", Read("src/App.cs"));
+        var (persistedProposalRepository, _) = OpenRepositories();
+        var persistedProposal = await persistedProposalRepository.GetAsync(proposal.Id);
+        Assert.Equal(PatchProposalStatus.RolledBack, persistedProposal!.Status);
+    }
+
+    [Fact]
+    public async Task RollbackSelectedApplyResultAsync_CurrentWorkspaceCompletionStillRefreshesNormally()
+    {
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "new\n")]);
+        await ApplyProposalAsync(proposal.Id);
+
+        var registry = OpenRegistry();
+        var viewModel = await OpenViewModelWithSessionAsync(registry);
+        var historyItem = Assert.Single(viewModel.ApplyResults);
+        await viewModel.SelectApplyResultAsync(historyItem);
+        Assert.True(viewModel.HasRollbackAvailable);
+
+        await viewModel.RollbackSelectedApplyResultCommand.ExecuteAsync(null);
+
+        Assert.Contains("Rollback completed", viewModel.SafeStatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(viewModel.HasRollbackAvailable);
+        Assert.False(viewModel.CanShowRollback);
+        Assert.Equal("old\n", Read("src/App.cs"));
+    }
+
+    [Fact]
+    public async Task SearchContextFilesAsync_OldCompletionCannotClearNewerSearchIndicator()
+    {
+        var fixture = await CreateCorrelationFixtureAsync();
+
+        var gate1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextContextSearch = _ =>
+        {
+            started1.SetResult();
+            return gate1.Task;
+        };
+
+        var search1 = fixture.ViewModel.SearchContextFilesAsync();
+        await started1.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(fixture.ViewModel.IsSearchingContext);
+
+        var gate2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.DelayNextContextSearch = _ =>
+        {
+            started2.SetResult();
+            return gate2.Task;
+        };
+
+        var search2 = fixture.ViewModel.SearchContextFilesAsync();
+        await started2.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(fixture.ViewModel.IsSearchingContext);
+
+        // Release the OLDER search first, while the newer one is still
+        // in flight - its finally block must not clear the indicator out
+        // from under the still-running newer search.
+        gate1.SetResult();
+        await search1;
+        Assert.True(fixture.ViewModel.IsSearchingContext);
+
+        gate2.SetResult();
+        await search2;
+        Assert.False(fixture.ViewModel.IsSearchingContext);
+    }
+
     private async Task<CorrelationFixture> CreateCorrelationFixtureAsync()
     {
         var workspaceBRoot = Path.Combine(_root, "workspace-correlation-b");
@@ -1349,6 +1845,22 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
     }
 
     /// <summary>
+    /// A <see cref="SynchronizationContext"/> that runs every posted/sent
+    /// callback synchronously and inline on the calling thread. Used only to
+    /// make <see cref="Progress{T}"/> callbacks deterministic in tests: with
+    /// no ambient context (the default under xunit), <see cref="Progress{T}"/>
+    /// falls back to posting through the thread pool asynchronously, which
+    /// would make a test's precisely-timed "late progress report" race
+    /// against the assertions that follow it.
+    /// </summary>
+    private sealed class ImmediateSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) => d(state);
+
+        public override void Send(SendOrPostCallback d, object? state) => d(state);
+    }
+
+    /// <summary>
     /// A minimal <see cref="IAedaCodeModuleService"/> that delegates apply/rollback
     /// operations to a real <see cref="PatchApplyService"/> backed by SQLite
     /// repositories, so tests exercise genuine persistence rather than an
@@ -1502,11 +2014,95 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             PatchProposalCreateRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
+        public int CreateProposalFromRequestCount { get; private set; }
+
+        public IReadOnlyList<AedaCodeProposalCreationProgress> ProgressToReport { get; set; } = [];
+
+        public Func<AedaCodeProposalCreationRequest, PatchProposal>? CreatedProposalFactory { get; set; }
+
+        /// <summary>
+        /// The most recently supplied progress reporter, captured so a test
+        /// can invoke <c>Report</c> on it directly at a controlled point in
+        /// time (e.g. after the view model has already switched away from
+        /// the workspace this creation belongs to).
+        /// </summary>
+        public IProgress<AedaCodeProposalCreationProgress>? LastProgress { get; private set; }
+
+        /// <summary>
+        /// When set, invoked (and awaited) with the request's workspace id
+        /// AFTER the proposal has already been created and persisted into
+        /// <see cref="ProposalsByWorkspace"/>, but BEFORE the result is
+        /// returned to the caller, then clears itself. Lets tests hold a
+        /// proposal creation open across a workspace switch while proving
+        /// the backend proposal already exists.
+        /// </summary>
+        public Func<WorkspaceId, Task>? DelayNextProposalCreation;
+
+        public async Task<AedaCodeProposalCreationResult> CreateProposalFromRequestAsync(
             AedaCodeProposalCreationRequest request,
             IProgress<AedaCodeProposalCreationProgress>? progress = null,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            CreateProposalFromRequestCount++;
+            LastProgress = progress;
+            foreach (var item in ProgressToReport)
+            {
+                progress?.Report(item);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var proposal = CreatedProposalFactory is null
+                ? new PatchProposal(
+                    PatchProposalId.NewId(),
+                    request.WorkspaceId,
+                    string.IsNullOrWhiteSpace(request.OptionalTitle) ? "Created proposal" : request.OptionalTitle,
+                    "Created safely",
+                    PatchProposalStatus.ReadyForReview,
+                    PatchProposalRisk.Low,
+                    ["small_text_change"],
+                    [new PatchProposalFile(
+                        "src/Created.cs",
+                        PatchProposalFileChangeKind.Add,
+                        null,
+                        "created",
+                        "old-hash",
+                        "new-hash",
+                        "--- src/Created.cs\n+++ src/Created.cs\n@@\n+ created",
+                        [])],
+                    [],
+                    new PatchProposalValidationPlan([], []),
+                    now,
+                    now)
+                : CreatedProposalFactory(request);
+
+            var risk = new AedaCodeRiskBadge(
+                proposal.Risk,
+                proposal.Risk.ToString(),
+                string.Join(", ", proposal.RiskReasons));
+            var summary = new AedaCodeProposalSummary(
+                proposal.Id,
+                proposal.Title,
+                proposal.Status,
+                risk,
+                proposal.Files.Select(file => file.RelativePath).ToArray(),
+                proposal.UpdatedAtUtc);
+
+            // The backend "creation" is considered to have persisted at this
+            // point - a stale-workspace completion must not undo this, it
+            // must only be withheld from presentation.
+            var existing = ProposalsByWorkspace.TryGetValue(request.WorkspaceId, out var list)
+                ? list
+                : [];
+            ProposalsByWorkspace[request.WorkspaceId] = existing.Append(summary).ToArray();
+
+            if (DelayNextProposalCreation is { } delay)
+            {
+                DelayNextProposalCreation = null;
+                await delay(request.WorkspaceId);
+            }
+
+            return new AedaCodeProposalCreationResult(proposal, summary, [], []);
+        }
 
         /// <summary>
         /// Per-workspace proposal/template fixtures a test can populate so
@@ -1621,13 +2217,48 @@ public sealed class AedaCodeRollbackReachabilityTests : IDisposable
             return proposal;
         }
 
-        public Task<PatchApplyResult?> GetApplyResultAsync(
-            PatchApplyResultId applyResultId, CancellationToken cancellationToken = default) =>
-            applyService.GetApplyResultAsync(applyResultId, cancellationToken);
+        /// <summary>
+        /// When set, the next <see cref="GetApplyResultAsync"/> call awaits
+        /// this with the requested apply result id before returning, then
+        /// clears itself. Lets tests hold a "select apply result from
+        /// history" load open across a workspace switch.
+        /// </summary>
+        public Func<PatchApplyResultId, Task>? DelayNextApplyResultGet;
 
-        public Task<PatchRollbackResult> RollbackAsync(
-            PatchRollbackRequest request, CancellationToken cancellationToken = default) =>
-            applyService.RollbackAsync(request, cancellationToken);
+        public async Task<PatchApplyResult?> GetApplyResultAsync(
+            PatchApplyResultId applyResultId, CancellationToken cancellationToken = default)
+        {
+            var result = await applyService.GetApplyResultAsync(applyResultId, cancellationToken);
+            if (DelayNextApplyResultGet is { } delay)
+            {
+                DelayNextApplyResultGet = null;
+                await delay(applyResultId);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// When set, invoked (and awaited) with the request AFTER the real
+        /// rollback has already run and persisted, but BEFORE the result is
+        /// returned to the caller, then clears itself. Lets tests hold a
+        /// rollback completion open across a workspace switch while proving
+        /// the destructive backend work already happened.
+        /// </summary>
+        public Func<PatchRollbackRequest, Task>? DelayNextRollback;
+
+        public async Task<PatchRollbackResult> RollbackAsync(
+            PatchRollbackRequest request, CancellationToken cancellationToken = default)
+        {
+            var result = await applyService.RollbackAsync(request, cancellationToken);
+            if (DelayNextRollback is { } delay)
+            {
+                DelayNextRollback = null;
+                await delay(request);
+            }
+
+            return result;
+        }
 
         public async Task<ValidationRun> CreateValidationRunAsync(
             ValidationRunRequest request, CancellationToken cancellationToken = default)
