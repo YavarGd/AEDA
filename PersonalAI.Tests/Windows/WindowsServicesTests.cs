@@ -19,10 +19,10 @@ public sealed class WindowsServicesTests
     }
 
     [Fact]
-    public void SingleInstance_UsesWinUiMutexName()
+    public void SingleInstance_UsesAedaMutexName()
     {
         Assert.Equal(
-            "Local\\PersonalAI.WinUI.SingleInstance",
+            "Local\\AEDA.SingleInstance",
             WindowsSingleInstanceService.MutexName);
     }
 }

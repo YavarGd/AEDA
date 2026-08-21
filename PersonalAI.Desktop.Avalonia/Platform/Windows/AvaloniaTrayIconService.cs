@@ -26,7 +26,7 @@ public sealed class AvaloniaTrayIconService : IDisposable
         menu.Items.Add(exitItem);
 
         using var iconStream = AssetLoader.Open(
-            new Uri("avares://PersonalAI.Desktop.Avalonia/Assets/AedaAppIcon.ico"));
+            new Uri("avares://AEDA/Assets/AedaAppIcon.ico"));
         _trayIcon = new TrayIcon
         {
             Icon = new WindowIcon(iconStream),

@@ -14,7 +14,7 @@
         AutomationProperties.Name="AEDA main window">
 
   <Window.Styles>
-    <StyleInclude Source="avares://PersonalAI.Desktop.Avalonia/Themes/AedaTheme.axaml" />
+    <StyleInclude Source="avares://AEDA/Themes/AedaTheme.axaml" />
   </Window.Styles>
 
   <Grid ColumnDefinitions="232,*">

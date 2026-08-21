@@ -75,7 +75,8 @@ public sealed class AedaThemeSourceTests
         Assert.Contains("SetCurrentProcessExplicitAppUserModelID", chrome);
         Assert.Contains("AEDA.LocalIntelligence", chrome);
         Assert.Contains("AedaWindowChrome.InitializeProcessIdentity()", app);
-        Assert.Contains("PersonalAI.Desktop.WinUI.exe", shortcut);
+        Assert.Contains("PersonalAI.Desktop.Avalonia", shortcut);
+        Assert.Contains("AEDA.exe", shortcut);
         Assert.Contains("AedaAppIcon.ico", shortcut);
         Assert.Contains("AEDA.LocalIntelligence", shortcut);
         Assert.DoesNotContain("dotnet.exe", shortcut, StringComparison.OrdinalIgnoreCase);

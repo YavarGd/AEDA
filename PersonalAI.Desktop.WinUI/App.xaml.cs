@@ -51,9 +51,16 @@ public partial class App : Application
 
         if (!_singleInstanceService.IsPrimaryInstance)
         {
-            NativeMessageBox.Show(
-                "PersonalAI WinUI is already running.",
-                "PersonalAI");
+            var activated = await PersonalAiActivationClient.TryActivatePrimaryAsync();
+            if (!activated)
+            {
+                NativeMessageBox.Show(
+                    "AEDA is already running.",
+                    "AEDA");
+            }
+
+            _singleInstanceService.Dispose();
+            _singleInstanceService = null;
             Exit();
             return;
         }
@@ -64,7 +71,8 @@ public partial class App : Application
         _runtime = await AedaRuntime.CreateAsync(_permissionBroker);
         _settingsService = _runtime.Settings;
         AedaThemeManager.Apply(_settingsService.Current.Appearance.Theme);
-        _startupRegistrationService = new WindowsStartupRegistrationService();
+        _startupRegistrationService =
+            new PersonalAI.Desktop.WinUI.Services.WindowsStartupRegistrationService();
         var activeContextProvider =
             ActiveContextProviderFactory.CreateDefaultProvider();
         _foregroundWindowTracker = new ForegroundWindowTracker(
