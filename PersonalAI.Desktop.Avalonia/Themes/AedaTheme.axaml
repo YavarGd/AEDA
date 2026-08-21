@@ -1,58 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <Styles.Resources>
-    <ResourceDictionary>
-      <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Light">
-          <SolidColorBrush x:Key="AedaNavBackgroundBrush" Color="#F2F3F5" />
-          <SolidColorBrush x:Key="AedaBorderBrush" Color="#D0D3D9" />
-          <SolidColorBrush x:Key="AedaUserBubbleBrush" Color="#E4ECF7" />
-          <SolidColorBrush x:Key="AedaAssistantBubbleBrush" Color="#F7F7F8" />
-          <SolidColorBrush x:Key="AedaCodeBackgroundBrush" Color="#F4F4F6" />
-          <SolidColorBrush x:Key="AedaMetadataBrush" Color="#5B6069" />
-          <SolidColorBrush x:Key="AedaFocusBrush" Color="#1A63C4" />
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="AedaNavBackgroundBrush" Color="#22242A" />
-          <SolidColorBrush x:Key="AedaBorderBrush" Color="#3C4048" />
-          <SolidColorBrush x:Key="AedaUserBubbleBrush" Color="#2B3A4E" />
-          <SolidColorBrush x:Key="AedaAssistantBubbleBrush" Color="#2A2C33" />
-          <SolidColorBrush x:Key="AedaCodeBackgroundBrush" Color="#1E2025" />
-          <SolidColorBrush x:Key="AedaMetadataBrush" Color="#A9AEB8" />
-          <SolidColorBrush x:Key="AedaFocusBrush" Color="#7FB0FF" />
-        </ResourceDictionary>
-      </ResourceDictionary.ThemeDictionaries>
-    </ResourceDictionary>
-  </Styles.Resources>
-
-  <!-- Visible keyboard focus for the interactive controls used by the shell. -->
-  <Style Selector="Button:focus-visible">
-    <Setter Property="BorderBrush" Value="{DynamicResource AedaFocusBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
-  </Style>
-
-  <Style Selector="TextBox:focus-visible">
-    <Setter Property="BorderBrush" Value="{DynamicResource AedaFocusBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
-  </Style>
-
-  <Style Selector="ListBox:focus-visible">
-    <Setter Property="BorderBrush" Value="{DynamicResource AedaFocusBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
-  </Style>
-
-  <Style Selector="ListBoxItem:focus-visible">
-    <Setter Property="BorderBrush" Value="{DynamicResource AedaFocusBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
-  </Style>
-
-  <Style Selector="TextBlock.metadata">
-    <Setter Property="Foreground" Value="{DynamicResource AedaMetadataBrush}" />
-    <Setter Property="FontSize" Value="12" />
-  </Style>
-
-  <Style Selector="TextBlock.sectionHeading">
-    <Setter Property="FontSize" Value="18" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
+  <StyleInclude Source="avares://AEDA/Styles/Foundations.axaml" />
+  <StyleInclude Source="avares://AEDA/Styles/Controls.axaml" />
+  <StyleInclude Source="avares://AEDA/Styles/Navigation.axaml" />
+  <StyleInclude Source="avares://AEDA/Styles/Assist.axaml" />
 </Styles>

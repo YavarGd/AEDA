@@ -284,7 +284,7 @@ public static class AedaThemeCatalog
         new(ThemePreference.SystemMica, "System Mica", false),
         new(ThemePreference.Graphite, "Graphite", true),
         new(ThemePreference.MineralStone, "Mineral Stone", false),
-        new(ThemePreference.SharpAlmond, "Sharp Almond", false)
+        new(ThemePreference.SharpAlmond, "Sharp Almond", true)
     ];
 
     public static ThemePreference Normalize(ThemePreference theme) =>

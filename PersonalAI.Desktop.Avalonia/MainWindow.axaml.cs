@@ -32,7 +32,9 @@ public partial class MainWindow : Window
             Navigate(ShellRoute.Chat, focusContent: true);
         Opened += (_, _) =>
             Navigate(ShellRoute.Dashboard, focusContent: true);
+        SizeChanged += (_, _) => ApplyResponsiveMode();
         AddHandler(KeyDownEvent, OnShellKeyDown, RoutingStrategies.Tunnel);
+        ApplyResponsiveMode();
     }
 
     /// <summary>The route currently shown. Shell state stays in the view.</summary>
@@ -50,6 +52,7 @@ public partial class MainWindow : Window
         }
 
         DataContext = chat;
+        screens = screens.OrderBy(ScreenOrder).ToArray();
         foreach (var screen in screens)
         {
             if (string.IsNullOrWhiteSpace(screen.Route) ||
@@ -109,6 +112,12 @@ public partial class MainWindow : Window
         PresentationRoute.Content = route == ShellRoute.Presentation
             ? _activePresentationScreen?.Content
             : null;
+        PageTitle.Text = route switch
+        {
+            ShellRoute.Chat => "General Chat",
+            ShellRoute.Presentation => _activePresentationScreen?.Definition.Label ?? "AEDA",
+            _ => "Home"
+        };
 
         var navItem = route switch
         {
@@ -198,6 +207,23 @@ public partial class MainWindow : Window
         ChatRoute.ApplyKeyAction(action);
         e.Handled = true;
     }
+
+    private void ApplyResponsiveMode()
+    {
+        Classes.Set("compact", ClientSize.Width < 760);
+        Classes.Set("medium", ClientSize.Width is >= 760 and < 1000);
+    }
+
+    private static int ScreenOrder(AvaloniaPresentationScreen screen) => screen.Route switch
+    {
+        "aeda-code" => 0,
+        "aeda-memory" => 1,
+        "aeda-research" => 2,
+        "aeda-task-center" => 3,
+        "aeda-assist" => 4,
+        "settings" => 5,
+        _ => 6
+    };
 
     private sealed record MountedPresentationScreen(
         AvaloniaPresentationScreen Definition,

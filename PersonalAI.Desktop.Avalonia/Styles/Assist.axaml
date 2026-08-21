@@ -1,0 +1,58 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="Button.assistLauncher">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher Path.launcherSurface">
+    <Setter Property="Fill" Value="{DynamicResource ElevatedSurfaceBrush}" />
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher:pointerover Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="StrokeThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher:pressed Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource AccentPressedBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher.listening Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher.thinking Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher.ready Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher.error Path.launcherSurface">
+    <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
+  </Style>
+
+  <Style Selector="Border.assistSurface.listening">
+    <Setter Property="BorderBrush" Value="{DynamicResource ListeningBrush}" />
+  </Style>
+
+  <Style Selector="Border.assistSurface.thinking">
+    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="Border.assistSurface.ready">
+    <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="Border.assistSurface.error">
+    <Setter Property="BorderBrush" Value="{DynamicResource ErrorBrush}" />
+  </Style>
+</Styles>

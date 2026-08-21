@@ -93,6 +93,25 @@ public sealed class AvaloniaThemeManager : IDisposable
         application.RequestedThemeVariant = palette.IsDark
             ? ThemeVariant.Dark
             : ThemeVariant.Light;
+        SetBrush(application, "WindowBackgroundBrush", palette.WindowBackground);
+        SetBrush(application, "ShellSurfaceBrush", palette.ShellSurface);
+        SetBrush(application, "ContentSurfaceBrush", palette.ContentSurface);
+        SetBrush(application, "ElevatedSurfaceBrush", palette.ElevatedSurface);
+        SetBrush(application, "CardSurfaceBrush", palette.CardSurface);
+        SetBrush(application, "SubtleSurfaceBrush", palette.SubtleSurface);
+        SetBrush(application, "PrimaryTextBrush", palette.PrimaryText);
+        SetBrush(application, "SecondaryTextBrush", palette.SecondaryText);
+        SetBrush(application, "MutedTextBrush", palette.MutedText);
+        SetBrush(application, "BorderBrush", palette.Border);
+        SetBrush(application, "StrongBorderBrush", palette.StrongBorder);
+        SetBrush(application, "AccentBrush", palette.Accent);
+        SetBrush(application, "AccentHoverBrush", palette.AccentHover);
+        SetBrush(application, "AccentPressedBrush", palette.AccentPressed);
+        SetBrush(application, "SuccessBrush", palette.Success);
+        SetBrush(application, "WarningBrush", palette.Warning);
+        SetBrush(application, "ErrorBrush", palette.Error);
+        SetBrush(application, "ListeningBrush", palette.Listening);
+        SetBrush(application, "FocusRingBrush", palette.FocusRing);
         SetBrush(application, "AedaNavBackgroundBrush", palette.Navigation);
         SetBrush(application, "AedaBorderBrush", palette.Border);
         SetBrush(application, "AedaUserBubbleBrush", palette.UserBubble);
@@ -108,26 +127,70 @@ public sealed class AvaloniaThemeManager : IDisposable
 
 public sealed record AedaPalette(
     bool IsDark,
-    string Navigation,
+    string WindowBackground,
+    string ShellSurface,
+    string ContentSurface,
+    string ElevatedSurface,
+    string CardSurface,
+    string SubtleSurface,
+    string PrimaryText,
+    string SecondaryText,
+    string MutedText,
     string Border,
-    string UserBubble,
-    string AssistantBubble,
-    string CodeBackground,
-    string Metadata,
-    string Focus)
+    string StrongBorder,
+    string Accent,
+    string AccentHover,
+    string AccentPressed,
+    string Success,
+    string Warning,
+    string Error,
+    string Listening,
+    string FocusRing)
 {
+    public string Navigation => ShellSurface;
+
+    public string UserBubble => SubtleSurface;
+
+    public string AssistantBubble => ElevatedSurface;
+
+    public string CodeBackground => CardSurface;
+
+    public string Metadata => MutedText;
+
+    public string Focus => FocusRing;
+
     public static AedaPalette SystemMica { get; } = new(
-        false, "#F2F2F2", "#D0D0D0", "#E8E8E8", "#FFFFFF", "#F8F8F8", "#5D5D5D", "#3A3A3A");
+        false,
+        "#EEF1F5", "#F7F8FA", "#FBFCFE", "#FFFFFF", "#F4F6F8", "#E9EDF2",
+        "#1D2025", "#505862", "#737B85", "#D7DBE2", "#B9C0CA",
+        "#4B76A8", "#3E6898", "#31577F", "#5C8A57", "#B77A2F", "#B44949",
+        "#2F91B8", "#2E73C8");
 
     public static AedaPalette Graphite { get; } = new(
-        true, "#232323", "#484848", "#302E3B", "#2E2E2E", "#191919", "#C5C5C5", "#B0A5E8");
+        true,
+        "#16181C", "#202329", "#1B1E23", "#292D34", "#24272D", "#30343C",
+        "#F1F2F4", "#C4C7CD", "#9CA1AA", "#3B4049", "#555C68",
+        "#8D84BC", "#A198D0", "#766DA8", "#74A36B", "#C6924E", "#D66565",
+        "#4E9DB6", "#B0A5E8");
 
     public static AedaPalette MineralStone { get; } = new(
-        false, "#E1E8E3", "#BFCBC5", "#DCE6DF", "#FBFCFA", "#F5F8F5", "#56655F", "#3D665B");
+        false,
+        "#DED5C5", "#E9E0D0", "#F3EEE4", "#FAF7F0", "#F6F1E8", "#E7E1D5",
+        "#282A24", "#55584B", "#767665", "#D2C7B5", "#B4A88F",
+        "#6D7746", "#5E683A", "#50592F", "#718653", "#B47A36", "#B65E4C",
+        "#5E8F84", "#637248");
 
     public static AedaPalette SharpAlmond { get; } = new(
-        false, "#F4F0FA", "#D5CDF0", "#E1DBF7", "#FFFFFF", "#F9F7FC", "#5B5670", "#6758C5");
+        true,
+        "#11151A", "#171C21", "#1C2228", "#232A31", "#20262C", "#292F37",
+        "#F2F0F5", "#C7C3CD", "#9995A2", "#353C45", "#505865",
+        "#9D78E5", "#AF8DF0", "#865FCF", "#7EA866", "#D69A48", "#D65E61",
+        "#45AFC1", "#B28AF2");
 
     public static AedaPalette HighContrast { get; } = new(
-        true, "#000000", "#FFFFFF", "#000000", "#000000", "#000000", "#FFFFFF", "#FFFF00");
+        true,
+        "#000000", "#000000", "#000000", "#000000", "#000000", "#1A1A1A",
+        "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF",
+        "#00FFFF", "#FFFFFF", "#00FFFF", "#00FF00", "#FFFF00", "#FF4040",
+        "#00FFFF", "#FFFF00");
 }

@@ -7,25 +7,42 @@
              AutomationProperties.Name="Assist">
 
   <Panel>
+    <Border x:Name="ExpandedBackground"
+            Classes="assistSurface"
+            Background="{DynamicResource ElevatedSurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            IsVisible="False" />
 
-    <!-- Compact host, idle: the 52x52 Pill. One surface, no module chrome. -->
+    <!-- Compact host, idle: a lightweight rounded-triangle vector. -->
     <Button x:Name="CompactPill"
+            Classes="assistLauncher"
             IsVisible="False"
             Padding="0"
             Margin="0"
-            CornerRadius="26"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            HorizontalContentAlignment="Center"
-            VerticalContentAlignment="Center"
             Click="OnAskClick"
             ToolTip.Tip="Ask AEDA"
             AutomationProperties.Name="Ask AEDA">
-      <TextBlock Text="AEDA"
-                 FontSize="11"
-                 FontWeight="SemiBold"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center" />
+      <Grid Width="52" Height="52">
+        <Path x:Name="AssistLauncherGeometry"
+              Classes="launcherSurface"
+              Data="M 26,3 C 30,3 32,6 34,10 L 48,36 C 52,43 47,49 39,49 L 13,49 C 5,49 0,43 4,36 L 18,10 C 20,6 22,3 26,3 Z" />
+        <Border Width="20"
+                Height="20"
+                CornerRadius="7"
+                Background="{DynamicResource AccentBrush}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <TextBlock Text="A"
+                     Foreground="White"
+                     FontSize="12"
+                     FontWeight="Bold"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center" />
+        </Border>
+      </Grid>
     </Button>
 
   <Grid x:Name="FullSurface" Margin="28" RowDefinitions="Auto,*" RowSpacing="18">

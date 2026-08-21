@@ -88,6 +88,16 @@ public partial class AssistView : UserControl
         // window, so the surface is shown with compact margins rather than module spacing.
         var idle = DataContext is AssistPillViewModel { IsIdle: true };
         CompactPill.IsVisible = compact && idle;
+        ExpandedBackground.IsVisible = !(compact && idle);
+        var state = _viewModel?.State;
+        CompactPill.Classes.Set("listening", state == AssistPillState.DetectingContext);
+        CompactPill.Classes.Set("thinking", state == AssistPillState.StreamingResponse);
+        CompactPill.Classes.Set("ready", state == AssistPillState.Completed);
+        CompactPill.Classes.Set("error", state == AssistPillState.Failed);
+        ExpandedBackground.Classes.Set("listening", state == AssistPillState.DetectingContext);
+        ExpandedBackground.Classes.Set("thinking", state == AssistPillState.StreamingResponse);
+        ExpandedBackground.Classes.Set("ready", state == AssistPillState.Completed);
+        ExpandedBackground.Classes.Set("error", state == AssistPillState.Failed);
         FullSurface.IsVisible = !(compact && idle);
         FullSurface.Margin = compact ? new Thickness(12) : new Thickness(28);
         ModuleHeader.IsVisible = !compact;

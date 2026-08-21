@@ -8,52 +8,99 @@
         Title="AEDA"
         Width="1080"
         Height="760"
-        MinWidth="880"
-        MinHeight="560"
+        MinWidth="640"
+        MinHeight="520"
         Icon="/Assets/AedaAppIcon.ico"
         AutomationProperties.Name="AEDA main window">
 
-  <Window.Styles>
-    <StyleInclude Source="avares://AEDA/Themes/AedaTheme.axaml" />
-  </Window.Styles>
-
-  <Grid ColumnDefinitions="232,*">
-
-    <!-- Navigation rail: a ListBox gives native keyboard selection without a
-         navigation framework. -->
-    <Border Grid.Column="0"
-            Background="{DynamicResource AedaNavBackgroundBrush}"
-            BorderBrush="{DynamicResource AedaBorderBrush}"
-            BorderThickness="0,0,1,0">
-      <Grid RowDefinitions="Auto,*">
-        <StackPanel Margin="16,18,16,12" Spacing="2">
-          <TextBlock Text="AEDA" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="Local-first assistant" Classes="metadata" />
+  <!-- Split-bars shell. Module views remain mounted unchanged in the center host. -->
+  <Grid RowDefinitions="64,*,64">
+    <Border x:Name="TopShellRegion"
+            Grid.Row="0"
+            Background="{DynamicResource ShellSurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,0,0,1"
+            BoxShadow="{DynamicResource ShellElevation}">
+      <Grid Margin="20,0" ColumnDefinitions="Auto,*">
+        <StackPanel Orientation="Horizontal"
+                    Spacing="10"
+                    VerticalAlignment="Center">
+          <Border Width="28"
+                  Height="28"
+                  CornerRadius="9"
+                  Background="{DynamicResource AccentBrush}">
+            <TextBlock Text="A"
+                       Foreground="White"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+          </Border>
+          <TextBlock Text="AEDA"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
         </StackPanel>
 
-        <ListBox x:Name="NavigationList"
-                 Grid.Row="1"
-                 Margin="8,0,8,12"
-                 Background="Transparent"
-                 SelectionChanged="OnNavigationSelectionChanged"
-                 AutomationProperties.Name="Main navigation">
-          <ListBoxItem x:Name="DashboardNavItem"
-                       Content="Dashboard"
-                       AutomationProperties.Name="Dashboard" />
-          <ListBoxItem x:Name="ChatNavItem"
-                       Content="General chat"
-                       AutomationProperties.Name="General chat" />
-          <!-- Code, Memory, Research, Task Center and Assist are appended at runtime by
-               AttachComposition from the registered presentation screens. -->
-        </ListBox>
+        <!-- No global search command exists in this milestone; keep the slot honest. -->
+        <Border x:Name="PageContextRegion"
+                Grid.Column="1"
+                MaxWidth="420"
+                Margin="24,10"
+                Padding="16,8"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource SubtleSurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource RadiusMedium}"
+                IsTabStop="False"
+                AutomationProperties.Name="Current page">
+          <TextBlock x:Name="PageTitle"
+                     Text="Home"
+                     FontWeight="SemiBold"
+                     HorizontalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+        </Border>
       </Grid>
     </Border>
 
-    <!-- One content host; routes are plain visibility so no navigation stack is needed. -->
-    <Grid Grid.Column="1">
-      <dashboard:DashboardView x:Name="DashboardRoute" />
-      <chat:ChatView x:Name="ChatRoute" IsVisible="False" />
-      <ContentControl x:Name="PresentationRoute" IsVisible="False" />
-    </Grid>
+    <Border Grid.Row="1"
+            Background="{DynamicResource ContentSurfaceBrush}">
+      <!-- One content host; existing views, scrolling and data contexts are preserved. -->
+      <Grid>
+        <dashboard:DashboardView x:Name="DashboardRoute" />
+        <chat:ChatView x:Name="ChatRoute" IsVisible="False" />
+        <ContentControl x:Name="PresentationRoute" IsVisible="False" />
+      </Grid>
+    </Border>
+
+    <Border x:Name="BottomShellRegion"
+            Grid.Row="2"
+            Background="{DynamicResource ShellSurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,1,0,0">
+      <!-- Horizontal scrolling retains every named destination at compact widths. -->
+      <ListBox x:Name="NavigationList"
+               Classes="shellNavigation"
+               Margin="8,0"
+               HorizontalAlignment="Center"
+               SelectionChanged="OnNavigationSelectionChanged"
+               AutomationProperties.Name="Main navigation">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBoxItem x:Name="DashboardNavItem"
+                     Content="Home"
+                     AutomationProperties.Name="Home" />
+        <ListBoxItem x:Name="ChatNavItem"
+                     Content="Chat"
+                     AutomationProperties.Name="General chat" />
+        <!-- Registered Code, Memory, Research, Task Center, Assist and Settings routes
+             are appended without changing their commands, views or data contexts. -->
+      </ListBox>
+    </Border>
   </Grid>
 </Window>

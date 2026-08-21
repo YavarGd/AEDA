@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using PersonalAI.Core.Ui;
@@ -46,6 +47,8 @@ public sealed class AvaloniaAssistWindow : Window
         ShowActivated = false;
         ShowInTaskbar = false;
         WindowDecorations = global::Avalonia.Controls.WindowDecorations.None;
+        Background = Brushes.Transparent;
+        TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
         Topmost = true;
         Width = IdleSize;
         Height = IdleSize;
