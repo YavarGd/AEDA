@@ -1,5 +1,5 @@
 param(
-    [string]$ExecutablePath = (Join-Path $PSScriptRoot '..\PersonalAI.Desktop.WinUI\bin\Release\net10.0-windows10.0.19041.0\PersonalAI.Desktop.WinUI.exe'),
+    [string]$ExecutablePath = (Join-Path $PSScriptRoot '..\PersonalAI.Desktop.Avalonia\bin\Release\net10.0-windows10.0.19041.0\AEDA.exe'),
     [string]$ShortcutPath = (Join-Path ([Environment]::GetFolderPath('Programs')) 'AEDA.lnk')
 )
 

@@ -8,7 +8,7 @@ AEDA is an early alpha. Its UI, local data formats, integrations, and provider s
 
 ## Current capabilities
 
-- WinUI 3 desktop shell with chat, settings, task timelines, and the Assist Pill.
+- Avalonia desktop shell with chat, settings, task timelines, and the Assist Pill.
 - AEDA Code prepares reviewable patch proposals, requires approval before applying changes, backs up files, and can run allow-listed validation commands.
 - AEDA Memory stores local SQLite-backed memory and can index registered workspaces when enabled.
 - AEDA Research creates local claim/evidence records; its evidence providers are still foundational.
@@ -25,7 +25,7 @@ Workspace access and tools are permission-gated. AEDA Code presents changes for 
 
 ## Requirements
 
-- Windows 10 version 1809 or later for the WinUI project.
+- Windows 10 version 1809 or later for the desktop projects.
 - .NET SDK 10.0 (the projects target `net10.0`; this repository was verified with SDK 10.0.301).
 - Optional: Ollama running at `http://localhost:11434` with a compatible local model. The default configured model name is `gemma4`.
 - Optional voice worker: Python 3.11 or newer, plus the packages in `workers/speech/requirements.txt`. GPU use is the worker default; configure the documented `PERSONALAI_WHISPER_*` environment variables for another model, device, or compute type.
@@ -39,10 +39,10 @@ dotnet build PersonalAI.slnx
 dotnet build PersonalAI.slnx -c Release
 ```
 
-Launch the WinUI application after a successful build:
+Launch the Avalonia production application after a successful build:
 
 ```powershell
-dotnet run --project PersonalAI.Desktop.WinUI/PersonalAI.Desktop.WinUI.csproj
+dotnet run --project PersonalAI.Desktop.Avalonia/PersonalAI.Desktop.Avalonia.csproj
 ```
 
 The application keeps settings and local data under the current Windows user's Local AppData directory; no repository-local settings file is required to compile.
@@ -52,7 +52,8 @@ The application keeps settings and local data under the current Windows user's L
 - `PersonalAI.Core` — application contracts and policies.
 - `PersonalAI.Infrastructure` — SQLite persistence, workspace, coding, context, and worker implementations.
 - `PersonalAI.Providers` — Ollama and OpenAI-compatible provider adapters.
-- `PersonalAI.Desktop.WinUI` — WinUI 3 desktop application.
+- `PersonalAI.Desktop.Avalonia` — production Windows desktop application.
+- `PersonalAI.Desktop.WinUI` — retained Windows rollback application.
 - `PersonalAI.Tests` — automated tests.
 - `workers/speech` — optional FastAPI/faster-whisper speech worker.
 - `integrations/vscode-personalai` — optional VS Code integration.

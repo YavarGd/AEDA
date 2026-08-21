@@ -3,7 +3,7 @@ namespace PersonalAI.Infrastructure.Windows;
 
 public sealed class WindowsSingleInstanceService : IDisposable
 {
-    public const string MutexName = "Local\\PersonalAI.WinUI.SingleInstance";
+    public const string MutexName = "Local\\AEDA.SingleInstance";
 
     private readonly Mutex _mutex;
     private bool _ownsMutex;

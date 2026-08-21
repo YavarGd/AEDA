@@ -68,7 +68,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             folderPicker);
         var settings = new SettingsViewModel(
             runtime.Settings,
-            new DeferredStartupRegistrationService(),
+            new WindowsStartupRegistrationService(),
             _ => Task.FromResult(new SettingsApplyResult(
                 false,
                 "Hotkey changes become available with Avalonia shell integration.")),
