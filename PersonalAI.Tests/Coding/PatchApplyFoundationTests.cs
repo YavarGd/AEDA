@@ -387,6 +387,220 @@ public sealed class PatchApplyFoundationTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_FileChangesAfterDryRunBeforeMutation_FailsWithoutOverwritingUserEdit()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([Edit("src/App.cs", "old\n", "proposed\n")]);
+        var userEdit = new UTF8Encoding(false, true).GetBytes("user change\r\n");
+        var repository = new InterceptingApplyRepository(
+            _applyRepository,
+            (save, result, backups, _) =>
+            {
+                if (save == 1)
+                {
+                    Assert.Equal(PatchApplyStatus.Applying, result.Status);
+                    Assert.Single(backups);
+                    Assert.Equal("old\n", backups[0].OriginalContent);
+                    WriteBytes("src/App.cs", userEdit);
+                }
+            });
+        var service = new PatchApplyService(
+            _proposalRepository,
+            repository,
+            CreateValidator(),
+            _reader,
+            _approvals);
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        var result = await service.ApplyAsync(new PatchApplyRequest(
+            proposal.Id,
+            _workspace.Id,
+            approval,
+            decision));
+
+        Assert.Equal(PatchApplyStatus.Failed, result.Status);
+        Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, result.FailureReasons);
+        Assert.Equal(PatchApplyStatus.Failed, Assert.Single(result.Files).Status);
+        Assert.Equal(userEdit, ReadBytes("src/App.cs"));
+        Assert.NotEqual(ReparseSafePatchWriter.EncodeAppliedContent("proposed\n"), ReadBytes("src/App.cs"));
+        var backup = Assert.Single(await _applyRepository.ListBackupsAsync(result.Id));
+        Assert.Equal("old\n", backup.OriginalContent);
+        Assert.Equal(CodeContextService.ComputeHash("old\n"), backup.OriginalContentHash);
+    }
+
+    [Fact]
+    public async Task Apply_MultiFileModifyPartialFailure_RollbackRestoresOnlyAppliedEntries()
+    {
+        await InitializeAsync();
+        Write("src/One.cs", "one\n");
+        Write("src/Two.cs", "two\n");
+        var first = new UnifiedDiffBuilder().BuildFileDiff(Edit("src/One.cs", "one\n", "changed one\n"));
+        var second = new UnifiedDiffBuilder().BuildFileDiff(Edit("src/Two.cs", "two\n", "changed two\n")) with
+        {
+            ProposedContent = null
+        };
+        var proposal = CreateProposal([first, second]);
+        await _proposalRepository.CreateAsync(proposal);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        var applied = await service.ApplyAsync(new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision));
+        var firstAppliedContent = Read("src/One.cs");
+        var secondUnappliedContent = Read("src/Two.cs");
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+        var repeat = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.PartiallyApplied, applied.Status);
+        Assert.Equal(PatchApplyStatus.Applied, applied.Files[0].Status);
+        Assert.Equal(PatchApplyStatus.Failed, applied.Files[1].Status);
+        Assert.Equal("changed one\n", firstAppliedContent);
+        Assert.Equal("two\n", secondUnappliedContent);
+        Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
+        Assert.Single(rollback.Files);
+        Assert.Equal("src/One.cs", rollback.Files[0].RelativePath);
+        Assert.Equal("one\n", Read("src/One.cs"));
+        Assert.Equal("two\n", Read("src/Two.cs"));
+        Assert.Equal(PatchProposalStatus.RolledBack, (await _proposalRepository.GetAsync(proposal.Id))?.Status);
+        Assert.Equal(PatchApplyStatus.RollbackFailed, repeat.Status);
+        Assert.Contains(PatchApplyFailureReason.UnknownSafeFailure, repeat.FailureReasons);
+    }
+
+    [Fact]
+    public async Task Apply_MultiFileAddPartialFailure_RollbackDeletesOnlyAppliedAdds()
+    {
+        await InitializeAsync();
+        var first = new UnifiedDiffBuilder().BuildFileDiff(Edit(
+            "src/One.cs",
+            null,
+            "created one\n",
+            PatchProposalFileChangeKind.Add));
+        var second = new UnifiedDiffBuilder().BuildFileDiff(Edit(
+            "src/Two.cs",
+            null,
+            "created two\n",
+            PatchProposalFileChangeKind.Add)) with
+        {
+            ProposedContent = null
+        };
+        var proposal = CreateProposal([first, second]);
+        await _proposalRepository.CreateAsync(proposal);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        var applied = await service.ApplyAsync(new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision));
+        var firstWasCreated = File.Exists(PathFor("src/One.cs"));
+        var secondWasAbsent = !File.Exists(PathFor("src/Two.cs"));
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.PartiallyApplied, applied.Status);
+        Assert.True(firstWasCreated);
+        Assert.True(secondWasAbsent);
+        Assert.False(File.Exists(PathFor("src/One.cs")));
+        Assert.False(File.Exists(PathFor("src/Two.cs")));
+        Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
+        Assert.Single(rollback.Files);
+        Assert.Equal("src/One.cs", rollback.Files[0].RelativePath);
+    }
+
+    [Fact]
+    public async Task PartialApplyRollback_RemainsRolledBackAfterRepositoryRestart()
+    {
+        await InitializeAsync();
+        Write("src/One.cs", "one\n");
+        Write("src/Two.cs", "two\n");
+        var first = new UnifiedDiffBuilder().BuildFileDiff(Edit("src/One.cs", "one\n", "changed one\n"));
+        var second = new UnifiedDiffBuilder().BuildFileDiff(Edit("src/Two.cs", "two\n", "changed two\n")) with
+        {
+            ProposedContent = null
+        };
+        var proposal = CreateProposal([first, second]);
+        await _proposalRepository.CreateAsync(proposal);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision));
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        var restartedProposals = new SqlitePatchProposalRepository(Path.Combine(_root, "proposals.db"));
+        var restartedApplies = new SqlitePatchApplyRepository(Path.Combine(_root, "apply.db"));
+        await restartedProposals.InitializeAsync();
+        await restartedApplies.InitializeAsync();
+        var persistedRollback = await restartedApplies.GetRollbackResultAsync(rollback.Id);
+        var persistedProposal = await restartedProposals.GetAsync(proposal.Id);
+        var restartedService = new PatchApplyService(
+            restartedProposals,
+            restartedApplies,
+            new PatchApplyValidator(restartedProposals, _reader, _resolver),
+            _reader,
+            _approvals);
+        var repeat = await restartedService.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.NotNull(persistedRollback);
+        Assert.Equal(PatchApplyStatus.RolledBack, persistedRollback.Status);
+        Assert.NotNull(persistedProposal);
+        Assert.Equal(PatchProposalStatus.RolledBack, persistedProposal.Status);
+        Assert.Equal(PatchApplyStatus.RollbackFailed, repeat.Status);
+        Assert.Equal("one\n", Read("src/One.cs"));
+        Assert.Equal("two\n", Read("src/Two.cs"));
+    }
+
+    [Fact]
+    public async Task PartialApplyRollback_StillRefusesWhenActuallyAppliedFileWasModifiedAfterApply()
+    {
+        await InitializeAsync();
+        Write("src/One.cs", "one\n");
+        Write("src/Two.cs", "two\n");
+        var first = new UnifiedDiffBuilder().BuildFileDiff(Edit("src/One.cs", "one\n", "changed one\n"));
+        var second = new UnifiedDiffBuilder().BuildFileDiff(Edit("src/Two.cs", "two\n", "changed two\n")) with
+        {
+            ProposedContent = null
+        };
+        var proposal = CreateProposal([first, second]);
+        await _proposalRepository.CreateAsync(proposal);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+        var applied = await service.ApplyAsync(new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision));
+        var userEdit = new UTF8Encoding(false, true).GetBytes("changed after apply\r\n");
+        WriteBytes("src/One.cs", userEdit);
+
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.RollbackFailed, rollback.Status);
+        Assert.Contains(PatchApplyFailureReason.StaleOriginalContent, rollback.FailureReasons);
+        Assert.Single(rollback.Files);
+        Assert.Equal(userEdit, ReadBytes("src/One.cs"));
+        Assert.Equal("two\n", Read("src/Two.cs"));
+    }
+
+    [Fact]
+    public async Task FullyAppliedModifyAndAddRollback_ExistingBehaviorRemainsGreen()
+    {
+        await InitializeAsync();
+        Write("src/App.cs", "old\n");
+        var proposal = await SaveProposalAsync([
+            Edit("src/App.cs", "old\n", "new\n"),
+            Edit("src/Added.cs", null, "created\n", PatchProposalFileChangeKind.Add)
+        ]);
+        var service = CreateService();
+        var approval = await service.RequestApplyApprovalAsync(proposal.Id, _workspace.Id);
+        var decision = await _approvals.DecideAsync(approval, ApprovalDecisionKind.AllowOnce);
+
+        var applied = await service.ApplyAsync(new PatchApplyRequest(proposal.Id, _workspace.Id, approval, decision));
+        var rollback = await service.RollbackAsync(new PatchRollbackRequest(applied.Id, _workspace.Id));
+
+        Assert.Equal(PatchApplyStatus.Applied, applied.Status);
+        Assert.Equal(PatchApplyStatus.RolledBack, rollback.Status);
+        Assert.Equal(2, rollback.Files.Count);
+        Assert.Equal("old\n", Read("src/App.cs"));
+        Assert.False(File.Exists(PathFor("src/Added.cs")));
+    }
+
+    [Fact]
     public async Task Apply_ApprovedModifyCreatesBackupAndRollbackRestores()
     {
         await InitializeAsync();

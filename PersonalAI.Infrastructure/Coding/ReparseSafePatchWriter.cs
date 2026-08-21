@@ -173,6 +173,21 @@ internal static class ReparseSafePatchWriter
         ReadOnlySpan<byte> expectedCurrentBytes,
         ReadOnlySpan<byte> replacementBytes,
         CancellationToken cancellationToken,
+        Action? whileGuarded = null) =>
+        WriteIfBytesMatch(
+            workspaceRoot,
+            relativePath,
+            expectedCurrentBytes,
+            replacementBytes,
+            cancellationToken,
+            whileGuarded);
+
+    public static bool WriteIfBytesMatch(
+        string workspaceRoot,
+        string relativePath,
+        ReadOnlySpan<byte> expectedCurrentBytes,
+        ReadOnlySpan<byte> replacementBytes,
+        CancellationToken cancellationToken,
         Action? whileGuarded = null)
     {
         cancellationToken.ThrowIfCancellationRequested();

@@ -119,7 +119,12 @@ public sealed class PatchApplyService(
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                WriteProposedContent(proposal.WorkspaceId, file, cancellationToken);
+                WriteProposedContent(
+                    resultId,
+                    proposal,
+                    file,
+                    backups,
+                    cancellationToken);
                 fileResults[index] = new PatchApplyFileResult(
                     file.RelativePath,
                     file.ChangeKind,
@@ -217,21 +222,44 @@ public sealed class PatchApplyService(
             : await proposalRepository.GetAsync(applyResult.ProposalId, cancellationToken);
         var files = new List<PatchApplyFileResult>();
         var failures = new List<PatchApplyFailureReason>();
+        var appliedFiles = applyResult?.Files
+            .Where(file =>
+                file.Status == PatchApplyStatus.Applied &&
+                file.ChangeKind is PatchProposalFileChangeKind.Modify or PatchProposalFileChangeKind.Add)
+            .ToArray() ?? [];
 
         if (applyResult is null ||
             proposal is null ||
-            backups.Count == 0 ||
             applyResult.WorkspaceId != request.WorkspaceId ||
-            proposal.WorkspaceId != request.WorkspaceId)
+            proposal.WorkspaceId != request.WorkspaceId ||
+            proposal.Status == PatchProposalStatus.RolledBack ||
+            applyResult.Files.Any(file => file.Status == PatchApplyStatus.Applying) ||
+            appliedFiles.Length == 0)
         {
             failures.Add(PatchApplyFailureReason.UnknownSafeFailure);
         }
         else
         {
             var workspace = workspaceReader.GetWorkspace(request.WorkspaceId);
-            foreach (var backup in backups)
+            foreach (var appliedFile in appliedFiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var matchingBackups = backups.Where(backup =>
+                        backup.ApplyResultId == request.ApplyResultId &&
+                        backup.ProposalId == proposal.Id &&
+                        backup.WorkspaceId == request.WorkspaceId &&
+                        string.Equals(backup.RelativePath, appliedFile.RelativePath, StringComparison.Ordinal) &&
+                        backup.OperationKind == appliedFile.ChangeKind)
+                    .Take(2)
+                    .ToArray();
+                if (matchingBackups.Length != 1)
+                {
+                    failures.Add(PatchApplyFailureReason.StaleOriginalContent);
+                    files.Add(new PatchApplyFileResult(appliedFile.RelativePath, appliedFile.ChangeKind, PatchApplyStatus.RollbackFailed, PatchApplyFailureReason.StaleOriginalContent));
+                    continue;
+                }
+
+                var backup = matchingBackups[0];
                 try
                 {
                     var expectedAppliedBytes = GetExpectedAppliedBytes(
@@ -383,6 +411,11 @@ public sealed class PatchApplyService(
             throw new InvalidOperationException("backup_failed");
         }
 
+        if (CodeContextService.ComputeHash(current.Content) != file.OriginalContentHash)
+        {
+            throw new InvalidOperationException("stale_original_content");
+        }
+
         return new PatchApplyBackup(
             resultId,
             proposal.Id,
@@ -396,18 +429,52 @@ public sealed class PatchApplyService(
             DescribeEncoding(originalBytes, current.EncodingName));
     }
 
-    private void WriteProposedContent(WorkspaceId workspaceId, PatchProposalFile file, CancellationToken cancellationToken)
+    private void WriteProposedContent(
+        PatchApplyResultId resultId,
+        PatchProposal proposal,
+        PatchProposalFile file,
+        IReadOnlyList<PatchApplyBackup> backups,
+        CancellationToken cancellationToken)
     {
         if (file.ProposedContent is null)
         {
             throw new InvalidOperationException("write_failed");
         }
 
+        if (file.ChangeKind == PatchProposalFileChangeKind.Modify)
+        {
+            var matches = backups.Where(backup =>
+                    backup.ApplyResultId == resultId &&
+                    backup.ProposalId == proposal.Id &&
+                    backup.WorkspaceId == proposal.WorkspaceId &&
+                    string.Equals(backup.RelativePath, file.RelativePath, StringComparison.Ordinal) &&
+                    backup.OperationKind == file.ChangeKind)
+                .Take(2)
+                .ToArray();
+            if (matches.Length != 1)
+            {
+                throw new InvalidOperationException("backup_failed");
+            }
+
+            var workspace = workspaceReader.GetWorkspace(proposal.WorkspaceId);
+            if (!ReparseSafePatchWriter.WriteIfBytesMatch(
+                    workspace.CanonicalRootPath,
+                    file.RelativePath,
+                    EncodeBackup(matches[0]),
+                    ReparseSafePatchWriter.EncodeAppliedContent(file.ProposedContent),
+                    cancellationToken))
+            {
+                throw new InvalidOperationException("stale_original_content");
+            }
+
+            return;
+        }
+
         WriteContent(
-            workspaceId,
+            proposal.WorkspaceId,
             file.RelativePath,
             file.ProposedContent,
-            file.ChangeKind != PatchProposalFileChangeKind.Add,
+            replaceExisting: false,
             cancellationToken);
     }
 
@@ -548,6 +615,7 @@ public sealed class PatchApplyService(
             "backup_failed" => PatchApplyFailureReason.BackupFailed,
             "hash_mismatch" => PatchApplyFailureReason.HashMismatch,
             "path_outside_workspace" => PatchApplyFailureReason.PathOutsideWorkspace,
+            "stale_original_content" => PatchApplyFailureReason.StaleOriginalContent,
             _ => PatchApplyFailureReason.WriteFailed
         };
 
