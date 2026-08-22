@@ -10,7 +10,7 @@
     <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F6F7F9" />
     <SolidColorBrush x:Key="SubtleSurfaceBrush" Color="#F6F7F9" />
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#E4EBF3" />
-    <SolidColorBrush x:Key="AccentTextBrush" Color="#1B222A" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1B222A" />
     <SolidColorBrush x:Key="SecondaryTextBrush" Color="#5B6572" />
     <SolidColorBrush x:Key="TertiaryTextBrush" Color="#8A93A0" />
@@ -25,6 +25,18 @@
     <SolidColorBrush x:Key="ErrorBrush" Color="#B4483E" />
     <SolidColorBrush x:Key="ListeningBrush" Color="#2E86A8" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="#4C6FA0" />
+
+    <!-- One repository-owned geometric AEDA mark, shared by shell and Assist. -->
+    <StreamGeometry x:Key="AedaMarkGeometry">
+      M7,2 L17,2 L20,7 L15,10 L12,8 L9,10 L4,7 Z
+      M20,7 L23,12 L18,21 L12,21 L9,16 L14,13 L15,10 Z
+      M12,21 L6,21 L1,12 L4,7 L9,10 L10,15 L9,16 Z
+    </StreamGeometry>
+    <StreamGeometry x:Key="AssistOuterGeometry">
+      M32 6 C34.2 6 36.2 7.2 37.3 9.2 L56.4 44.3
+      C58.6 48.2 55.8 53 51.3 53 L12.7 53
+      C8.2 53 5.4 48.2 7.6 44.3 L26.7 9.2 C27.8 7.2 29.8 6 32 6 Z
+    </StreamGeometry>
 
     <!-- Compatibility aliases keep existing module interiors untouched. -->
     <SolidColorBrush x:Key="AedaNavBackgroundBrush" Color="#F7F8FA" />

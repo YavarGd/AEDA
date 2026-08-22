@@ -82,10 +82,14 @@ public sealed class AvaloniaAssistHostModeTests
     }
 
     [Fact]
-    public void CompactLauncherKeepsNativeBoundsAndDistinctStateShapes()
+    public void CompactLauncherKeepsNativeBoundsSharedSilhouetteAndDistinctInnerMarks()
     {
         var markup = ReadSource(
             "PersonalAI.Desktop.Avalonia", "Views", "Assist", "AssistView.axaml");
+        var foundation = ReadSource(
+            "PersonalAI.Desktop.Avalonia", "Styles", "Foundations.axaml");
+        var styles = ReadSource(
+            "PersonalAI.Desktop.Avalonia", "Styles", "Assist.axaml");
         var view = ReadSource(
             "PersonalAI.Desktop.Avalonia", "Views", "Assist", "AssistView.axaml.cs");
         var window = ReadSource(
@@ -95,7 +99,15 @@ public sealed class AvaloniaAssistHostModeTests
         Assert.Contains("private const double IdleSize = 52", window);
         Assert.Contains("Width = IdleSize", window);
         Assert.Contains("Height = IdleSize", window);
-        Assert.Contains("M32 6 C34.2 6 36.2 7.2", markup);
+        Assert.Contains("x:Key=\"AssistOuterGeometry\"", foundation);
+        Assert.Equal(2, Count(markup, "Data=\"{StaticResource AssistOuterGeometry}\""));
+        Assert.Contains("x:Name=\"AssistLauncherAura\"", markup);
+        Assert.Contains("Fill\" Value=\"{DynamicResource ElevatedSurfaceBrush}", styles);
+        Assert.Contains("Path.launcherAura", styles);
+        Assert.Contains("Path.launcherGlyph", styles);
+        Assert.Contains("Button.assistLauncher:pressed", styles);
+        Assert.Contains("Opacity\" Value=\"0.82", styles);
+        Assert.DoesNotContain("DropShadowEffect", styles);
         Assert.All(new[]
         {
             "AssistIdleMark", "AssistListeningMark", "AssistThinkingMark",
@@ -133,4 +145,7 @@ public sealed class AvaloniaAssistHostModeTests
         var assistDirectory = Path.GetDirectoryName(testFilePath)!;
         return Path.GetFullPath(Path.Combine(assistDirectory, "..", "..", ".."));
     }
+
+    private static int Count(string source, string value) =>
+        source.Split(value, StringSplitOptions.None).Length - 1;
 }

@@ -169,7 +169,7 @@ public sealed record AedaPalette(
     public static AedaPalette SystemMica { get; } = new(
         false,
         "#EEF0F2", "#FFFFFF", "#EEF0F2", "#FFFFFF", "#FFFFFF", "#F6F7F9",
-        "#F6F7F9", "#E4EBF3", "#1B222A", "#1B222A", "#5B6572", "#8A93A0",
+        "#F6F7F9", "#E4EBF3", "#FFFFFF", "#1B222A", "#5B6572", "#8A93A0",
         "#DCE1E6", "#DCE1E6", "#4C6FA0", "#4C6FA0", "#4C6FA0", "#3E8F5B",
         "#B4842A", "#B4483E", "#2E86A8", "#4C6FA0");
 
@@ -183,7 +183,7 @@ public sealed record AedaPalette(
     public static AedaPalette MineralStone { get; } = new(
         false,
         "#EFEAE1", "#FBF7F0", "#EFEAE1", "#FBF7F0", "#FBF7F0", "#F4EEE3",
-        "#F4EEE3", "#E7ECDF", "#2B2620", "#2B2620", "#6B6255", "#9A9082",
+        "#F4EEE3", "#E7ECDF", "#FFFFFF", "#2B2620", "#6B6255", "#9A9082",
         "#E0D6C4", "#E0D6C4", "#6B7F5C", "#6B7F5C", "#6B7F5C", "#5C7A3E",
         "#B4842A", "#A85C42", "#3B7F86", "#6B7F5C");
 

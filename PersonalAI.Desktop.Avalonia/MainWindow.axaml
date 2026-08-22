@@ -9,7 +9,7 @@
         Width="1080"
         Height="760"
         MinWidth="640"
-        MinHeight="520"
+        MinHeight="560"
         Icon="/Assets/AedaAppIcon.ico"
         AutomationProperties.Name="AEDA main window">
 
@@ -30,13 +30,14 @@
         <StackPanel Orientation="Horizontal"
                     Spacing="8"
                     VerticalAlignment="Center">
-          <!-- Repository-owned AEDA app mark; displayed at native UI scale. -->
-          <Image x:Name="BrandMark"
-                 Source="/Assets/AedaAppIcon.ico"
-                 Width="24"
-                 Height="24"
-                 Stretch="Uniform"
-                 AutomationProperties.Name="AEDA mark" />
+          <Path x:Name="BrandMark"
+                Data="{StaticResource AedaMarkGeometry}"
+                Fill="{DynamicResource AccentBrush}"
+                Width="24"
+                Height="24"
+                Stretch="Uniform"
+                IsHitTestVisible="False"
+                AutomationProperties.Name="AEDA mark" />
           <TextBlock x:Name="BrandWordmark"
                      Text="AEDA"
                      FontSize="17"

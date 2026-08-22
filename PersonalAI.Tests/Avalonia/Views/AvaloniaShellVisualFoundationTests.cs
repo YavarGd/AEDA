@@ -34,14 +34,14 @@ public sealed class AvaloniaShellVisualFoundationTests
         [
             "#EEF0F2", "#FFFFFF", "#EEF0F2", "#FFFFFF", "#FFFFFF", "#F6F7F9",
             "#DCE1E6", "#1B222A", "#5B6572", "#8A93A0", "#4C6FA0", "#E4EBF3",
-            "#1B222A", "#4C6FA0", "#2E86A8", "#B4842A", "#3E8F5B", "#B4483E"
+            "#FFFFFF", "#4C6FA0", "#2E86A8", "#B4842A", "#3E8F5B", "#B4483E"
         ], LockedTokens(AvaloniaThemeManager.GetPalette(ThemePreference.SystemMica)));
 
         Assert.Equal(
         [
             "#EFEAE1", "#FBF7F0", "#EFEAE1", "#FBF7F0", "#FBF7F0", "#F4EEE3",
             "#E0D6C4", "#2B2620", "#6B6255", "#9A9082", "#6B7F5C", "#E7ECDF",
-            "#2B2620", "#6B7F5C", "#3B7F86", "#B4842A", "#5C7A3E", "#A85C42"
+            "#FFFFFF", "#6B7F5C", "#3B7F86", "#B4842A", "#5C7A3E", "#A85C42"
         ], LockedTokens(AvaloniaThemeManager.GetPalette(ThemePreference.MineralStone)));
 
         Assert.Equal(
@@ -67,7 +67,8 @@ public sealed class AvaloniaShellVisualFoundationTests
             "AccentPressedBrush", "SuccessBrush", "WarningBrush", "ErrorBrush",
             "ListeningBrush", "FocusRingBrush", "TopShellHeight", "BottomShellHeight",
             "ShellIconSize", "InlineIconSize", "MinimumTargetSize",
-            "NavigationTargetSize", "ShellElevation"
+            "NavigationTargetSize", "ShellElevation", "AedaMarkGeometry",
+            "AssistOuterGeometry"
         };
 
         Assert.All(requiredKeys, key => Assert.Contains($"x:Key=\"{key}\"", foundation));
@@ -104,7 +105,11 @@ public sealed class AvaloniaShellVisualFoundationTests
         Assert.Contains("ListBox.shellNavigation ListBoxItem:selected", navigation);
         Assert.Contains("FontWeight\" Value=\"SemiBold", navigation);
         Assert.Contains("Border.selectionIndicator", navigation);
+        Assert.Contains("Background\" Value=\"{DynamicResource AccentSoftBrush}", navigation);
+        Assert.Contains("CornerRadius\" Value=\"10", navigation);
         Assert.Contains("x:Name=\"AssistLauncherGeometry\"", assistView);
+        Assert.Contains("x:Name=\"AssistLauncherAura\"", assistView);
+        Assert.Contains("Data=\"{StaticResource AedaMarkGeometry}\"", assistView);
         Assert.Contains("AutomationProperties.Name=\"Ask AEDA\"", assistView);
         Assert.All(new[] { "listening", "thinking", "actionReady", "error" },
             state => Assert.Contains($"assistLauncher.{state}", assistStyle));
@@ -156,12 +161,18 @@ public sealed class AvaloniaShellVisualFoundationTests
     }
 
     [Fact]
-    public void TopBarUsesRepositoryMarkAndNeverLooksEditable()
+    public void TopBarUsesSharedThemeAwareMarkWhileNativeIconRemainsUnchanged()
     {
         var markup = ReadAvaloniaSource("MainWindow.axaml");
+        var foundation = ReadAvaloniaSource("Styles", "Foundations.axaml");
 
-        Assert.Contains("Source=\"/Assets/AedaAppIcon.ico\"", markup);
+        Assert.Contains("Icon=\"/Assets/AedaAppIcon.ico\"", markup);
+        Assert.Contains("x:Key=\"AedaMarkGeometry\"", foundation);
+        Assert.Contains("Data=\"{StaticResource AedaMarkGeometry}\"", markup);
+        Assert.Contains("Fill=\"{DynamicResource AccentBrush}\"", markup);
         Assert.Contains("AutomationProperties.Name=\"AEDA mark\"", markup);
+        Assert.DoesNotContain("<Image x:Name=\"BrandMark\"", markup);
+        Assert.DoesNotContain("Source=\"/Assets/AedaAppIcon.ico\"", markup);
         Assert.DoesNotContain("Text=\"A\"", markup);
         Assert.DoesNotContain("<TextBox", markup);
         Assert.DoesNotContain("PlaceholderText", markup);
@@ -176,6 +187,28 @@ public sealed class AvaloniaShellVisualFoundationTests
         Assert.DoesNotContain("<TextBox", markup);
         Assert.Contains("x:Name=\"PageTitle\"", markup);
         Assert.Contains("_textScaleManager?.Attach(window)", app);
+    }
+
+    [Fact]
+    public void UnknownNavigationRouteUsesNeutralModuleIconInsteadOfHome()
+    {
+        var source = ReadAvaloniaSource("MainWindow.axaml.cs");
+
+        Assert.Contains("[\"module\"]", source);
+        Assert.Contains("GetValueOrDefault(route, NavigationIcons[\"module\"])", source);
+        Assert.DoesNotContain("GetValueOrDefault(route, NavigationIcons[\"home\"])", source);
+    }
+
+    [Fact]
+    public void ShellMinimumHeightAndApprovedAccentTokensStayLocked()
+    {
+        var markup = ReadAvaloniaSource("MainWindow.axaml");
+
+        Assert.Contains("MinHeight=\"560\"", markup);
+        Assert.Equal("#4C6FA0",
+            AvaloniaThemeManager.GetPalette(ThemePreference.SystemMica).Accent);
+        Assert.Equal("#6B7F5C",
+            AvaloniaThemeManager.GetPalette(ThemePreference.MineralStone).Accent);
     }
 
     [Fact]

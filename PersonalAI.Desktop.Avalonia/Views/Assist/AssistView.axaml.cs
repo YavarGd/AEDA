@@ -100,7 +100,6 @@ public partial class AssistView : UserControl
         ExpandedBackground.Classes.Set("thinking", state == AssistPillState.StreamingResponse);
         ExpandedBackground.Classes.Set("actionReady", state == AssistPillState.Completed);
         ExpandedBackground.Classes.Set("error", state == AssistPillState.Failed);
-        AssistIdleMark.IsVisible = state is null or AssistPillState.IdlePill;
         AssistListeningMark.IsVisible = state == AssistPillState.DetectingContext;
         AssistThinkingMark.IsVisible = state == AssistPillState.StreamingResponse;
         AssistActionReadyMark.IsVisible = state == AssistPillState.Completed;
