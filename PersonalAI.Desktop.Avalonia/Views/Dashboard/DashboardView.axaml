@@ -2,66 +2,232 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:PersonalAI.Desktop.Avalonia.ViewModels.Chat"
              x:Class="PersonalAI.Desktop.Avalonia.Views.Dashboard.DashboardView"
-             x:DataType="vm:AvaloniaChatViewModel">
-  <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="28" Spacing="20" MaxWidth="720" HorizontalAlignment="Left">
+             x:DataType="vm:AvaloniaChatViewModel"
+             AutomationProperties.Name="Home">
+  <UserControl.Styles>
+    <Style Selector="Button.dashboardSurface">
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="18" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.dashboardSurface:pointerover">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource ElevatedSurfaceBrush}" />
+    </Style>
+    <Style Selector="Button.dashboardSurface:pressed">
+      <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}" />
+    </Style>
+    <Style Selector="Button.capabilityCard">
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+    </Style>
+  </UserControl.Styles>
 
-      <StackPanel Spacing="4">
-        <TextBlock Text="AEDA" FontSize="26" FontWeight="SemiBold" />
-        <TextBlock Classes="metadata"
-                   TextWrapping="Wrap"
-                   Text="Local-first assistant. Start in General chat." />
-      </StackPanel>
+  <Grid RowDefinitions="*,Auto">
+    <ScrollViewer Grid.Row="0"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+      <StackPanel x:Name="ContentPanel"
+                  Margin="32"
+                  Spacing="32"
+                  MaxWidth="1180"
+                  HorizontalAlignment="Stretch">
+        <StackPanel Spacing="6">
+          <TextBlock x:Name="WelcomeHeadline"
+                     Text="What would you like to work on?"
+                     FontSize="28"
+                     FontWeight="Bold"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="Choose a place to start. You can return Home at any time."
+                     FontSize="13"
+                     Foreground="{DynamicResource SecondaryTextBrush}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
 
-      <!-- Bounded status summary -->
-      <Border BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8"
-              Padding="16">
-        <StackPanel Spacing="10">
-          <TextBlock Text="Status" Classes="sectionHeading" />
-
-          <!-- These values change at runtime, so neither AutomationProperties.Name nor
-               LabeledBy is set on them; either would override the live text UIA should
-               report. The adjacent heading text carries the meaning visually. -->
-          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="6">
-            <TextBlock Text="Assistant" Classes="metadata" />
-            <TextBlock x:Name="AssistantStatusText"
-                       Grid.Column="1"
-                       TextWrapping="Wrap"
-                       AutomationProperties.LiveSetting="Polite" />
-
-            <TextBlock Grid.Row="1" Text="Conversations" Classes="metadata" />
-            <TextBlock Grid.Row="1"
-                       Grid.Column="1"
-                       Text="{Binding Conversations.Count}" />
+        <Button x:Name="StartConversationButton"
+                Classes="dashboardSurface primaryAction"
+                Click="OnOpenChatClick"
+                MinHeight="64"
+                ToolTip.Tip="Open General Chat"
+                AutomationProperties.Name="Start a conversation — Ask AEDA a question or get help with something">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+            <Border Width="40"
+                    Height="40"
+                    CornerRadius="10"
+                    Background="{DynamicResource AccentSoftBrush}">
+              <Path x:Name="StartConversationIcon"
+                    Width="18"
+                    Height="18"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Stretch="Uniform"
+                    Stroke="{DynamicResource AccentBrush}"
+                    StrokeThickness="1.8"
+                    StrokeLineCap="Round"
+                    StrokeJoin="Round"
+                    IsHitTestVisible="False" />
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+              <TextBlock Text="Start a conversation"
+                         FontSize="15"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap" />
+              <TextBlock Text="Ask AEDA a question or get help with something."
+                         FontSize="12.5"
+                         Foreground="{DynamicResource SecondaryTextBrush}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
           </Grid>
-        </StackPanel>
-      </Border>
+        </Button>
 
-      <!-- Entry point -->
-      <Button x:Name="OpenChatButton"
-              Click="OnOpenChatClick"
-              Content="Open General chat"
-              MinWidth="200"
-              ToolTip.Tip="Go to General chat"
-              AutomationProperties.Name="Open General chat" />
+        <Grid x:Name="CapabilityGrid"
+              ColumnDefinitions="*,*,*"
+              RowDefinitions="Auto,Auto"
+              ColumnSpacing="20"
+              RowSpacing="20"
+              AutomationProperties.Name="AEDA capabilities">
+          <Button x:Name="ChatCard"
+                  Grid.Row="0"
+                  Grid.Column="0"
+                  Classes="dashboardSurface capabilityCard"
+                  Click="OnOpenChatClick"
+                  MinHeight="132"
+                  ToolTip.Tip="Open Chat"
+                  AutomationProperties.Name="Open Chat — Ask questions and get help">
+            <StackPanel Spacing="10">
+              <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Left">
+                <Path x:Name="ChatIcon" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" IsHitTestVisible="False" />
+              </Border>
+              <TextBlock Text="Chat" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="Ask questions and get help" FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Button>
 
-      <!-- Modules reachable from the navigation list. -->
-      <StackPanel Spacing="8"
-                  AutomationProperties.Name="Available modules">
-        <TextBlock Text="Modules" Classes="sectionHeading" />
-        <TextBlock Classes="metadata"
-                   TextWrapping="Wrap"
-                   Text="Choose a module from the navigation list to open it." />
-        <StackPanel Spacing="4">
-          <TextBlock Text="Code" />
-          <TextBlock Text="Memory" />
-          <TextBlock Text="Research" />
-          <TextBlock Text="Task Center" />
-          <TextBlock Text="Assist" />
-        </StackPanel>
+          <Button x:Name="CodeCard"
+                  Grid.Row="0"
+                  Grid.Column="1"
+                  Classes="dashboardSurface capabilityCard"
+                  Tag="aeda-code"
+                  Click="OnOpenModuleClick"
+                  MinHeight="132"
+                  ToolTip.Tip="Open Code"
+                  AutomationProperties.Name="Open Code — Review and improve code safely">
+            <StackPanel Spacing="10">
+              <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Left">
+                <Path x:Name="CodeIcon" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" IsHitTestVisible="False" />
+              </Border>
+              <TextBlock Text="Code" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="Review and improve code safely" FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Button>
+
+          <Button x:Name="MemoryCard"
+                  Grid.Row="0"
+                  Grid.Column="2"
+                  Classes="dashboardSurface capabilityCard"
+                  Tag="aeda-memory"
+                  Click="OnOpenModuleClick"
+                  MinHeight="132"
+                  ToolTip.Tip="Open Memory"
+                  AutomationProperties.Name="Open Memory — View what AEDA remembers">
+            <StackPanel Spacing="10">
+              <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Left">
+                <Path x:Name="MemoryIcon" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" IsHitTestVisible="False" />
+              </Border>
+              <TextBlock Text="Memory" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="View what AEDA remembers" FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Button>
+
+          <Button x:Name="ResearchCard"
+                  Grid.Row="1"
+                  Grid.Column="0"
+                  Classes="dashboardSurface capabilityCard"
+                  Tag="aeda-research"
+                  Click="OnOpenModuleClick"
+                  MinHeight="132"
+                  ToolTip.Tip="Open Research"
+                  AutomationProperties.Name="Open Research — Find and verify information">
+            <StackPanel Spacing="10">
+              <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Left">
+                <Path x:Name="ResearchIcon" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" IsHitTestVisible="False" />
+              </Border>
+              <TextBlock Text="Research" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="Find and verify information" FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Button>
+
+          <Button x:Name="TaskCenterCard"
+                  Grid.Row="1"
+                  Grid.Column="1"
+                  Classes="dashboardSurface capabilityCard"
+                  Tag="aeda-task-center"
+                  Click="OnOpenModuleClick"
+                  MinHeight="132"
+                  ToolTip.Tip="Open Task Center"
+                  AutomationProperties.Name="Open Task Center — Track work and approvals">
+            <StackPanel Spacing="10">
+              <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Left">
+                <Path x:Name="TaskCenterIcon" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" IsHitTestVisible="False" />
+              </Border>
+              <TextBlock Text="Task Center" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="Track work and approvals" FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Button>
+
+          <Button x:Name="AssistCard"
+                  Grid.Row="1"
+                  Grid.Column="2"
+                  Classes="dashboardSurface capabilityCard"
+                  Tag="aeda-assist"
+                  Click="OnOpenModuleClick"
+                  MinHeight="132"
+                  ToolTip.Tip="Open Assist"
+                  AutomationProperties.Name="Open Assist — Get help in another application">
+            <StackPanel Spacing="10">
+              <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Left">
+                <Path x:Name="AssistIcon" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" IsHitTestVisible="False" />
+              </Border>
+              <TextBlock Text="Assist" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="Get help in another application" FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Button>
+        </Grid>
       </StackPanel>
-    </StackPanel>
-  </ScrollViewer>
+    </ScrollViewer>
+
+    <Border x:Name="StatusStrip"
+            Grid.Row="1"
+            Background="{DynamicResource SubtleSurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="32,10"
+            AutomationProperties.Name="Local assistant status">
+      <WrapPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Margin="8,3"
+                   Text="Local-first assistant"
+                   FontSize="11.5"
+                   Foreground="{DynamicResource SecondaryTextBrush}"
+                   TextWrapping="Wrap" />
+        <StackPanel Margin="8,3" Orientation="Horizontal" Spacing="5">
+          <TextBlock Text="Assistant" FontSize="11.5" Foreground="{DynamicResource SecondaryTextBrush}" />
+          <TextBlock x:Name="AssistantStatusText"
+                     FontSize="11.5"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+        <StackPanel Margin="8,3" Orientation="Horizontal" Spacing="5">
+          <TextBlock Text="Conversations" FontSize="11.5" Foreground="{DynamicResource SecondaryTextBrush}" />
+          <TextBlock Text="{Binding Conversations.Count}"
+                     FontSize="11.5"
+                     FontWeight="SemiBold" />
+        </StackPanel>
+      </WrapPanel>
+    </Border>
+  </Grid>
 </UserControl>

@@ -120,6 +120,7 @@ public sealed class AvaloniaShellVisualFoundationTests
     {
         var markup = ReadAvaloniaSource("MainWindow.axaml");
         var source = ReadAvaloniaSource("MainWindow.axaml.cs");
+        var iconCatalog = ReadAvaloniaSource("RouteIconCatalog.cs");
         var navigation = ReadAvaloniaSource("Styles", "Navigation.axaml");
         var controls = ReadAvaloniaSource("Styles", "Controls.axaml");
 
@@ -127,7 +128,8 @@ public sealed class AvaloniaShellVisualFoundationTests
         {
             "home", "chat", "aeda-code", "aeda-memory", "aeda-research",
             "aeda-task-center", "aeda-assist", "settings"
-        }, route => Assert.Contains($"[\"{route}\"]", source));
+        }, route => Assert.Contains($"[\"{route}\"]", iconCatalog));
+        Assert.Contains("RouteIconCatalog.Get(route)", source);
         Assert.Contains("Classes = { \"navIcon\" }", source);
         Assert.Contains("Classes = { \"navLabel\" }", source);
         Assert.Contains("Window.compact ListBox.shellNavigation TextBlock.navLabel", navigation);
@@ -198,10 +200,12 @@ public sealed class AvaloniaShellVisualFoundationTests
     public void UnknownNavigationRouteUsesNeutralModuleIconInsteadOfHome()
     {
         var source = ReadAvaloniaSource("MainWindow.axaml.cs");
+        var iconCatalog = ReadAvaloniaSource("RouteIconCatalog.cs");
 
-        Assert.Contains("[\"module\"]", source);
-        Assert.Contains("GetValueOrDefault(route, NavigationIcons[\"module\"])", source);
-        Assert.DoesNotContain("GetValueOrDefault(route, NavigationIcons[\"home\"])", source);
+        Assert.Contains("[\"module\"]", iconCatalog);
+        Assert.Contains("RouteIconCatalog.Get(route)", source);
+        Assert.Contains("Icons.GetValueOrDefault(route, Icons[\"module\"])", iconCatalog);
+        Assert.DoesNotContain("Icons.GetValueOrDefault(route, Icons[\"home\"])", iconCatalog);
     }
 
     [Fact]
