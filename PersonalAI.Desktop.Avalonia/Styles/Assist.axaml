@@ -28,6 +28,14 @@
     <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
   </Style>
 
+  <Style Selector="Button.assistLauncher Ellipse.launcherIris">
+    <Setter Property="Fill" Value="{DynamicResource ElevatedSurfaceBrush}" />
+  </Style>
+
+  <Style Selector="Button.assistLauncher Ellipse.launcherPupil">
+    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
   <Style Selector="Button.assistLauncher Ellipse.launcherMark">
     <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
   </Style>
@@ -79,7 +87,7 @@
     <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.listening Path.launcherGlyph, Button.assistLauncher.listening Ellipse.launcherMark">
+  <Style Selector="Button.assistLauncher.listening Path.launcherGlyph, Button.assistLauncher.listening Ellipse.launcherPupil, Button.assistLauncher.listening Ellipse.launcherMark">
     <Setter Property="Fill" Value="{DynamicResource ListeningBrush}" />
   </Style>
 
@@ -97,7 +105,7 @@
     <Setter Property="Stroke" Value="{DynamicResource WarningBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.thinking Path.launcherGlyph, Button.assistLauncher.thinking Ellipse.launcherMark">
+  <Style Selector="Button.assistLauncher.thinking Path.launcherGlyph, Button.assistLauncher.thinking Ellipse.launcherPupil, Button.assistLauncher.thinking Ellipse.launcherMark">
     <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
   </Style>
 
@@ -111,7 +119,7 @@
     <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.actionReady Path.launcherGlyph">
+  <Style Selector="Button.assistLauncher.actionReady Path.launcherGlyph, Button.assistLauncher.actionReady Ellipse.launcherPupil">
     <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
   </Style>
 
@@ -129,7 +137,7 @@
     <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.error Path.launcherGlyph, Button.assistLauncher.error Ellipse.launcherMark, Button.assistLauncher.error Path.launcherMarkOutline">
+  <Style Selector="Button.assistLauncher.error Path.launcherGlyph, Button.assistLauncher.error Ellipse.launcherPupil, Button.assistLauncher.error Ellipse.launcherMark, Button.assistLauncher.error Path.launcherMarkOutline">
     <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
     <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
   </Style>

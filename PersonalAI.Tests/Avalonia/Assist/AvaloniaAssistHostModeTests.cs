@@ -100,11 +100,16 @@ public sealed class AvaloniaAssistHostModeTests
         Assert.Contains("Width = IdleSize", window);
         Assert.Contains("Height = IdleSize", window);
         Assert.Contains("x:Key=\"AssistOuterGeometry\"", foundation);
+        Assert.Contains("x:Key=\"AedaEyeGeometry\"", foundation);
+        Assert.DoesNotContain("AedaMarkGeometry", foundation + markup);
         Assert.Equal(2, Count(markup, "Data=\"{StaticResource AssistOuterGeometry}\""));
+        Assert.Equal(1, Count(markup, "Data=\"{StaticResource AedaEyeGeometry}\""));
         Assert.Contains("x:Name=\"AssistLauncherAura\"", markup);
         Assert.Contains("Fill\" Value=\"{DynamicResource ElevatedSurfaceBrush}", styles);
         Assert.Contains("Path.launcherAura", styles);
         Assert.Contains("Path.launcherGlyph", styles);
+        Assert.Contains("Ellipse.launcherIris", styles);
+        Assert.Contains("Ellipse.launcherPupil", styles);
         Assert.Contains("Button.assistLauncher:pressed", styles);
         Assert.Contains("Opacity\" Value=\"0.82", styles);
         Assert.DoesNotContain("DropShadowEffect", styles);

@@ -67,7 +67,7 @@ public sealed class AvaloniaShellVisualFoundationTests
             "AccentPressedBrush", "SuccessBrush", "WarningBrush", "ErrorBrush",
             "ListeningBrush", "FocusRingBrush", "TopShellHeight", "BottomShellHeight",
             "ShellIconSize", "InlineIconSize", "MinimumTargetSize",
-            "NavigationTargetSize", "ShellElevation", "AedaMarkGeometry",
+            "NavigationTargetSize", "ShellElevation", "AedaEyeGeometry",
             "AssistOuterGeometry"
         };
 
@@ -109,7 +109,7 @@ public sealed class AvaloniaShellVisualFoundationTests
         Assert.Contains("CornerRadius\" Value=\"10", navigation);
         Assert.Contains("x:Name=\"AssistLauncherGeometry\"", assistView);
         Assert.Contains("x:Name=\"AssistLauncherAura\"", assistView);
-        Assert.Contains("Data=\"{StaticResource AedaMarkGeometry}\"", assistView);
+        Assert.Contains("Data=\"{StaticResource AedaEyeGeometry}\"", assistView);
         Assert.Contains("AutomationProperties.Name=\"Ask AEDA\"", assistView);
         Assert.All(new[] { "listening", "thinking", "actionReady", "error" },
             state => Assert.Contains($"assistLauncher.{state}", assistStyle));
@@ -161,18 +161,23 @@ public sealed class AvaloniaShellVisualFoundationTests
     }
 
     [Fact]
-    public void TopBarUsesSharedThemeAwareMarkWhileNativeIconRemainsUnchanged()
+    public void TopBarUsesCanonicalThemeAwareEyeWhileNativeIconRemainsUnchanged()
     {
         var markup = ReadAvaloniaSource("MainWindow.axaml");
         var foundation = ReadAvaloniaSource("Styles", "Foundations.axaml");
+        var assist = ReadAvaloniaSource("Views", "Assist", "AssistView.axaml");
+        var assistStyles = ReadAvaloniaSource("Styles", "Assist.axaml");
 
         Assert.Contains("Icon=\"/Assets/AedaAppIcon.ico\"", markup);
-        Assert.Contains("x:Key=\"AedaMarkGeometry\"", foundation);
-        Assert.Contains("Data=\"{StaticResource AedaMarkGeometry}\"", markup);
+        Assert.Contains("x:Key=\"AedaEyeGeometry\"", foundation);
+        Assert.Contains("Data=\"{StaticResource AedaEyeGeometry}\"", markup);
+        Assert.Contains("Data=\"{StaticResource AedaEyeGeometry}\"", assist);
         Assert.Contains("Fill=\"{DynamicResource AccentBrush}\"", markup);
-        Assert.Contains("AutomationProperties.Name=\"AEDA mark\"", markup);
+        Assert.Contains("AutomationProperties.Name=\"AEDA eye mark\"", markup);
         Assert.DoesNotContain("<Image x:Name=\"BrandMark\"", markup);
         Assert.DoesNotContain("Source=\"/Assets/AedaAppIcon.ico\"", markup);
+        Assert.DoesNotContain("AedaMarkGeometry", foundation + markup + assist);
+        Assert.DoesNotContain("#9C8CE0", markup + assist + assistStyles);
         Assert.DoesNotContain("Text=\"A\"", markup);
         Assert.DoesNotContain("<TextBox", markup);
         Assert.DoesNotContain("PlaceholderText", markup);

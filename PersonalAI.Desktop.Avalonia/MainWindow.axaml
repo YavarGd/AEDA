@@ -30,14 +30,23 @@
         <StackPanel Orientation="Horizontal"
                     Spacing="8"
                     VerticalAlignment="Center">
-          <Path x:Name="BrandMark"
-                Data="{StaticResource AedaMarkGeometry}"
-                Fill="{DynamicResource AccentBrush}"
-                Width="24"
-                Height="24"
-                Stretch="Uniform"
-                IsHitTestVisible="False"
-                AutomationProperties.Name="AEDA mark" />
+          <Viewbox x:Name="BrandMark"
+                   Width="24"
+                   Height="24"
+                   Stretch="Uniform"
+                   IsHitTestVisible="False"
+                   AutomationProperties.Name="AEDA eye mark">
+            <Canvas Width="24" Height="24">
+              <Path Data="{StaticResource AedaEyeGeometry}"
+                    Fill="{DynamicResource AccentBrush}" />
+              <Ellipse Width="7" Height="7"
+                       Fill="{DynamicResource AccentTextBrush}"
+                       Canvas.Left="8.5" Canvas.Top="8.5" />
+              <Ellipse Width="2" Height="2"
+                       Fill="{DynamicResource AccentBrush}"
+                       Canvas.Left="11" Canvas.Top="11" />
+            </Canvas>
+          </Viewbox>
           <TextBlock x:Name="BrandWordmark"
                      Text="AEDA"
                      FontSize="17"

@@ -26,11 +26,9 @@
     <SolidColorBrush x:Key="ListeningBrush" Color="#2E86A8" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="#4C6FA0" />
 
-    <!-- One repository-owned geometric AEDA mark, shared by shell and Assist. -->
-    <StreamGeometry x:Key="AedaMarkGeometry">
-      M7,2 L17,2 L20,7 L15,10 L12,8 L9,10 L4,7 Z
-      M20,7 L23,12 L18,21 L12,21 L9,16 L14,13 L15,10 Z
-      M12,21 L6,21 L1,12 L4,7 L9,10 L10,15 L9,16 Z
+    <!-- Canonical horizontal eye silhouette traced from AedaAppIcon.ico. -->
+    <StreamGeometry x:Key="AedaEyeGeometry">
+      M2,12 C7,7 13,4.5 22,12 C13,19.5 7,17 2,12 Z
     </StreamGeometry>
     <StreamGeometry x:Key="AssistOuterGeometry">
       M32 6 C34.2 6 36.2 7.2 37.3 9.2 L56.4 44.3

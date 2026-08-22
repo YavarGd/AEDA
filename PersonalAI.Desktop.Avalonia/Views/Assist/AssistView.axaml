@@ -35,15 +35,21 @@
                   Classes="launcherSurface"
                   Data="{StaticResource AssistOuterGeometry}" />
 
-            <Path x:Name="AssistIdleMark"
-                  Classes="launcherGlyph"
-                  Data="{StaticResource AedaMarkGeometry}"
-                  Width="15" Height="15"
-                  Stretch="Uniform"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  Margin="0,-2,0,0"
-                  IsHitTestVisible="False" />
+            <Viewbox x:Name="AssistIdleMark"
+                     Width="20" Height="20"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Margin="0,-2,0,0"
+                     IsHitTestVisible="False">
+              <Canvas Width="24" Height="24">
+                <Path Classes="launcherGlyph"
+                      Data="{StaticResource AedaEyeGeometry}" />
+                <Ellipse Classes="launcherIris" Width="7" Height="7"
+                         Canvas.Left="8.5" Canvas.Top="8.5" />
+                <Ellipse Classes="launcherPupil" Width="2" Height="2"
+                         Canvas.Left="11" Canvas.Top="11" />
+              </Canvas>
+            </Viewbox>
 
             <!-- Inner marks supplement state color without changing the silhouette. -->
             <Grid x:Name="AssistListeningMark"
