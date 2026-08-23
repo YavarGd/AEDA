@@ -226,6 +226,7 @@ public partial class MainWindow : Window
         Classes.Set("compact", compact);
         Classes.Set("medium", medium);
         DashboardRoute.ApplyResponsiveMode(compact, medium);
+        ChatRoute.ApplyResponsiveMode(compact, medium);
         ShellGrid.RowDefinitions[0].Height = new GridLength(compact ? 56 : 64);
         ShellGrid.RowDefinitions[2].Height = new GridLength(compact ? 56 : medium ? 64 : 72);
         TopBarLayout.Margin = new Thickness(compact ? 16 : medium ? 24 : 32, 0);

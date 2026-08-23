@@ -110,7 +110,7 @@ public sealed class ChatMarkdownPresenter : StackPanel
         border.Bind(
             Border.BorderBrushProperty,
             new global::Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(
-                "AedaBorderBrush"));
+                "BorderBrush"));
         return border;
     }
 
@@ -208,11 +208,11 @@ public sealed class ChatMarkdownPresenter : StackPanel
         border.Bind(
             Border.BorderBrushProperty,
             new global::Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(
-                "AedaBorderBrush"));
+                "BorderBrush"));
         border.Bind(
             Border.BackgroundProperty,
             new global::Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(
-                "AedaCodeBackgroundBrush"));
+                "SurfaceAltBrush"));
 
         return border;
     }
@@ -227,7 +227,7 @@ public sealed class ChatMarkdownPresenter : StackPanel
         rule.Bind(
             Border.BackgroundProperty,
             new global::Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(
-                "AedaBorderBrush"));
+                "BorderBrush"));
         return rule;
     }
 

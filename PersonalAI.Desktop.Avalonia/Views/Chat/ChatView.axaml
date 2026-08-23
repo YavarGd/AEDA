@@ -4,160 +4,430 @@
              xmlns:views="using:PersonalAI.Desktop.Avalonia.Views.Chat"
              xmlns:core="using:PersonalAI.Core.Chat"
              x:Class="PersonalAI.Desktop.Avalonia.Views.Chat.ChatView"
-             x:DataType="vm:AvaloniaChatViewModel">
-  <Grid ColumnDefinitions="280,*">
+             x:DataType="vm:AvaloniaChatViewModel"
+             AutomationProperties.Name="General Chat">
+  <UserControl.Styles>
+    <Style Selector="ListBox.conversationList">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ListBox.conversationList ListBoxItem">
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="12,9" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="ListBox.conversationList ListBoxItem:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <Style Selector="ListBox.conversationList ListBoxItem:selected">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="Button.newChatAction">
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.newChatAction:pointerover">
+      <Setter Property="Background" Value="{DynamicResource ElevatedSurfaceBrush}" />
+    </Style>
+    <Style Selector="Ellipse.chatStatusDot.success">
+      <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+    </Style>
+    <Style Selector="Ellipse.chatStatusDot.generating">
+      <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+    </Style>
+    <Style Selector="Ellipse.chatStatusDot.failed">
+      <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+    <Style Selector="Ellipse.chatStatusDot.neutral">
+      <Setter Property="Fill" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
+    <Style Selector="Button.composerAction">
+      <Setter Property="Width" Value="44" />
+      <Setter Property="Height" Value="44" />
+      <Setter Property="MinWidth" Value="44" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="22" />
+    </Style>
+    <Style Selector="Button.sendAction">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.sendAction Path">
+      <Setter Property="Stroke" Value="{DynamicResource AccentTextBrush}" />
+    </Style>
+    <Style Selector="Button.sendAction:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Button.sendAction:disabled Path">
+      <Setter Property="Stroke" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
+    <Style Selector="Button.stopAction">
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="ItemsControl.messageList > ContentPresenter">
+      <Setter Property="Margin" Value="0,0,0,20" />
+    </Style>
+    <Style Selector="UserControl.medium ItemsControl.messageList > ContentPresenter">
+      <Setter Property="Margin" Value="0,0,0,18" />
+    </Style>
+    <Style Selector="UserControl.compact ItemsControl.messageList > ContentPresenter">
+      <Setter Property="Margin" Value="0,0,0,14" />
+    </Style>
+  </UserControl.Styles>
 
-    <!-- Conversation list -->
-    <Border Grid.Column="0"
-            BorderBrush="{DynamicResource AedaBorderBrush}"
+  <Grid x:Name="ChatLayout" ColumnDefinitions="300,*">
+    <Border x:Name="ConversationRail"
+            Grid.Column="0"
+            Padding="28"
+            BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,1,0"
-            Padding="12">
-      <Grid RowDefinitions="Auto,Auto,*">
-        <TextBlock Text="Conversations" Classes="sectionHeading" />
+            Background="{DynamicResource CardSurfaceBrush}">
+      <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <TextBlock Text="Conversations" FontSize="15" FontWeight="Bold" />
 
-        <StackPanel Grid.Row="1" Margin="0,10" Spacing="8">
-          <TextBox x:Name="SearchBox"
-                   Text="{Binding SearchText, Mode=TwoWay}"
-                   PlaceholderText="Search conversations"
-                   ToolTip.Tip="Search conversations by title"
-                   AutomationProperties.Name="Search conversations" />
+        <StackPanel Grid.Row="1" Spacing="10">
+          <Grid Height="34">
+            <TextBox x:Name="SearchBox"
+                     Text="{Binding SearchText, Mode=TwoWay}"
+                     Padding="30,0,10,0"
+                     Background="{DynamicResource SurfaceAltBrush}"
+                     BorderBrush="{DynamicResource BorderBrush}"
+                     BorderThickness="1"
+                     CornerRadius="9"
+                     FontSize="12.5"
+                     PlaceholderText="Search conversations"
+                     ToolTip.Tip="Search conversations by title"
+                     AutomationProperties.Name="Search conversations" />
+            <Path Width="14"
+                  Height="14"
+                  Margin="10,0,0,0"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Center"
+                  Data="M10.5,10.5 L14,14 M9,4 A5,5 0 1 0 9,14 A5,5 0 1 0 9,4"
+                  Stretch="Uniform"
+                  Stroke="{DynamicResource MutedTextBrush}"
+                  StrokeThickness="1.6"
+                  StrokeLineCap="Round"
+                  IsHitTestVisible="False" />
+          </Grid>
+
           <Button x:Name="NewChatButton"
+                  Classes="newChatAction"
                   Command="{Binding NewChatCommand}"
                   Click="OnNewChatClick"
-                  Content="New chat"
-                  HorizontalAlignment="Stretch"
                   ToolTip.Tip="Start a new chat (Ctrl+N)"
-                  AutomationProperties.Name="Start a new chat" />
+                  AutomationProperties.Name="Start a new chat">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Path Width="14"
+                    Height="14"
+                    Data="M12,5 L12,19 M5,12 L19,12"
+                    Stretch="Uniform"
+                    Stroke="{DynamicResource AccentBrush}"
+                    StrokeThickness="1.8"
+                    StrokeLineCap="Round"
+                    IsHitTestVisible="False" />
+              <TextBlock Text="New chat" FontSize="13" FontWeight="SemiBold" />
+            </StackPanel>
+          </Button>
         </StackPanel>
 
-        <ListBox x:Name="ConversationList"
-                 Grid.Row="2"
-                 ItemsSource="{Binding Conversations}"
-                 SelectionChanged="OnConversationSelectionChanged"
-                 AutomationProperties.Name="Conversation list">
-          <!-- The generated ListBoxItem container, not the template content, supplies the
-               ListItem automation name. Without this it falls back to Conversation.ToString(),
-               so a screen reader reads the GUID and timestamps instead of the title. -->
-          <ListBox.Styles>
-            <Style Selector="ListBoxItem" x:DataType="core:Conversation">
-              <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
-            </Style>
-          </ListBox.Styles>
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="core:Conversation">
-              <StackPanel Spacing="2">
-                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Classes="metadata">
-                  <Run Text="{Binding Model}" />
-                  <Run Text="·" />
-                  <Run Text="{Binding Status}" />
-                </TextBlock>
-              </StackPanel>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+        <Grid Grid.Row="2">
+          <ListBox x:Name="ConversationList"
+                   Classes="conversationList"
+                   ItemsSource="{Binding Conversations}"
+                   SelectionChanged="OnConversationSelectionChanged"
+                   AutomationProperties.Name="Conversation list">
+            <ListBox.Styles>
+              <Style Selector="ListBoxItem" x:DataType="core:Conversation">
+                <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+              </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="core:Conversation">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="{Binding Title}"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock FontSize="11"
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             TextTrimming="CharacterEllipsis">
+                    <Run Text="{Binding Model}" />
+                    <Run Text=" · " />
+                    <Run Text="{Binding Status}" />
+                  </TextBlock>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <TextBlock x:Name="ConversationEmptyState"
+                     Margin="8,36"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Top"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap"
+                     FontSize="12.5"
+                     Foreground="{DynamicResource MutedTextBrush}"
+                     IsVisible="False" />
+        </Grid>
       </Grid>
     </Border>
 
-    <!-- Active conversation -->
-    <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="16">
-      <StackPanel Spacing="2">
-        <TextBlock Text="General chat" Classes="sectionHeading" />
-        <!-- Neither Name nor LabeledBy is set: both would override the changing status
-             text, so UIA reads the live text itself. -->
-        <TextBlock x:Name="StatusText"
-                   Classes="metadata"
-                   TextWrapping="Wrap"
-                   AutomationProperties.LiveSetting="Polite" />
-      </StackPanel>
+    <Grid x:Name="ActiveChatPane"
+          Grid.Column="1"
+          RowDefinitions="Auto,*,Auto"
+          MinWidth="0">
+      <Border x:Name="ChatHeader"
+              Height="60"
+              Padding="28,0"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalAlignment="Center">
+          <Button x:Name="BackToConversationsButton"
+                  Width="32"
+                  Height="32"
+                  Padding="0"
+                  CornerRadius="8"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Click="OnBackToConversationsClick"
+                  IsVisible="False"
+                  ToolTip.Tip="Back to conversations"
+                  AutomationProperties.Name="Back to conversations">
+            <Path Width="16"
+                  Height="16"
+                  Data="M15,5 L8,12 L15,19"
+                  Stretch="Uniform"
+                  Stroke="{DynamicResource SecondaryTextBrush}"
+                  StrokeThickness="2"
+                  StrokeLineCap="Round"
+                  StrokeJoin="Round"
+                  IsHitTestVisible="False" />
+          </Button>
 
-      <ScrollViewer x:Name="MessageScroll"
-                    Grid.Row="1"
-                    Margin="0,12"
-                    VerticalScrollBarVisibility="Auto"
-                    AutomationProperties.Name="Message timeline">
-        <ItemsControl x:Name="MessagesItemsControl" ItemsSource="{Binding Messages}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:ChatMessageItem">
-              <Border Margin="0,0,0,10"
-                      Padding="12"
-                      CornerRadius="8"
-                      Background="{DynamicResource AedaAssistantBubbleBrush}">
-                <StackPanel Spacing="4">
-                  <TextBlock Classes="metadata"
-                             Text="{Binding Role, Converter={x:Static views:ChatRoleConverters.RoleLabel}}" />
+          <StackPanel Grid.Column="1" Spacing="2" MinWidth="0">
+            <TextBlock Text="{Binding ActiveConversation.Title, TargetNullValue='New conversation', FallbackValue='New conversation'}"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis" />
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse x:Name="StatusDot"
+                       Classes="chatStatusDot success"
+                       Width="7"
+                       Height="7"
+                       VerticalAlignment="Center"
+                       IsHitTestVisible="False" />
+              <TextBlock x:Name="StatusText"
+                         FontSize="11.5"
+                         Foreground="{DynamicResource SecondaryTextBrush}"
+                         TextWrapping="Wrap"
+                         AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
 
-                  <!-- Assistant output is markdown; Tool activity gets its own row so status
-                       reads as words, not colour; other roles stay plain text. -->
-                  <views:ChatMarkdownPresenter
-                      Markdown="{Binding Content}"
-                      IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsAssistant}}" />
-                  <Border Classes="metadata"
-                          Padding="8,4"
-                          CornerRadius="4"
-                          Background="{DynamicResource AedaBorderBrush}"
+      <Grid Grid.Row="1" MinHeight="0">
+        <ScrollViewer x:Name="MessageScroll"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      AutomationProperties.Name="Message timeline">
+          <ItemsControl x:Name="MessagesItemsControl"
+                        Classes="messageList"
+                        Margin="28"
+                        MaxWidth="720"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding Messages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChatMessageItem">
+                <Grid>
+                  <Border MaxWidth="600"
+                          Margin="72,0,0,0"
+                          Padding="12,10"
+                          HorizontalAlignment="Right"
+                          Background="{DynamicResource SurfaceAltBrush}"
+                          CornerRadius="14,14,4,14"
+                          IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsUser}}">
+                    <SelectableTextBlock Text="{Binding Content}"
+                                         FontSize="13.5"
+                                         TextWrapping="Wrap" />
+                  </Border>
+
+                  <StackPanel Spacing="8"
+                              IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsAssistant}}">
+                    <TextBlock Text="AEDA"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedTextBrush}" />
+                    <views:ChatMarkdownPresenter Markdown="{Binding Content}" />
+
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="4"
+                                IsVisible="{Binding Status, Converter={x:Static views:ChatRoleConverters.IsStreaming}}"
+                                AutomationProperties.Name="AEDA is generating a response">
+                      <Ellipse Width="5" Height="5" Fill="{DynamicResource WarningBrush}" />
+                      <Ellipse Width="5" Height="5" Fill="{DynamicResource WarningBrush}" Opacity="0.6" />
+                      <Ellipse Width="5" Height="5" Fill="{DynamicResource WarningBrush}" Opacity="0.3" />
+                    </StackPanel>
+
+                    <TextBlock Text="Response cancelled."
+                               FontSize="12"
+                               FontStyle="Italic"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               IsVisible="{Binding Status, Converter={x:Static views:ChatRoleConverters.IsCancelled}}" />
+
+                    <Border Padding="12"
+                            BorderBrush="{DynamicResource ErrorBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Background="{DynamicResource SurfaceAltBrush}"
+                            IsVisible="{Binding Status, Converter={x:Static views:ChatRoleConverters.IsFailed}}"
+                            AutomationProperties.Name="Something went wrong. Please try again.">
+                      <TextBlock Text="Something went wrong. Please try again."
+                                 FontSize="12.5"
+                                 TextWrapping="Wrap" />
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Button Content="Retry"
+                              Command="{Binding DataContext.RetryCommand, ElementName=MessagesItemsControl}"
+                              CommandParameter="{Binding}"
+                              IsVisible="{Binding CanRetry}"
+                              ToolTip.Tip="Retry this response"
+                              AutomationProperties.Name="Retry message" />
+                      <Button Content="Regenerate"
+                              Command="{Binding DataContext.RegenerateCommand, ElementName=MessagesItemsControl}"
+                              CommandParameter="{Binding}"
+                              IsVisible="{Binding CanRegenerate}"
+                              ToolTip.Tip="Regenerate a new response"
+                              AutomationProperties.Name="Regenerate response" />
+                    </StackPanel>
+                  </StackPanel>
+
+                  <Border Padding="10,6"
+                          CornerRadius="8"
+                          Background="{DynamicResource SurfaceAltBrush}"
+                          BorderBrush="{DynamicResource BorderBrush}"
+                          BorderThickness="1"
                           IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsTool}}"
                           AutomationProperties.Name="{Binding Role, Converter={x:Static views:ChatRoleConverters.RoleLabel}}">
-                    <TextBlock Classes="metadata"
-                               Text="{Binding Content}"
+                    <TextBlock Text="{Binding Content}"
+                               FontSize="12"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
                                TextWrapping="Wrap" />
                   </Border>
-                  <SelectableTextBlock
-                      Text="{Binding Content}"
-                      TextWrapping="Wrap"
-                      IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsPlainText}}" />
 
-                  <!-- Retry/Regenerate only ever apply to assistant messages, and only in the
-                       state the WinUI reference allows: Retry on a failed/cancelled reply,
-                       Regenerate on the latest completed reply. -->
-                  <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsAssistant}}">
-                    <Button Content="Retry"
-                            Command="{Binding DataContext.RetryCommand, ElementName=MessagesItemsControl}"
-                            CommandParameter="{Binding}"
-                            IsVisible="{Binding CanRetry}"
-                            ToolTip.Tip="Retry this response"
-                            AutomationProperties.Name="Retry message" />
-                    <Button Content="Regenerate"
-                            Command="{Binding DataContext.RegenerateCommand, ElementName=MessagesItemsControl}"
-                            CommandParameter="{Binding}"
-                            IsVisible="{Binding CanRegenerate}"
-                            ToolTip.Tip="Regenerate a new response"
-                            AutomationProperties.Name="Regenerate response" />
-                  </StackPanel>
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </ScrollViewer>
+                  <SelectableTextBlock Text="{Binding Content}"
+                                       FontSize="13.5"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding Role, Converter={x:Static views:ChatRoleConverters.IsSystem}}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
 
-      <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-        <TextBox x:Name="Composer"
-                 Text="{Binding Draft, Mode=TwoWay}"
-                 AcceptsReturn="True"
-                 TextWrapping="Wrap"
-                 MinHeight="72"
-                 MaxHeight="160"
-                 PlaceholderText="Ask AEDA. Enter sends, Shift+Enter adds a line."
-                 AutomationProperties.Name="Message composer" />
-        <Button x:Name="SendButton"
-                Grid.Column="1"
-                Command="{Binding SendCommand}"
-                Click="OnSendClick"
-                Content="Send"
-                MinWidth="88"
-                VerticalAlignment="Bottom"
-                ToolTip.Tip="Send message (Enter)"
-                AutomationProperties.Name="Send message" />
-        <Button x:Name="StopButton"
-                Grid.Column="2"
-                Command="{Binding CancelCommand}"
-                Content="Stop"
-                MinWidth="88"
-                VerticalAlignment="Bottom"
-                ToolTip.Tip="Stop generating (Escape)"
-                AutomationProperties.Name="Stop generating" />
+        <StackPanel x:Name="EmptyConversationState"
+                    MaxWidth="420"
+                    Margin="16"
+                    Spacing="8"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsVisible="False"
+                    AutomationProperties.Name="Empty conversation">
+          <TextBlock x:Name="EmptyConversationTitle"
+                     Text="How can AEDA help?"
+                     FontSize="26"
+                     FontWeight="Bold"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="Type a message below to start a conversation."
+                     FontSize="13"
+                     Foreground="{DynamicResource SecondaryTextBrush}"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap" />
+        </StackPanel>
       </Grid>
+
+      <Border x:Name="ComposerRegion"
+              Grid.Row="2"
+              Padding="28"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="0,1,0,0">
+        <Border x:Name="ComposerSurface"
+                MinHeight="64"
+                MaxWidth="720"
+                Padding="10"
+                HorizontalAlignment="Stretch"
+                Background="{DynamicResource CardSurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="14"
+                BoxShadow="{DynamicResource ShellElevation}">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <TextBox x:Name="Composer"
+                     Text="{Binding Draft, Mode=TwoWay}"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     MinHeight="44"
+                     MaxHeight="160"
+                     Padding="6,5"
+                     VerticalContentAlignment="Center"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     FontSize="13.5"
+                     PlaceholderText="Ask AEDA. Enter sends, Shift+Enter adds a line."
+                     AutomationProperties.Name="Message composer" />
+
+            <StackPanel x:Name="ComposerActions"
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Bottom">
+              <Button x:Name="StopButton"
+                      Classes="composerAction stopAction"
+                      Command="{Binding CancelCommand}"
+                      IsVisible="{Binding IsGenerating}"
+                      ToolTip.Tip="Stop generating (Escape)"
+                      AutomationProperties.Name="Stop generating">
+                <Border Width="10"
+                        Height="10"
+                        CornerRadius="2"
+                        Background="{DynamicResource SecondaryTextBrush}"
+                        IsHitTestVisible="False" />
+              </Button>
+
+              <Button x:Name="SendButton"
+                      Classes="composerAction sendAction"
+                      Command="{Binding SendCommand}"
+                      Click="OnSendClick"
+                      ToolTip.Tip="Send message (Enter)"
+                      AutomationProperties.Name="Send message">
+                <Path Width="16"
+                      Height="16"
+                      Data="M5,12 L18,12 M13,6 L19,12 L13,18"
+                      Stretch="Uniform"
+                      StrokeThickness="2"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      IsHitTestVisible="False" />
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Border>
     </Grid>
   </Grid>
 </UserControl>

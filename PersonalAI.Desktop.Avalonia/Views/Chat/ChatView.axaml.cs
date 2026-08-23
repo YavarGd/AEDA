@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.Specialized;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia;
@@ -6,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using PersonalAI.Core.Chat;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
+using PersonalAI.Infrastructure.Chat;
 
 namespace PersonalAI.Desktop.Avalonia.Views.Chat;
 
@@ -14,6 +16,9 @@ public partial class ChatView : UserControl
     private readonly ChatConversationLoadQueue _loadQueue = new();
     private AvaloniaChatViewModel? _viewModel;
     private int _outstandingLoads;
+    private bool _compact;
+    private bool _compactChatActive;
+    private bool _medium;
     private bool _followTail = true;
     private bool _suppressSelectionOpen;
 
@@ -31,7 +36,53 @@ public partial class ChatView : UserControl
     }
 
     /// <summary>Moves focus to the composer, used when the shell routes to chat.</summary>
-    public void FocusComposer() => Composer.Focus();
+    public void FocusComposer()
+    {
+        ShowCompactChat();
+        Composer.Focus();
+    }
+
+    public void ApplyResponsiveMode(bool compact, bool medium)
+    {
+        var enteringCompact = compact && !_compact;
+        _compact = compact;
+        _medium = medium;
+        if (enteringCompact)
+        {
+            _compactChatActive = false;
+            ClearConversationSelection();
+        }
+
+        Classes.Set("compact", compact);
+        Classes.Set("medium", medium);
+        var layout = ResolveLayout(compact, medium);
+        ConversationRail.Padding = new Thickness(layout.PagePadding);
+        ConversationRail.BorderThickness = compact
+            ? new Thickness(0)
+            : new Thickness(0, 0, 1, 0);
+        ChatHeader.Height = layout.HeaderHeight;
+        ChatHeader.Padding = new Thickness(layout.PagePadding, 0);
+        MessagesItemsControl.Margin = new Thickness(layout.PagePadding);
+        MessagesItemsControl.MaxWidth = layout.MessageMaxWidth;
+        ComposerRegion.Padding = new Thickness(layout.PagePadding);
+        ComposerSurface.MinHeight = layout.ComposerMinHeight;
+        ComposerSurface.MaxWidth = layout.MessageMaxWidth;
+        EmptyConversationTitle.FontSize = layout.EmptyTitleSize;
+        UpdateCompactPresentation();
+    }
+
+    internal static (
+        double RailWidth,
+        double HeaderHeight,
+        double PagePadding,
+        double MessageMaxWidth,
+        double ComposerMinHeight,
+        double EmptyTitleSize) ResolveLayout(bool compact, bool medium) =>
+        compact
+            ? (0, 52, 16, double.PositiveInfinity, 56, 20)
+            : medium
+                ? (240, 56, 22, 580, 60, 22)
+                : (300, 60, 28, 720, 64, 26);
 
     /// <summary>
     /// Applies a shell-level keyboard action. Kept here so the shell does not need to
@@ -84,6 +135,8 @@ public partial class ChatView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _viewModel.Messages.CollectionChanged -= OnCollectionChanged;
+            _viewModel.Conversations.CollectionChanged -= OnCollectionChanged;
         }
 
         _viewModel = DataContext as AvaloniaChatViewModel;
@@ -91,10 +144,13 @@ public partial class ChatView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            _viewModel.Messages.CollectionChanged += OnCollectionChanged;
+            _viewModel.Conversations.CollectionChanged += OnCollectionChanged;
         }
 
         UpdateStatusText();
         UpdateConversationListAvailability();
+        UpdateEmptyStates();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -134,6 +190,29 @@ public partial class ChatView : UserControl
         StatusText.Text = ChatPresentation.DescribeStatus(
             _viewModel.Status,
             _viewModel.StatusMessage);
+        var status = _viewModel.Status;
+        StatusDot.Classes.Set("success", status is ChatStatus.Ready or ChatStatus.Completed);
+        StatusDot.Classes.Set("generating", status == ChatStatus.Generating);
+        StatusDot.Classes.Set("failed", status == ChatStatus.Failed);
+        StatusDot.Classes.Set(
+            "neutral",
+            status is ChatStatus.Connecting or ChatStatus.Cancelled);
+    }
+
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        UpdateEmptyStates();
+
+    private void UpdateEmptyStates()
+    {
+        var messagesEmpty = _viewModel?.Messages.Count is null or 0;
+        EmptyConversationState.IsVisible = messagesEmpty;
+        MessagesItemsControl.IsVisible = !messagesEmpty;
+
+        var conversationsEmpty = _viewModel?.Conversations.Count is null or 0;
+        ConversationEmptyState.IsVisible = conversationsEmpty;
+        ConversationEmptyState.Text = string.IsNullOrWhiteSpace(_viewModel?.SearchText)
+            ? "No conversations yet. Start one to see it here."
+            : "No conversations match your search.";
     }
 
     /// <summary>
@@ -187,9 +266,14 @@ public partial class ChatView : UserControl
             return;
         }
 
-        if (ConversationList.SelectedItem is not Conversation conversation ||
-            _viewModel.ActiveConversation?.Id == conversation.Id)
+        if (ConversationList.SelectedItem is not Conversation conversation)
         {
+            return;
+        }
+
+        if (_viewModel.ActiveConversation?.Id == conversation.Id)
+        {
+            ShowCompactChat();
             return;
         }
 
@@ -216,6 +300,7 @@ public partial class ChatView : UserControl
                     return;
                 }
 
+                ShowCompactChat();
                 _followTail = true;
                 MessageScroll.ScrollToEnd();
             },
@@ -277,6 +362,7 @@ public partial class ChatView : UserControl
         // A pending load must not repopulate the timeline after a new chat is requested.
         _loadQueue.Invalidate();
         _followTail = true;
+        ShowCompactChat();
         Composer.Focus();
     }
 
@@ -333,7 +419,68 @@ public partial class ChatView : UserControl
         _loadQueue.Invalidate();
         Execute(_viewModel?.NewChatCommand);
         _followTail = true;
+        ShowCompactChat();
         Composer.Focus();
+    }
+
+    private void OnBackToConversationsClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_compact)
+        {
+            return;
+        }
+
+        _compactChatActive = false;
+        ClearConversationSelection();
+        UpdateCompactPresentation();
+        ConversationList.Focus();
+    }
+
+    private void ClearConversationSelection()
+    {
+        _suppressSelectionOpen = true;
+        try
+        {
+            ConversationList.SelectedItem = null;
+        }
+        finally
+        {
+            _suppressSelectionOpen = false;
+        }
+    }
+
+    private void ShowCompactChat()
+    {
+        if (!_compact)
+        {
+            return;
+        }
+
+        _compactChatActive = true;
+        UpdateCompactPresentation();
+    }
+
+    private void UpdateCompactPresentation()
+    {
+        var showCompactChat = _compact && _compactChatActive;
+        ConversationRail.IsVisible = !_compact || !showCompactChat;
+        ActiveChatPane.IsVisible = !_compact || showCompactChat;
+        BackToConversationsButton.IsVisible = showCompactChat;
+
+        if (!_compact)
+        {
+            ChatLayout.ColumnDefinitions[0].Width = new GridLength(
+                ResolveLayout(compact: false, medium: _medium).RailWidth);
+            ChatLayout.ColumnDefinitions[1].Width = GridLength.Star;
+            return;
+        }
+
+        ChatLayout.ColumnDefinitions[0].Width = showCompactChat
+            ? new GridLength(0)
+            : GridLength.Star;
+        ChatLayout.ColumnDefinitions[1].Width = showCompactChat
+            ? GridLength.Star
+            : new GridLength(0);
     }
 
     private static void Execute(System.Windows.Input.ICommand? command)
