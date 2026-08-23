@@ -27,6 +27,8 @@ public partial class ChatView : UserControl
         InitializeComponent();
         MessageScroll.ScrollChanged += OnMessageScrollChanged;
         DataContextChanged += OnDataContextChanged;
+        ConversationList.Tapped += (_, _) => ShowSelectedActiveConversation();
+        ConversationList.KeyDown += OnConversationListKeyDown;
 
         // A multiline TextBox consumes Enter internally to insert a newline, so a plain
         // bubbling KeyDown handler never sees it and Enter could not send. Handling the
@@ -49,8 +51,7 @@ public partial class ChatView : UserControl
         _medium = medium;
         if (enteringCompact)
         {
-            _compactChatActive = false;
-            ClearConversationSelection();
+            _compactChatActive = _viewModel?.IsGenerating == true;
         }
 
         Classes.Set("compact", compact);
@@ -66,6 +67,9 @@ public partial class ChatView : UserControl
         MessagesItemsControl.MaxWidth = layout.MessageMaxWidth;
         ComposerRegion.Padding = new Thickness(layout.PagePadding);
         ComposerSurface.MinHeight = layout.ComposerMinHeight;
+        ComposerSurface.Padding = new Thickness(
+            10,
+            Math.Max(0, (layout.ComposerMinHeight - 46) / 2));
         ComposerSurface.MaxWidth = layout.MessageMaxWidth;
         EmptyConversationTitle.FontSize = layout.EmptyTitleSize;
         UpdateCompactPresentation();
@@ -79,10 +83,10 @@ public partial class ChatView : UserControl
         double ComposerMinHeight,
         double EmptyTitleSize) ResolveLayout(bool compact, bool medium) =>
         compact
-            ? (0, 52, 16, double.PositiveInfinity, 56, 20)
+            ? (0, 52, 16, double.PositiveInfinity, 44, 20)
             : medium
-                ? (240, 56, 22, 580, 60, 22)
-                : (300, 60, 28, 720, 64, 26);
+                ? (240, 56, 22, 580, 48, 22)
+                : (300, 60, 28, 720, 52, 26);
 
     /// <summary>
     /// Applies a shell-level keyboard action. Kept here so the shell does not need to
@@ -176,8 +180,12 @@ public partial class ChatView : UserControl
     /// Opening a conversation is ignored while generating, so the list is disabled to
     /// stop the highlight from drifting away from what is displayed.
     /// </summary>
-    private void UpdateConversationListAvailability() =>
-        ConversationList.IsEnabled = !(_viewModel?.IsGenerating ?? false);
+    private void UpdateConversationListAvailability()
+    {
+        var available = !(_viewModel?.IsGenerating ?? false);
+        ConversationList.IsEnabled = available;
+        BackToConversationsButton.IsEnabled = available;
+    }
 
     private void UpdateStatusText()
     {
@@ -307,6 +315,27 @@ public partial class ChatView : UserControl
             SyncSelectionToActiveConversation));
     }
 
+    private void OnConversationListKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Space && ShowSelectedActiveConversation())
+        {
+            e.Handled = true;
+        }
+    }
+
+    private bool ShowSelectedActiveConversation()
+    {
+        if (!_compact || _compactChatActive ||
+            ConversationList.SelectedItem is not Conversation selected ||
+            _viewModel?.ActiveConversation?.Id != selected.Id)
+        {
+            return false;
+        }
+
+        ShowCompactChat();
+        return true;
+    }
+
     /// <summary>
     /// Counts a queued load as outstanding until its task finishes, so the actions that
     /// replace timeline content stay unavailable until every queued load has run.
@@ -425,27 +454,28 @@ public partial class ChatView : UserControl
 
     private void OnBackToConversationsClick(object? sender, RoutedEventArgs e)
     {
-        if (!_compact)
+        if (!_compact || _viewModel?.IsGenerating == true)
         {
             return;
         }
 
         _compactChatActive = false;
-        ClearConversationSelection();
         UpdateCompactPresentation();
-        ConversationList.Focus();
+        FocusSelectedConversation();
     }
 
-    private void ClearConversationSelection()
+    private void FocusSelectedConversation()
     {
-        _suppressSelectionOpen = true;
-        try
+        if (ConversationList.SelectedItem is { } selected &&
+            ConversationList.ContainerFromItem(selected) is Control container)
         {
-            ConversationList.SelectedItem = null;
+            container.Focus();
+            return;
         }
-        finally
+
+        if (!ConversationList.Focus())
         {
-            _suppressSelectionOpen = false;
+            SearchBox.Focus();
         }
     }
 

@@ -42,6 +42,7 @@ public sealed class AvaloniaGeneralChatDesignTests
     public void ComposerOwnsSendAndStopAsOneTrailingActionGroup()
     {
         var document = XDocument.Parse(ReadChatMarkup());
+        var code = ReadSource("Views", "Chat", "ChatView.axaml.cs");
         XNamespace ns = "https://github.com/avaloniaui";
         var composer = Named(document, "ComposerSurface");
         var actions = Named(document, "ComposerActions");
@@ -57,6 +58,8 @@ public sealed class AvaloniaGeneralChatDesignTests
         Assert.Contains("composerAction", Attribute(stop, "Classes"));
         Assert.Contains("<Setter Property=\"Width\" Value=\"44\"", document.ToString());
         Assert.Contains("<Setter Property=\"Height\" Value=\"44\"", document.ToString());
+        Assert.Equal("44", Attribute(Named(document, "Composer"), "MinHeight"));
+        Assert.Contains("Math.Max(0, (layout.ComposerMinHeight - 46) / 2)", code);
     }
 
     [Fact]
@@ -86,14 +89,31 @@ public sealed class AvaloniaGeneralChatDesignTests
     }
 
     [Fact]
-    public void ErrorAndHeaderStatusUseOnlyTheApprovedSafePresentation()
+    public void FailedAssistantRendersExistingContentOnceAndKeepsRetry()
     {
-        var markup = ReadChatMarkup();
+        var document = XDocument.Parse(ReadChatMarkup());
+        var markup = document.ToString();
         var code = ReadSource("Views", "Chat", "ChatView.axaml.cs");
+        var viewModel = ReadSource("ViewModels", "Chat", "AvaloniaChatViewModel.cs");
         var combined = markup + code;
+        XNamespace ns = "https://github.com/avaloniaui";
+        var presenter = Assert.Single(
+            document.Descendants(),
+            element => element.Name.LocalName == "ChatMarkdownPresenter");
+        var failure = Assert.Single(document.Descendants(ns + "Border"), element =>
+            Attribute(element, "IsVisible").Contains("ChatRoleConverters.IsFailed"));
+        var failureText = Assert.Single(failure.Descendants(ns + "TextBlock"));
 
         Assert.Contains("ChatPresentation.DescribeStatus(", code);
-        Assert.Contains("Something went wrong. Please try again.", markup);
+        Assert.Equal(
+            "{Binding Status, Converter={x:Static views:ChatRoleConverters.IsNotFailed}}",
+            Attribute(presenter, "IsVisible"));
+        Assert.Equal("{Binding Content}", Attribute(failureText, "Text"));
+        Assert.Equal("{Binding Content}", Attribute(failure, "AutomationProperties.Name"));
+        Assert.DoesNotContain("Something went wrong. Please try again.", markup);
+        Assert.Contains("Something went wrong. Please try again.", viewModel);
+        Assert.Contains("DataContext.RetryCommand", markup);
+        Assert.Contains("IsVisible=\"{Binding CanRetry}\"", markup);
         Assert.DoesNotContain("provider unavailable", combined, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("local model unavailable", combined, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("context unavailable", combined, StringComparison.OrdinalIgnoreCase);
@@ -117,9 +137,55 @@ public sealed class AvaloniaGeneralChatDesignTests
         Assert.Contains("ShowCompactChat();", selection);
         Assert.Contains("ShowCompactChat();", activeSelection);
         Assert.Contains("ShowCompactChat();", newChat);
-        Assert.Contains("ClearConversationSelection();", code);
+        Assert.DoesNotContain("ClearConversationSelection", code);
         Assert.Contains("BackToConversationsButton.IsVisible = showCompactChat", code);
         Assert.Contains("ConversationRail.IsVisible = !_compact || !showCompactChat", code);
+    }
+
+    [Fact]
+    public void CompactBackPreservesAndFocusesTheSelectedActiveConversation()
+    {
+        var code = ReadSource("Views", "Chat", "ChatView.axaml.cs");
+        var responsive = Slice(code, "public void ApplyResponsiveMode", "internal static (");
+        var back = Slice(code, "private void OnBackToConversationsClick", "private void FocusSelectedConversation");
+        var focus = Slice(code, "private void FocusSelectedConversation", "private void ShowCompactChat");
+
+        Assert.DoesNotContain("SelectedItem =", responsive);
+        Assert.DoesNotContain("SelectedItem =", back);
+        Assert.DoesNotContain("ActiveConversation", back);
+        Assert.Contains("FocusSelectedConversation();", back);
+        Assert.Contains("ContainerFromItem(selected)", focus);
+        Assert.Contains("ConversationList.Focus()", focus);
+        Assert.Contains("SearchBox.Focus()", focus);
+        Assert.DoesNotContain("OpenConversationAsync", responsive + back + focus);
+    }
+
+    [Fact]
+    public void GenerationDisablesBackAndKeepsCompactChatActive()
+    {
+        var code = ReadSource("Views", "Chat", "ChatView.axaml.cs");
+        var responsive = Slice(code, "public void ApplyResponsiveMode", "internal static (");
+        var availability = Slice(code, "private void UpdateConversationListAvailability", "private void UpdateStatusText");
+        var back = Slice(code, "private void OnBackToConversationsClick", "private void FocusSelectedConversation");
+
+        Assert.Contains("_compactChatActive = _viewModel?.IsGenerating == true", responsive);
+        Assert.Contains("ConversationList.IsEnabled = available", availability);
+        Assert.Contains("BackToConversationsButton.IsEnabled = available", availability);
+        Assert.Contains("_viewModel?.IsGenerating == true", back);
+    }
+
+    [Fact]
+    public void ActiveConversationPaneReentryNeverReloadsTheConversation()
+    {
+        var code = ReadSource("Views", "Chat", "ChatView.axaml.cs");
+        var selection = Slice(code, "private void OnConversationSelectionChanged", "private void OnConversationListKeyDown");
+        var reentry = Slice(code, "private bool ShowSelectedActiveConversation", "private void TrackLoad");
+
+        Assert.Contains("ConversationList.Tapped", code);
+        Assert.Contains("ConversationList.KeyDown", code);
+        Assert.Contains("ShowCompactChat();", reentry);
+        Assert.DoesNotContain("OpenConversationAsync", reentry);
+        Assert.Single(Regex.Matches(selection, "OpenConversationAsync").Cast<Match>());
     }
 
     [Fact]
@@ -143,14 +209,17 @@ public sealed class AvaloniaGeneralChatDesignTests
         Assert.DoesNotContain("AedaBorderBrush", combined, StringComparison.Ordinal);
         Assert.DoesNotContain("AedaCodeBackgroundBrush", combined, StringComparison.Ordinal);
         Assert.Contains("DynamicResource AccentBrush", markup);
+        Assert.Contains(
+            "ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter",
+            markup);
         Assert.Contains("DynamicResource SurfaceAltBrush", markup);
         Assert.Contains("DynamicResource BorderBrush", markup);
     }
 
     [Theory]
-    [InlineData(false, false, 300, 60, 28, 720, 64, 26)]
-    [InlineData(false, true, 240, 56, 22, 580, 60, 22)]
-    [InlineData(true, false, 0, 52, 16, double.PositiveInfinity, 56, 20)]
+    [InlineData(false, false, 300, 60, 28, 720, 52, 26)]
+    [InlineData(false, true, 240, 56, 22, 580, 48, 22)]
+    [InlineData(true, false, 0, 52, 16, double.PositiveInfinity, 44, 20)]
     public void ResponsiveLayoutsMatchTheApprovedWideMediumCompactGeometry(
         bool compact,
         bool medium,

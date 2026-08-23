@@ -23,6 +23,9 @@
     <Style Selector="ListBox.conversationList ListBoxItem:selected">
       <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
     </Style>
+    <Style Selector="ListBox.conversationList ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
     <Style Selector="Button.newChatAction">
       <Setter Property="Height" Value="36" />
       <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
@@ -271,7 +274,8 @@
                                FontSize="11"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource MutedTextBrush}" />
-                    <views:ChatMarkdownPresenter Markdown="{Binding Content}" />
+                    <views:ChatMarkdownPresenter Markdown="{Binding Content}"
+                                                 IsVisible="{Binding Status, Converter={x:Static views:ChatRoleConverters.IsNotFailed}}" />
 
                     <StackPanel Orientation="Horizontal"
                                 Spacing="4"
@@ -294,8 +298,8 @@
                             CornerRadius="10"
                             Background="{DynamicResource SurfaceAltBrush}"
                             IsVisible="{Binding Status, Converter={x:Static views:ChatRoleConverters.IsFailed}}"
-                            AutomationProperties.Name="Something went wrong. Please try again.">
-                      <TextBlock Text="Something went wrong. Please try again."
+                            AutomationProperties.Name="{Binding Content}">
+                      <TextBlock Text="{Binding Content}"
                                  FontSize="12.5"
                                  TextWrapping="Wrap" />
                     </Border>

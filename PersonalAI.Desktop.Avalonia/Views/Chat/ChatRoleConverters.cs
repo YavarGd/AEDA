@@ -43,6 +43,9 @@ public static class ChatRoleConverters
     public static IValueConverter IsFailed { get; } =
         new MessageStatusMatchConverter(ChatMessageStatus.Failed);
 
+    public static IValueConverter IsNotFailed { get; } =
+        new MessageStatusMatchConverter(ChatMessageStatus.Failed, negate: true);
+
     private sealed class RoleMatchConverter(ChatRole expected, bool negate = false)
         : IValueConverter
     {
@@ -61,7 +64,9 @@ public static class ChatRoleConverters
             throw new NotSupportedException();
     }
 
-    private sealed class MessageStatusMatchConverter(ChatMessageStatus expected)
+    private sealed class MessageStatusMatchConverter(
+        ChatMessageStatus expected,
+        bool negate = false)
         : IValueConverter
     {
         public object Convert(
@@ -69,7 +74,7 @@ public static class ChatRoleConverters
             Type targetType,
             object? parameter,
             CultureInfo culture) =>
-            value is ChatMessageStatus status && status == expected;
+            value is ChatMessageStatus status && status == expected ? !negate : negate;
 
         public object ConvertBack(
             object? value,
