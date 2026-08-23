@@ -7,6 +7,7 @@ using Avalonia.Media;
 using PersonalAI.Desktop.Avalonia.Composition;
 using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Views.Chat;
+using PersonalAI.Desktop.Avalonia.Views.Code;
 
 namespace PersonalAI.Desktop.Avalonia;
 
@@ -123,6 +124,11 @@ public partial class MainWindow : Window
         PresentationRoute.Content = route == ShellRoute.Presentation
             ? _activePresentationScreen?.Content
             : null;
+        if (route == ShellRoute.Presentation)
+        {
+            ApplyResponsiveMode();
+        }
+
         PageTitle.Text = route switch
         {
             ShellRoute.Chat => "General Chat",
@@ -227,6 +233,11 @@ public partial class MainWindow : Window
         Classes.Set("medium", medium);
         DashboardRoute.ApplyResponsiveMode(compact, medium);
         ChatRoute.ApplyResponsiveMode(compact, medium);
+        if (_activePresentationScreen?.Content is CodeView codeRoute)
+        {
+            codeRoute.ApplyResponsiveMode(compact, medium);
+        }
+
         ShellGrid.RowDefinitions[0].Height = new GridLength(compact ? 56 : 64);
         ShellGrid.RowDefinitions[2].Height = new GridLength(compact ? 56 : medium ? 64 : 72);
         TopBarLayout.Margin = new Thickness(compact ? 16 : medium ? 24 : 32, 0);

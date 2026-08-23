@@ -4,293 +4,637 @@
              x:Class="PersonalAI.Desktop.Avalonia.Views.Code.CodeView"
              x:DataType="vm:AedaCodeModuleViewModel"
              AutomationProperties.Name="AEDA Code">
-  <Grid Margin="28" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="14">
-    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <StackPanel Spacing="3">
-        <TextBlock Text="AEDA Code" FontSize="26" FontWeight="SemiBold" />
-        <TextBlock Text="Supervised proposals, explicit approvals, bounded validation, and rollback."
-                   Classes="metadata"
-                   TextWrapping="Wrap" />
-      </StackPanel>
-      <Button Grid.Column="1"
-              Content="Refresh"
-              Command="{Binding RefreshCommand}"
-              AutomationProperties.Name="Refresh AEDA Code" />
-    </Grid>
+  <UserControl.Styles>
+    <Style Selector="Border.codeSurface">
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="20" />
+    </Style>
+    <Style Selector="Border.codeSubtleSurface">
+      <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="18" />
+    </Style>
+    <Style Selector="Button.codePrimary">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="16,8" />
+    </Style>
+    <Style Selector="Button.codeSecondary">
+      <Setter Property="Background" Value="{DynamicResource ElevatedSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="14,8" />
+    </Style>
+    <Style Selector="Button.codeRow">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="MinHeight" Value="64" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Button.codeRow:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <Style Selector="Button.codeRow:pressed, Button.codeRow.selected">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="14,8" />
+    </Style>
+  </UserControl.Styles>
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <StackPanel Spacing="4">
-        <TextBlock Text="Workspace" Classes="sectionHeading" />
-        <ComboBox x:Name="WorkspacePicker"
-                  ItemsSource="{Binding Workspaces}"
-                  SelectedItem="{Binding SelectedWorkspace, Mode=TwoWay}"
-                  DisplayMemberBinding="{Binding DisplayName}"
-                  SelectionChanged="OnWorkspaceSelectionChanged"
-                  AutomationProperties.Name="Code workspace" />
-        <TextBlock Text="{Binding WorkspaceSummary}" Classes="metadata" TextWrapping="Wrap" />
+  <Grid x:Name="PageLayout" Margin="32" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="24">
+    <StackPanel Spacing="4">
+      <TextBlock x:Name="PageHeading" Text="AEDA Code" FontSize="28" FontWeight="Bold" TextWrapping="Wrap" />
+      <TextBlock Text="Supervised proposals, explicit approvals, bounded validation, and rollback."
+                 FontSize="13.5"
+                 Foreground="{DynamicResource SecondaryTextBrush}"
+                 TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Border x:Name="WorkspaceSessionSurface" Grid.Row="1" Classes="codeSurface" Padding="24">
+      <StackPanel Spacing="12">
+        <TextBlock Text="Workspace and session" FontSize="15" FontWeight="SemiBold" />
+        <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <StackPanel Margin="0,0,12,8" Spacing="4">
+            <TextBlock Text="Workspace" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource MutedTextBrush}" />
+            <ComboBox x:Name="WorkspacePicker"
+                      Width="280"
+                      MinHeight="36"
+                      ItemsSource="{Binding Workspaces}"
+                      SelectedItem="{Binding SelectedWorkspace, Mode=TwoWay}"
+                      DisplayMemberBinding="{Binding DisplayName}"
+                      SelectionChanged="OnWorkspaceSelectionChanged"
+                      AutomationProperties.Name="Code workspace" />
+          </StackPanel>
+          <Button MinHeight="36" Margin="0,18,10,8" Content="Refresh" Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh AEDA Code" />
+          <Button MinHeight="36" Margin="0,18,0,8" Classes="codePrimary" Content="Start session" Command="{Binding StartSessionCommand}" AutomationProperties.Name="Start supervised Code session" />
+        </WrapPanel>
+        <TextBlock Text="{Binding WorkspaceSummary}" FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding SessionStatusText}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
       </StackPanel>
-      <Button Grid.Column="1"
-              VerticalAlignment="Bottom"
-              Content="Start session"
-              Command="{Binding StartSessionCommand}"
-              AutomationProperties.Name="Start supervised Code session" />
-    </Grid>
+    </Border>
 
     <Border Grid.Row="2"
-            Background="{DynamicResource AedaSurfaceBrush}"
-            Padding="8,5">
+            Background="{DynamicResource SubtleSurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            Padding="12,8">
       <TextBlock Text="{Binding SafeStatusMessage}"
-                 Classes="metadata"
+                 FontSize="12.5"
+                 Foreground="{DynamicResource SecondaryTextBrush}"
                  TextWrapping="Wrap"
+                 AutomationProperties.Name="Code status"
                  AutomationProperties.LiveSetting="Polite" />
     </Border>
 
-    <TabControl Grid.Row="3">
-      <TabItem Header="Proposal">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <Grid Margin="0,14,0,0" ColumnDefinitions="2*,3*" ColumnSpacing="16">
-            <StackPanel Spacing="12">
-              <Border Padding="14" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="8">
-                <StackPanel Spacing="8">
-                  <TextBlock Text="Create a proposal" Classes="sectionHeading" />
-                  <TextBlock Text="{Binding ProposalCreationSafetyText}" Classes="metadata" TextWrapping="Wrap" />
-                  <TextBox PlaceholderText="Optional short title"
-                           Text="{Binding ProposalTitle}"
-                           MaxLength="120"
-                           AutomationProperties.Name="Proposal title" />
-                  <TextBlock Text="{Binding ProposalTitleLengthText}" Classes="metadata" />
-                  <TextBox x:Name="ProposalRequestBox"
-                           PlaceholderText="Describe one focused code change"
-                           Text="{Binding ProposalRequest}"
-                           MaxLength="4000"
-                           MinHeight="110"
-                           AcceptsReturn="True"
-                           TextWrapping="Wrap"
-                           AutomationProperties.Name="Code change request" />
-                  <TextBlock Text="{Binding ProposalRequestLengthText}" Classes="metadata" />
-                  <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                    <Button Content="Create proposal"
-                            Command="{Binding CreateProposalCommand}"
-                            AutomationProperties.Name="Create proposal without changing files" />
-                    <Button Grid.Column="1"
-                            Content="Cancel"
-                            Command="{Binding CancelProposalCreationCommand}"
-                            AutomationProperties.Name="Cancel proposal creation" />
+    <TabControl x:Name="WorkflowTabs" Grid.Row="3" Background="Transparent" AutomationProperties.Name="Code workflow stages">
+      <TabItem Header="Proposal" AutomationProperties.Name="Proposal stage">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <Grid x:Name="ProposalLayout" Margin="0,16,0,0" ColumnDefinitions="400,*" ColumnSpacing="24">
+            <StackPanel x:Name="ProposalListPane" Spacing="20">
+              <Border Classes="codeSurface">
+                <StackPanel Spacing="14">
+                  <StackPanel Spacing="3">
+                    <TextBlock Text="Create a proposal" FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding ProposalCreationSafetyText}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+                  </StackPanel>
+
+                  <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                    <TextBox MinHeight="38"
+                             PlaceholderText="Optional short title"
+                             Text="{Binding ProposalTitle, Mode=TwoWay}"
+                             MaxLength="120"
+                             AutomationProperties.Name="Proposal title" />
+                    <TextBlock Grid.Row="1" HorizontalAlignment="Right" Text="{Binding ProposalTitleLengthText}" Classes="metadata" />
                   </Grid>
-                  <TextBlock Text="{Binding ProposalCreationProgressText}" Classes="metadata" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding ProposalCreationFailureText}"
-                             IsVisible="{Binding HasProposalCreationFailure}"
-                             TextWrapping="Wrap" />
-                </StackPanel>
-              </Border>
 
-              <StackPanel Spacing="6">
-                <TextBlock Text="Proposals" Classes="sectionHeading" />
-                <TextBlock Text="{Binding ProposalCountText}" Classes="metadata" />
-                <TextBlock Text="No proposals for this workspace."
-                           IsVisible="{Binding HasNoProposals}"
-                           Classes="metadata" />
-                <ItemsControl ItemsSource="{Binding Proposals}" AutomationProperties.Name="Code proposals">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:CompileBindings="False">
-                      <Button Margin="0,0,0,6"
-                              Padding="10"
-                              HorizontalAlignment="Stretch"
-                              HorizontalContentAlignment="Stretch"
-                              Click="OnProposalClick"
-                              AutomationProperties.Name="{Binding Title}">
-                        <StackPanel Spacing="2">
-                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Text="{Binding SafeSummary}" Classes="metadata" TextWrapping="Wrap" MaxLines="2" />
-                          <TextBlock Text="{Binding Status}" Classes="metadata" />
-                        </StackPanel>
-                      </Button>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </StackPanel>
+                  <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                    <TextBox x:Name="ProposalRequestBox"
+                             MinHeight="80"
+                             PlaceholderText="Describe one focused code change"
+                             Text="{Binding ProposalRequest, Mode=TwoWay}"
+                             MaxLength="4000"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             AutomationProperties.Name="Code change request" />
+                    <TextBlock Grid.Row="1" HorizontalAlignment="Right" Text="{Binding ProposalRequestLengthText}" Classes="metadata" />
+                  </Grid>
 
-            <StackPanel Grid.Column="1" Spacing="10">
-              <TextBlock Text="Proposal review" Classes="sectionHeading" />
-              <TextBlock Text="{Binding SelectedProposalMetadataText}" Classes="metadata" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding SelectedProposalSummaryText}" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding RiskSummary}" FontWeight="SemiBold" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding HashStatusText}" Classes="metadata" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding SourceSummaryText}" Classes="metadata" TextWrapping="Wrap" />
-              <ItemsControl ItemsSource="{Binding ProposalFiles}" AutomationProperties.Name="Affected files">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:CompileBindings="False">
-                    <TextBlock Text="{Binding RelativePath}" TextTrimming="CharacterEllipsis" Margin="0,0,0,3" />
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <TextBox Text="{Binding UnifiedDiffPreview, Mode=OneWay}"
-                       IsReadOnly="True"
-                       AcceptsReturn="True"
-                       TextWrapping="NoWrap"
-                       FontFamily="Consolas"
-                       MinHeight="250"
-                       MaxHeight="430"
-                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                       ScrollViewer.VerticalScrollBarVisibility="Auto"
-                       AutomationProperties.Name="Bounded unified diff preview" />
-            </StackPanel>
-          </Grid>
-        </ScrollViewer>
-      </TabItem>
+                  <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Context (optional)" FontSize="13" FontWeight="SemiBold" />
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBox MinHeight="34"
+                                 PlaceholderText="Search files in this workspace"
+                                 Text="{Binding ContextFileSearchQuery, Mode=TwoWay}"
+                                 AutomationProperties.Name="Context file search" />
+                        <Button Grid.Column="1"
+                                MinHeight="34"
+                                Content="Search"
+                                Command="{Binding SearchContextFilesCommand}"
+                                AutomationProperties.Name="Search context files" />
+                      </Grid>
+                      <TextBlock Text="{Binding ContextSearchStatusText}" Classes="metadata" TextWrapping="Wrap" />
 
-      <TabItem Header="Review and apply">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="0,14,0,0" Spacing="10" MaxWidth="760" HorizontalAlignment="Left">
-            <TextBlock Text="Review gates" Classes="sectionHeading" />
-            <TextBlock Text="{Binding ReviewGateOrderText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding DryRunStatusText}" Classes="metadata" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding DryRunDetailText}" TextWrapping="Wrap" />
-            <Border IsVisible="{Binding IsDryRunStale}"
-                    Padding="10"
-                    BorderBrush="{DynamicResource AedaBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-              <TextBlock Text="{Binding StaleProposalRecoveryText}" TextWrapping="Wrap" />
-            </Border>
-            <Button Content="1. Dry run"
-                    Command="{Binding DryRunSelectedProposalCommand}"
-                    HorizontalAlignment="Left" />
-            <TextBlock Text="{Binding ApplyApprovalStatusText}" Classes="metadata" TextWrapping="Wrap" />
-            <Button Content="2. Request apply approval"
-                    Command="{Binding RequestApplyApprovalCommand}"
-                    HorizontalAlignment="Left" />
-            <WrapPanel>
-              <Button Content="Allow once" Command="{Binding AllowApplyOnceCommand}" Margin="0,0,8,0" />
-              <Button Content="Deny" Command="{Binding DenyApplyApprovalCommand}" />
-            </WrapPanel>
-            <Button Content="3. Apply approved proposal"
-                    Command="{Binding ApplyApprovedProposalCommand}"
-                    HorizontalAlignment="Left" />
-            <TextBlock Text="{Binding ApplyResultText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding ApplyResultDetailText}" Classes="metadata" TextWrapping="Wrap" />
-            <StackPanel IsVisible="{Binding HasApplyResults}" Spacing="6">
-              <TextBlock Text="Apply history" Classes="sectionHeading" />
-              <ItemsControl ItemsSource="{Binding ApplyResults}" AutomationProperties.Name="Apply history">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:CompileBindings="False">
-                    <Button Margin="0,0,0,6"
-                            Padding="8"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch"
-                            Click="OnApplyResultClick"
-                            AutomationProperties.Name="{Binding AccessibleSummary}">
-                      <StackPanel Spacing="2">
-                        <TextBlock Text="{Binding Status}" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding UpdatedText}" Classes="metadata" />
-                      </StackPanel>
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-            <StackPanel IsVisible="{Binding CanShowRollback}" Spacing="6">
-              <TextBlock Text="{Binding RollbackAvailabilityText}" TextWrapping="Wrap" />
-              <Button Content="Rollback apply result"
-                      Command="{Binding RollbackSelectedApplyResultCommand}"
-                      HorizontalAlignment="Left" />
-              <TextBlock Text="{Binding RollbackStatusText}" Classes="metadata" TextWrapping="Wrap" />
-            </StackPanel>
-          </StackPanel>
-        </ScrollViewer>
-      </TabItem>
-
-      <TabItem Header="Validation">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="0,14,0,0" Spacing="10" MaxWidth="760" HorizontalAlignment="Left">
-            <TextBlock Text="Allowlisted validation" Classes="sectionHeading" />
-            <TextBlock Text="{Binding ValidationTemplateStatusText}" TextWrapping="Wrap" />
-            <ComboBox ItemsSource="{Binding ValidationTemplates}"
-                      SelectedItem="{Binding SelectedValidationTemplate, Mode=TwoWay}"
-                      DisplayMemberBinding="{Binding DisplayName}"
-                      AutomationProperties.Name="Validation template" />
-            <Button Content="Create validation run"
-                    Command="{Binding CreateValidationRunCommand}"
-                    HorizontalAlignment="Left" />
-            <TextBlock Text="{Binding ValidationApprovalStatusText}" Classes="metadata" TextWrapping="Wrap" />
-            <Button Content="Request validation approval"
-                    Command="{Binding RequestValidationApprovalCommand}"
-                    HorizontalAlignment="Left" />
-            <WrapPanel>
-              <Button Content="Allow once" Command="{Binding AllowValidationOnceCommand}" Margin="0,0,8,0" />
-              <Button Content="Deny" Command="{Binding DenyValidationApprovalCommand}" />
-            </WrapPanel>
-            <Button Content="Run approved validation"
-                    Command="{Binding RunApprovedValidationCommand}"
-                    HorizontalAlignment="Left" />
-            <TextBlock Text="{Binding ValidationResultText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding ValidationRunDetailText}" Classes="metadata" TextWrapping="Wrap" />
-            <TextBox Text="{Binding ValidationOutputPreview, Mode=OneWay}"
-                     IsReadOnly="True"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     FontFamily="Consolas"
-                     MinHeight="220"
-                     MaxHeight="360"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.Name="Sanitized validation output" />
-          </StackPanel>
-        </ScrollViewer>
-      </TabItem>
-
-      <TabItem Header="Timeline">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <Grid Margin="0,14,0,0" ColumnDefinitions="2*,3*" ColumnSpacing="16">
-            <StackPanel Spacing="8">
-              <TextBlock Text="Recent Code tasks" Classes="sectionHeading" />
-              <TextBlock Text="No recent Code tasks." IsVisible="{Binding HasNoRecentCodeTasks}" Classes="metadata" />
-              <ItemsControl ItemsSource="{Binding RecentCodeTasks}" AutomationProperties.Name="Recent Code tasks">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:CompileBindings="False">
-                    <Button Margin="0,0,0,6"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch"
-                            Click="OnTaskClick">
-                      <StackPanel>
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding SafeSummary}" Classes="metadata" TextWrapping="Wrap" MaxLines="2" />
-                      </StackPanel>
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Spacing="8">
-              <TextBlock Text="Safe activity timeline" Classes="sectionHeading" />
-              <TextBlock Text="No safe timeline events loaded."
-                         IsVisible="{Binding HasNoTimelineItems}"
-                         Classes="metadata" />
-              <ItemsControl ItemsSource="{Binding CodeTimelineGroups}" AutomationProperties.Name="Code activity timeline">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:CompileBindings="False">
-                    <StackPanel Margin="0,0,0,10" Spacing="4">
-                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                      <ItemsControl ItemsSource="{Binding Items}">
+                      <ItemsControl x:Name="ContextCandidateList"
+                                    ItemsSource="{Binding ContextFileCandidates}"
+                                    IsVisible="{Binding HasContextFileCandidates}"
+                                    AutomationProperties.Name="Context candidate files">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:CompileBindings="False">
-                            <StackPanel Margin="8,0,0,6">
-                              <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                              <TextBlock Text="{Binding Detail}" Classes="metadata" TextWrapping="Wrap" />
-                              <TextBlock Text="{Binding UpdatedText}" Classes="metadata" />
-                            </StackPanel>
+                            <Border Margin="0,0,0,6" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="10,8">
+                              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <StackPanel Spacing="2">
+                                  <TextBlock Text="{Binding FileName}" FontFamily="Consolas" FontSize="11.5" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding ContainingFolder}" Classes="metadata" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        MinWidth="56"
+                                        MinHeight="44"
+                                        Content="Add"
+                                        Command="{Binding DataContext.AddContextFileCommand, ElementName=ContextCandidateList}"
+                                        CommandParameter="{Binding}"
+                                        AutomationProperties.Name="Add context file" />
+                              </Grid>
+                            </Border>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
+
+                      <StackPanel IsVisible="{Binding HasSelectedContextFiles}" Spacing="8">
+                        <TextBlock Text="Selected files" FontSize="12.5" FontWeight="SemiBold" />
+                        <ItemsControl x:Name="SelectedContextList"
+                                      ItemsSource="{Binding SelectedContextFiles}"
+                                      AutomationProperties.Name="Selected context files">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:CompileBindings="False">
+                              <Grid Margin="0,0,0,6" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <StackPanel Spacing="2">
+                                  <TextBlock Text="{Binding RelativePath}" FontFamily="Consolas" FontSize="11.5" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding SizeLabel}" Classes="metadata" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        MinHeight="44"
+                                        Content="Remove"
+                                        Command="{Binding DataContext.RemoveContextFileCommand, ElementName=SelectedContextList}"
+                                        CommandParameter="{Binding}"
+                                        AutomationProperties.Name="Remove context file" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                          <TextBlock Text="{Binding SelectedContextSummaryText}" Classes="metadata" TextWrapping="Wrap" />
+                          <Button Grid.Column="1"
+                                  Content="Clear all"
+                                  Command="{Binding ClearSelectedContextCommand}"
+                                  AutomationProperties.Name="Clear selected context" />
+                        </Grid>
+                      </StackPanel>
+
+                      <Border IsVisible="{Binding HasSelectedContextWarning}"
+                              BorderBrush="{DynamicResource WarningBrush}"
+                              BorderThickness="1"
+                              CornerRadius="8"
+                              Padding="10">
+                        <TextBlock Text="{Binding SelectedContextWarningText}" FontSize="12" TextWrapping="Wrap" />
+                      </Border>
+
+                      <StackPanel Spacing="8">
+                        <TextBlock Text="Target method or member" FontSize="12.5" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding TargetSnippetStatusText}" Classes="metadata" TextWrapping="Wrap" />
+                        <ItemsControl x:Name="TargetCandidateList"
+                                      ItemsSource="{Binding TargetSnippetCandidates}"
+                                      IsVisible="{Binding HasTargetSnippetCandidates}"
+                                      AutomationProperties.Name="Target method or member candidates">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:CompileBindings="False">
+                              <Grid Margin="0,0,0,6" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <StackPanel Spacing="2">
+                                  <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding SignaturePreview}" FontFamily="Consolas" Classes="metadata" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        MinHeight="44"
+                                        Content="Select"
+                                        Command="{Binding DataContext.SelectTargetSnippetCommand, ElementName=TargetCandidateList}"
+                                        CommandParameter="{Binding}"
+                                        AutomationProperties.Name="Select target method or member" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Grid IsVisible="{Binding HasSelectedTargetSnippet}" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                          <TextBlock Text="{Binding SelectedTargetSnippetText}" FontSize="12" TextWrapping="Wrap" />
+                          <Button Grid.Column="1"
+                                  Content="Clear target"
+                                  Command="{Binding ClearTargetSnippetCommand}"
+                                  AutomationProperties.Name="Clear target method or member" />
+                        </Grid>
+                      </StackPanel>
                     </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+                  </Border>
+
+                  <WrapPanel Orientation="Horizontal">
+                    <Button Margin="0,0,10,8"
+                            Classes="codePrimary"
+                            Content="Create proposal"
+                            Command="{Binding CreateProposalCommand}"
+                            AutomationProperties.Name="Create proposal without changing files" />
+                    <Button Margin="0,0,0,8"
+                            Classes="codeSecondary"
+                            Content="Cancel"
+                            Command="{Binding CancelProposalCreationCommand}"
+                            AutomationProperties.Name="Cancel proposal creation" />
+                  </WrapPanel>
+                  <TextBlock Text="{Binding ProposalCreationProgressText}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+                  <Border IsVisible="{Binding HasProposalCreationFailure}"
+                          BorderBrush="{DynamicResource ErrorBrush}"
+                          BorderThickness="1"
+                          CornerRadius="8"
+                          Padding="10">
+                    <TextBlock Text="{Binding ProposalCreationFailureText}" FontSize="12.5" TextWrapping="Wrap" />
+                  </Border>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="codeSurface">
+                <StackPanel x:Name="ProposalHistoryRegion" Focusable="True" Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBlock Text="Proposals" FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="1" Text="{Binding ProposalCountText}" Classes="metadata" />
+                  </Grid>
+                  <TextBlock Text="No proposals yet. Describe a change above to create one."
+                             IsVisible="{Binding HasNoProposals}"
+                             Classes="metadata"
+                             TextWrapping="Wrap" />
+                  <ItemsControl x:Name="ProposalHistoryList" ItemsSource="{Binding Proposals}" AutomationProperties.Name="Proposal history">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:CompileBindings="False">
+                        <Button Margin="0,0,0,4"
+                                Classes="codeRow"
+                                Click="OnProposalClick"
+                                AutomationProperties.Name="{Binding Title}">
+                          <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="3">
+                            <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Row="1"
+                                       Text="{Binding SafeSummary}"
+                                       FontFamily="Consolas"
+                                       FontSize="11.5"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
+                              <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}" IsHitTestVisible="False" />
+                              <TextBlock Text="{Binding Status}" FontSize="11.5" Foreground="{DynamicResource SecondaryTextBrush}" />
+                            </StackPanel>
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
             </StackPanel>
+
+            <Border x:Name="ProposalDetailPane" Grid.Column="1" Classes="codeSurface" AutomationProperties.Name="Proposal review">
+              <StackPanel Spacing="16">
+                <Button x:Name="BackToProposalsButton"
+                        IsVisible="False"
+                        Classes="codeSecondary"
+                        HorizontalAlignment="Left"
+                        Content="Back to proposals"
+                        Click="OnBackToProposalsClick"
+                        AutomationProperties.Name="Back to proposals" />
+                <StackPanel Spacing="3">
+                  <TextBlock x:Name="ProposalReviewHeading" Focusable="True" Text="Proposal review" FontSize="15" FontWeight="SemiBold" />
+                  <TextBlock Text="Inspect status, risk, affected files, context, and the bounded diff."
+                             Classes="metadata"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+
+                <Border IsVisible="{Binding HasNoSelectedProposal}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        Padding="28">
+                  <StackPanel Spacing="6" HorizontalAlignment="Center">
+                    <TextBlock Text="Select a proposal to review" FontSize="13.5" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                    <TextBlock Text="Choose a proposal from the history to inspect its safe summary and diff."
+                               FontSize="12"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center" />
+                  </StackPanel>
+                </Border>
+
+                <StackPanel IsVisible="{Binding HasProposal}" Spacing="14">
+                  <TextBlock Text="{Binding SelectedProposalMetadataText}" Classes="metadata" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SelectedProposalSummaryText}" FontSize="13" TextWrapping="Wrap" />
+                  <StackPanel Spacing="3">
+                    <TextBlock Text="Risk" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Text="{Binding RiskSummary}" FontSize="12.5" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding HashStatusText}" Classes="metadata" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SourceSummaryText}" Classes="metadata" TextWrapping="Wrap" />
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Affected files" FontSize="12.5" FontWeight="SemiBold" />
+                    <ItemsControl ItemsSource="{Binding ProposalFiles}" AutomationProperties.Name="Affected files">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:CompileBindings="False">
+                          <TextBlock Margin="0,0,0,3"
+                                     Text="{Binding RelativePath}"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                  <TextBox Text="{Binding UnifiedDiffPreview, Mode=OneWay}"
+                           IsReadOnly="True"
+                           AcceptsReturn="True"
+                           TextWrapping="NoWrap"
+                           FontFamily="Consolas"
+                           FontSize="12"
+                           MinHeight="220"
+                           MaxHeight="360"
+                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                           ScrollViewer.VerticalScrollBarVisibility="Auto"
+                           AutomationProperties.Name="Bounded unified diff preview" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
           </Grid>
         </ScrollViewer>
       </TabItem>
-    </TabControl>
 
+      <TabItem Header="Review and apply" AutomationProperties.Name="Review and apply stage">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="0,16,0,0" Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+            <StackPanel Spacing="3">
+              <TextBlock Text="Review and apply" FontSize="18" FontWeight="SemiBold" />
+              <TextBlock Text="Nothing is applied until Apply approved proposal succeeds."
+                         FontSize="12.5"
+                         Foreground="{DynamicResource SecondaryTextBrush}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+            <Border IsVisible="{Binding HasNoSelectedProposal}" Classes="codeSubtleSurface">
+              <TextBlock Text="Select a proposal from the Proposal stage first." FontSize="12.5" TextWrapping="Wrap" />
+            </Border>
+            <StackPanel IsVisible="{Binding HasProposal}" Spacing="14">
+              <TextBlock Text="{Binding ReviewGateOrderText}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <Border Classes="codeSubtleSurface">
+                <StackPanel Spacing="9">
+                  <TextBlock Text="1. Dry run" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding DryRunStatusText}" Classes="metadata" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding DryRunDetailText}" FontSize="12.5" TextWrapping="Wrap" />
+                  <Border IsVisible="{Binding IsDryRunStale}"
+                          BorderBrush="{DynamicResource WarningBrush}"
+                          BorderThickness="1"
+                          CornerRadius="8"
+                          Padding="10">
+                    <TextBlock Text="{Binding StaleProposalRecoveryText}" FontSize="12" TextWrapping="Wrap" />
+                  </Border>
+                  <Button Classes="codePrimary"
+                          HorizontalAlignment="Left"
+                          Content="Dry run"
+                          Command="{Binding DryRunSelectedProposalCommand}"
+                          AutomationProperties.Name="Dry run selected proposal" />
+                </StackPanel>
+              </Border>
+              <Border Classes="codeSubtleSurface">
+                <StackPanel Spacing="9">
+                  <TextBlock Text="2. Apply approval" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding ApplyApprovalStatusText}" Classes="metadata" TextWrapping="Wrap" />
+                  <Button Classes="codePrimary"
+                          HorizontalAlignment="Left"
+                          Content="Request approval"
+                          Command="{Binding RequestApplyApprovalCommand}"
+                          AutomationProperties.Name="Request apply approval" />
+                  <WrapPanel Orientation="Horizontal">
+                    <Button Margin="0,0,10,8"
+                            Classes="codePrimary"
+                            Content="Allow once"
+                            Command="{Binding AllowApplyOnceCommand}"
+                            AutomationProperties.Name="Allow apply once" />
+                    <Button Margin="0,0,0,8"
+                            Classes="codeSecondary"
+                            Content="Deny"
+                            Command="{Binding DenyApplyApprovalCommand}"
+                            AutomationProperties.Name="Deny apply approval" />
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+              <Border Classes="codeSubtleSurface">
+                <StackPanel Spacing="9">
+                  <TextBlock Text="3. Apply" FontSize="13" FontWeight="SemiBold" />
+                  <Button Classes="codePrimary"
+                          HorizontalAlignment="Left"
+                          Content="Apply approved proposal"
+                          Command="{Binding ApplyApprovedProposalCommand}"
+                          AutomationProperties.Name="Apply approved proposal" />
+                  <TextBlock Text="{Binding ApplyResultText}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding ApplyResultDetailText}" Classes="metadata" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+              <Border IsVisible="{Binding HasApplyResults}" Classes="codeSurface">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Apply history" FontSize="15" FontWeight="SemiBold" />
+                  <ItemsControl ItemsSource="{Binding ApplyResults}" AutomationProperties.Name="Apply history">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:CompileBindings="False">
+                        <Button Margin="0,0,0,4"
+                                Classes="codeRow"
+                                Click="OnApplyResultClick"
+                                AutomationProperties.Name="{Binding AccessibleSummary}">
+                          <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding Status}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding UpdatedText}" Classes="metadata" />
+                          </StackPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+              <Border IsVisible="{Binding CanShowRollback}" Classes="codeSubtleSurface">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="{Binding RollbackAvailabilityText}" FontSize="12.5" TextWrapping="Wrap" />
+                  <Button Classes="codeSecondary"
+                          HorizontalAlignment="Left"
+                          Content="Roll back"
+                          Command="{Binding RollbackSelectedApplyResultCommand}"
+                          AutomationProperties.Name="Roll back selected apply result" />
+                  <TextBlock Text="{Binding RollbackStatusText}" Classes="metadata" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Validation" AutomationProperties.Name="Validation stage">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="0,16,0,0" Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+            <StackPanel Spacing="3">
+              <TextBlock Text="Validation" FontSize="18" FontWeight="SemiBold" />
+              <TextBlock Text="Run an approved, allowlisted validation check."
+                         FontSize="12.5"
+                         Foreground="{DynamicResource SecondaryTextBrush}" />
+            </StackPanel>
+            <Border Classes="codeSurface">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Validation template" FontSize="13" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding ValidationTemplateStatusText}" FontSize="12.5" TextWrapping="Wrap" />
+                <ComboBox ItemsSource="{Binding ValidationTemplates}"
+                          SelectedItem="{Binding SelectedValidationTemplate, Mode=TwoWay}"
+                          DisplayMemberBinding="{Binding DisplayName}"
+                          AutomationProperties.Name="Validation template" />
+                <TextBlock Text="Only allowlisted templates can run. Arbitrary commands are unavailable."
+                           Classes="metadata"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+            <Border Classes="codeSubtleSurface">
+              <StackPanel Spacing="10">
+                <Button Classes="codePrimary"
+                        HorizontalAlignment="Left"
+                        Content="Create validation run"
+                        Command="{Binding CreateValidationRunCommand}"
+                        AutomationProperties.Name="Create validation run" />
+                <TextBlock Text="{Binding ValidationApprovalStatusText}" Classes="metadata" TextWrapping="Wrap" />
+                <Button Classes="codePrimary"
+                        HorizontalAlignment="Left"
+                        Content="Request validation approval"
+                        Command="{Binding RequestValidationApprovalCommand}"
+                        AutomationProperties.Name="Request validation approval" />
+                <WrapPanel Orientation="Horizontal">
+                  <Button Margin="0,0,10,8"
+                          Classes="codePrimary"
+                          Content="Allow once"
+                          Command="{Binding AllowValidationOnceCommand}"
+                          AutomationProperties.Name="Allow validation once" />
+                  <Button Margin="0,0,0,8"
+                          Classes="codeSecondary"
+                          Content="Deny"
+                          Command="{Binding DenyValidationApprovalCommand}"
+                          AutomationProperties.Name="Deny validation approval" />
+                </WrapPanel>
+                <Button Classes="codePrimary"
+                        HorizontalAlignment="Left"
+                        Content="Run approved validation"
+                        Command="{Binding RunApprovedValidationCommand}"
+                        AutomationProperties.Name="Run approved validation" />
+                <TextBlock Text="{Binding ValidationResultText}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding ValidationRunDetailText}" Classes="metadata" TextWrapping="Wrap" />
+                <TextBox Text="{Binding ValidationOutputPreview, Mode=OneWay}"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         TextWrapping="NoWrap"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         MinHeight="160"
+                         MaxHeight="240"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="Sanitized validation output" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Timeline" AutomationProperties.Name="Timeline stage">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="0,16,0,0" Spacing="14">
+            <StackPanel Spacing="3">
+              <TextBlock Text="Timeline" FontSize="18" FontWeight="SemiBold" />
+              <TextBlock Text="Events for the selected Code task." FontSize="12.5" Foreground="{DynamicResource SecondaryTextBrush}" />
+            </StackPanel>
+            <Grid x:Name="TaskLayout" ColumnDefinitions="340,*" ColumnSpacing="24">
+              <Border x:Name="TaskListPane" Classes="codeSurface">
+                <StackPanel x:Name="TaskListRegion" Focusable="True" Spacing="10">
+                  <TextBlock Text="Recent Code tasks" FontSize="15" FontWeight="SemiBold" />
+                  <TextBlock Text="No recent Code tasks." IsVisible="{Binding HasNoRecentCodeTasks}" Classes="metadata" />
+                  <ItemsControl x:Name="RecentTaskList" ItemsSource="{Binding RecentCodeTasks}" AutomationProperties.Name="Recent Code tasks">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:CompileBindings="False">
+                        <Button Margin="0,0,0,4"
+                                Classes="codeRow"
+                                Click="OnTaskClick"
+                                AutomationProperties.Name="{Binding Title}">
+                          <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding SafeSummary}" Classes="metadata" TextWrapping="Wrap" MaxLines="2" />
+                          </StackPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+
+              <Border x:Name="TaskDetailPane" Grid.Column="1" Classes="codeSurface" AutomationProperties.Name="Selected task timeline">
+                <StackPanel Spacing="14">
+                  <Button x:Name="BackToCodeTasksButton"
+                          IsVisible="False"
+                          Classes="codeSecondary"
+                          HorizontalAlignment="Left"
+                          Content="Back to Code tasks"
+                          Click="OnBackToCodeTasksClick"
+                          AutomationProperties.Name="Back to Code tasks" />
+                  <TextBlock x:Name="TimelineHeading" Focusable="True" Text="Selected task timeline" FontSize="15" FontWeight="SemiBold" />
+                  <TextBlock Text="No activity yet for this task."
+                             IsVisible="{Binding HasNoTimelineItems}"
+                             Classes="metadata"
+                             TextWrapping="Wrap" />
+                  <ItemsControl ItemsSource="{Binding CodeTimelineGroups}" AutomationProperties.Name="Code activity timeline">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:CompileBindings="False">
+                        <StackPanel Margin="0,0,0,14" Spacing="7">
+                          <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                          <ItemsControl ItemsSource="{Binding Items}">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:CompileBindings="False">
+                                <Grid Margin="0,0,0,10" ColumnDefinitions="14,*" ColumnSpacing="8">
+                                  <Ellipse Width="7"
+                                           Height="7"
+                                           Margin="0,6,0,0"
+                                           VerticalAlignment="Top"
+                                           Fill="{DynamicResource AccentBrush}"
+                                           IsHitTestVisible="False" />
+                                  <StackPanel Grid.Column="1" Spacing="2">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                      <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                      <TextBlock Grid.Column="1" Text="{Binding UpdatedText}" Classes="metadata" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding Detail}" Classes="metadata" TextWrapping="Wrap" />
+                                  </StackPanel>
+                                </Grid>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
   </Grid>
 </UserControl>
