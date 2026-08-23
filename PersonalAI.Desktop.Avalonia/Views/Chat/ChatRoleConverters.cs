@@ -46,6 +46,9 @@ public static class ChatRoleConverters
     public static IValueConverter IsNotFailed { get; } =
         new MessageStatusMatchConverter(ChatMessageStatus.Failed, negate: true);
 
+    public static IValueConverter FailureDisplayText { get; } =
+        new FailureDisplayTextConverter();
+
     private sealed class RoleMatchConverter(ChatRole expected, bool negate = false)
         : IValueConverter
     {
@@ -92,6 +95,25 @@ public static class ChatRoleConverters
             object? parameter,
             CultureInfo culture) =>
             value is ChatRole role && role != ChatRole.Assistant && role != ChatRole.Tool;
+
+        public object ConvertBack(
+            object? value,
+            Type targetType,
+            object? parameter,
+            CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FailureDisplayTextConverter : IValueConverter
+    {
+        public object Convert(
+            object? value,
+            Type targetType,
+            object? parameter,
+            CultureInfo culture) =>
+            value is string content && !string.IsNullOrWhiteSpace(content)
+                ? content
+                : AvaloniaChatViewModel.SafeFailureText;
 
         public object ConvertBack(
             object? value,

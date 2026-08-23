@@ -298,8 +298,8 @@
                             CornerRadius="10"
                             Background="{DynamicResource SurfaceAltBrush}"
                             IsVisible="{Binding Status, Converter={x:Static views:ChatRoleConverters.IsFailed}}"
-                            AutomationProperties.Name="{Binding Content}">
-                      <TextBlock Text="{Binding Content}"
+                            AutomationProperties.Name="{Binding Content, Converter={x:Static views:ChatRoleConverters.FailureDisplayText}}">
+                      <TextBlock Text="{Binding Content, Converter={x:Static views:ChatRoleConverters.FailureDisplayText}}"
                                  FontSize="12.5"
                                  TextWrapping="Wrap" />
                     </Border>

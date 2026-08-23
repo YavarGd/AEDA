@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using PersonalAI.Desktop.Avalonia.ViewModels.Chat;
 using PersonalAI.Desktop.Avalonia.Views.Chat;
 
 namespace PersonalAI.Tests.Avalonia.Chat;
@@ -108,8 +110,10 @@ public sealed class AvaloniaGeneralChatDesignTests
         Assert.Equal(
             "{Binding Status, Converter={x:Static views:ChatRoleConverters.IsNotFailed}}",
             Attribute(presenter, "IsVisible"));
-        Assert.Equal("{Binding Content}", Attribute(failureText, "Text"));
-        Assert.Equal("{Binding Content}", Attribute(failure, "AutomationProperties.Name"));
+        const string failureBinding =
+            "{Binding Content, Converter={x:Static views:ChatRoleConverters.FailureDisplayText}}";
+        Assert.Equal(failureBinding, Attribute(failureText, "Text"));
+        Assert.Equal(failureBinding, Attribute(failure, "AutomationProperties.Name"));
         Assert.DoesNotContain("Something went wrong. Please try again.", markup);
         Assert.Contains("Something went wrong. Please try again.", viewModel);
         Assert.Contains("DataContext.RetryCommand", markup);
@@ -118,6 +122,35 @@ public sealed class AvaloniaGeneralChatDesignTests
         Assert.DoesNotContain("local model unavailable", combined, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("context unavailable", combined, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("StatusMessage}", markup, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t")]
+    public void FailureDisplayTextUsesSafeTextForBlankContent(string? content)
+    {
+        var result = ChatRoleConverters.FailureDisplayText.Convert(
+            content,
+            typeof(string),
+            null,
+            CultureInfo.InvariantCulture);
+
+        Assert.Equal(AvaloniaChatViewModel.SafeFailureText, result);
+    }
+
+    [Fact]
+    public void FailureDisplayTextPreservesPartialContent()
+    {
+        const string partialContent = "A partial response before failure.";
+
+        var result = ChatRoleConverters.FailureDisplayText.Convert(
+            partialContent,
+            typeof(string),
+            null,
+            CultureInfo.InvariantCulture);
+
+        Assert.Equal(partialContent, result);
     }
 
     [Fact]
