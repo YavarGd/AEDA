@@ -25,7 +25,7 @@ public sealed partial class AvaloniaCodeMilestone4DesignTests
     }
 
     [Fact]
-    public void SafeStatusMessageIsTheOnlyPoliteLiveRegion()
+    public void SafeStatusMessageIsTheOnlyUnlabeledPoliteLiveRegion()
     {
         var view = ReadCodeXaml();
         var liveRegions = view.Descendants()
@@ -34,7 +34,8 @@ public sealed partial class AvaloniaCodeMilestone4DesignTests
 
         var liveRegion = Assert.Single(liveRegions);
         Assert.Equal("{Binding SafeStatusMessage}", Attribute(liveRegion, "Text"));
-        Assert.Equal("Code status", Attribute(liveRegion, "Name"));
+        Assert.Null(Attribute(liveRegion, "Name"));
+        Assert.Null(Attribute(liveRegion, "LabeledBy"));
     }
 
     [Fact]

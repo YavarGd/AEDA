@@ -94,7 +94,6 @@
                  FontSize="12.5"
                  Foreground="{DynamicResource SecondaryTextBrush}"
                  TextWrapping="Wrap"
-                 AutomationProperties.Name="Code status"
                  AutomationProperties.LiveSetting="Polite" />
     </Border>
 
