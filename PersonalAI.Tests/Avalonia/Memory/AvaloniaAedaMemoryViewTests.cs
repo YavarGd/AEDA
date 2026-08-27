@@ -13,7 +13,7 @@ public sealed class AvaloniaAedaMemoryViewTests
         Assert.Contains("Text=\"{Binding SearchText}\"", source);
         Assert.Contains("Command=\"{Binding SearchMemoriesCommand}\"", source);
         Assert.Contains("ItemsSource=\"{Binding SearchResults}\"", source);
-        Assert.Contains("No memories matched your search.", source);
+        Assert.Contains("No search results to show.", source);
 
         // Detail state
         Assert.Contains("IsVisible=\"{Binding HasSelectedMemory}\"", source);

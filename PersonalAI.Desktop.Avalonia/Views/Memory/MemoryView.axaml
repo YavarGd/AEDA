@@ -1,225 +1,602 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="using:PersonalAI.Core.Memory"
+             xmlns:memory="using:PersonalAI.Desktop.Avalonia.Views.Memory"
              xmlns:vm="using:PersonalAI.Desktop.Presentation.ViewModels"
              x:Class="PersonalAI.Desktop.Avalonia.Views.Memory.MemoryView"
+             x:Name="MemoryRoot"
              x:DataType="vm:AedaMemoryModuleViewModel"
              AutomationProperties.Name="Memory">
 
+  <UserControl.Styles>
+    <Style Selector="Border.memorySurface">
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+    <Style Selector="Border.memorySubtleSurface">
+      <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+    <Style Selector="Button.memoryNav">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="12,9" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+    </Style>
+    <Style Selector="Button.memoryNav:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <Style Selector="Button.memoryNav.selected">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.memoryOverview">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="MinHeight" Value="64" />
+      <Setter Property="Padding" Value="16,12" />
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+    <Style Selector="Button.memoryOverview:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <Style Selector="Button.memoryAction">
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Padding" Value="7,4" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.memoryOpen">
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="Button.memoryArchive">
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+    </Style>
+    <Style Selector="Button.memoryDelete">
+      <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+    <Style Selector="Button.memoryPrimary">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Padding" Value="16,7" />
+    </Style>
+    <Style Selector="TextBlock.memoryFieldLabel">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+    </Style>
+  </UserControl.Styles>
+
   <UserControl.Resources>
-    <DataTemplate x:Key="MemorySummaryTemplate" x:DataType="core:AedaMemoryRecordSummary">
-      <Border Margin="0,0,0,8"
-              Padding="12"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8">
-        <StackPanel Spacing="4">
+    <DataTemplate x:Key="MemorySummaryTemplate"
+                  x:DataType="core:AedaMemoryRecordSummary"
+                  x:CompileBindings="False">
+      <Grid Margin="0,0,0,8"
+            MinHeight="64"
+            AutomationProperties.Name="{Binding PreviewText, Converter={x:Static memory:MemoryPresentationConverters.BoundedName}, ConverterParameter=Memory record}">
+        <Border Background="{DynamicResource AccentSoftBrush}"
+                CornerRadius="9">
+          <Border.IsVisible>
+            <MultiBinding Converter="{x:Static memory:MemoryPresentationConverters.IsSelected}">
+              <Binding Path="Id" />
+              <Binding Path="DataContext.SelectedMemory.Id"
+                       RelativeSource="{RelativeSource AncestorType=UserControl}" />
+            </MultiBinding>
+          </Border.IsVisible>
+        </Border>
+        <StackPanel Margin="12,9" Spacing="3">
           <TextBlock Text="{Binding PreviewText}"
+                     FontSize="13"
                      FontWeight="SemiBold"
                      TextWrapping="Wrap"
                      MaxLines="2" />
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <TextBlock Text="{Binding Kind.Label}" Classes="metadata" />
-            <TextBlock Grid.Column="1" Text="{Binding SensitivityStatus}" Classes="metadata" />
-          </Grid>
-          <TextBlock Text="{Binding SourceLabel}" Classes="metadata" TextWrapping="Wrap" />
           <WrapPanel>
-            <Button Margin="0,4,8,0"
+            <TextBlock Text="{Binding Kind.Label}" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="·" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding SourceLabel}" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="·" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding UpdatedAtUtc, Converter={x:Static memory:MemoryPresentationConverters.Timestamp}}"
+                       Classes="metadata" />
+          </WrapPanel>
+          <WrapPanel Margin="-7,1,0,-4">
+            <Button Classes="memoryAction memoryOpen"
                     Content="Open"
                     Click="OnOpenMemoryClick"
-                    AutomationProperties.Name="Open memory detail" />
-            <Button Margin="0,4,8,0"
+                    AutomationProperties.Name="{Binding PreviewText, Converter={x:Static memory:MemoryPresentationConverters.BoundedName}, ConverterParameter=Open memory}" />
+            <Button Classes="memoryAction memoryArchive"
                     Content="Archive"
                     Click="OnArchiveMemoryClick"
-                    AutomationProperties.Name="Archive memory" />
-            <Button Margin="0,4,0,0"
+                    AutomationProperties.Name="{Binding PreviewText, Converter={x:Static memory:MemoryPresentationConverters.BoundedName}, ConverterParameter=Archive memory}" />
+            <Button Classes="memoryAction memoryDelete"
                     Content="Delete"
                     Click="OnDeleteMemoryClick"
-                    AutomationProperties.Name="Delete memory" />
+                    AutomationProperties.Name="{Binding PreviewText, Converter={x:Static memory:MemoryPresentationConverters.BoundedName}, ConverterParameter=Delete memory}" />
+          </WrapPanel>
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="DocumentSummaryTemplate" x:DataType="core:AedaKnowledgeDocumentSummary">
+      <Border Margin="0,0,0,8"
+              Padding="12,9"
+              CornerRadius="9"
+              AutomationProperties.Name="{Binding Title, Converter={x:Static memory:MemoryPresentationConverters.BoundedName}, ConverterParameter=Indexed document}">
+        <StackPanel Spacing="3">
+          <TextBlock Text="{Binding Title}"
+                     FontFamily="Consolas"
+                     FontSize="13"
+                     FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding RelativePath}"
+                     Classes="metadata"
+                     TextTrimming="CharacterEllipsis" />
+          <WrapPanel>
+            <TextBlock Text="{Binding SourceType}" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="·" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding State}" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="·" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding ChunkCount, StringFormat={}{0} chunks}" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="·" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding UpdatedAtUtc, Converter={x:Static memory:MemoryPresentationConverters.Timestamp}}"
+                       Classes="metadata" />
           </WrapPanel>
         </StackPanel>
       </Border>
     </DataTemplate>
 
-    <DataTemplate x:Key="DocumentSummaryTemplate" x:DataType="core:AedaKnowledgeDocumentSummary">
-      <TextBlock Text="{Binding Title}"
-                 TextTrimming="CharacterEllipsis"
-                 Margin="0,0,0,4" />
-    </DataTemplate>
-
     <DataTemplate x:Key="RetrievalPreviewTemplate" x:DataType="core:AedaRetrievalPreviewItem">
       <Border Margin="0,0,0,8"
-              Padding="12"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8">
-        <StackPanel Spacing="4">
-          <TextBlock Text="{Binding SourceLabel}" FontWeight="SemiBold" TextWrapping="Wrap" />
-          <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" MaxLines="3" />
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <TextBlock Text="{Binding MatchType}" Classes="metadata" />
-            <TextBlock Grid.Column="1" Text="{Binding Score}" Classes="metadata" />
-          </Grid>
+              Padding="12,9"
+              CornerRadius="9"
+              AutomationProperties.Name="{Binding PreviewText, Converter={x:Static memory:MemoryPresentationConverters.BoundedName}, ConverterParameter=Retrieval result}">
+        <StackPanel Spacing="3">
+          <TextBlock Text="{Binding PreviewText}"
+                     FontSize="12.5"
+                     TextWrapping="Wrap"
+                     MaxLines="3" />
+          <WrapPanel>
+            <TextBlock Text="{Binding SourceLabel}" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="·" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding MatchType}" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="·" Classes="metadata" Margin="0,0,6,0" />
+            <TextBlock Text="{Binding Score, StringFormat=Score {0:0.##}}" Classes="metadata" />
+          </WrapPanel>
         </StackPanel>
       </Border>
     </DataTemplate>
   </UserControl.Resources>
 
-  <Grid Margin="28" RowDefinitions="Auto,Auto,*" RowSpacing="18">
-    <StackPanel Spacing="4">
-      <TextBlock Text="Memory" FontSize="26" FontWeight="SemiBold" />
-      <TextBlock Text="{Binding PrivacyStatusText}"
-                 Classes="metadata"
+  <Grid x:Name="PageLayout"
+        Margin="32"
+        RowDefinitions="Auto,Auto,Auto,*"
+        RowSpacing="24">
+    <StackPanel x:Name="PageHeader" Spacing="4">
+      <TextBlock x:Name="PageHeading"
+                 Text="Memory"
+                 FontSize="28"
+                 FontWeight="Bold"
                  TextWrapping="Wrap" />
-      <TextBlock Text="{Binding SafeStatusMessage}"
-                 Classes="metadata"
-                 TextWrapping="Wrap"
-                 AutomationProperties.LiveSetting="Polite" />
+      <TextBlock Text="What AEDA remembers, where it came from, and what you control."
+                 FontSize="13.5"
+                 Foreground="{DynamicResource SecondaryTextBrush}"
+                 TextWrapping="Wrap" />
     </StackPanel>
 
-    <WrapPanel Grid.Row="1" Orientation="Horizontal">
-      <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
-        <TextBlock Text="{Binding TotalMemoryCountText}" />
-      </Border>
-      <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
-        <TextBlock Text="{Binding IndexedKnowledgeText}" />
-      </Border>
-      <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
-        <TextBlock Text="{Binding RetrievalStatusText}" />
-      </Border>
-    </WrapPanel>
-
-    <Grid Grid.Row="2"
-          ColumnDefinitions="2*,3*"
-          ColumnSpacing="18">
-      <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="18">
-          <StackPanel Spacing="8">
-            <TextBlock Text="Search memories" Classes="sectionHeading" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-              <TextBox x:Name="MemorySearchTextBox"
-                       PlaceholderText="Search memories"
-                       Text="{Binding SearchText}"
-                       AutomationProperties.Name="Search memories" />
-              <Button Grid.Column="1"
-                      Content="Search"
-                      Command="{Binding SearchMemoriesCommand}"
-                      AutomationProperties.Name="Run memory search" />
-            </Grid>
-            <TextBlock Text="No memories matched your search."
-                       Classes="metadata"
-                       IsVisible="{Binding !HasSearchResults}" />
-            <ItemsControl ItemsSource="{Binding SearchResults}"
-                          ItemTemplate="{StaticResource MemorySummaryTemplate}"
-                          AutomationProperties.Name="Search results"
-                          IsVisible="{Binding HasSearchResults}" />
-          </StackPanel>
-
-          <StackPanel Spacing="8">
-            <TextBlock Text="Recent memories" Classes="sectionHeading" />
-            <TextBlock Text="No explicit memories saved yet."
-                       Classes="metadata"
-                       IsVisible="{Binding HasNoRecentMemories}" />
-            <ItemsControl ItemsSource="{Binding Dashboard.RecentMemories}"
-                          ItemTemplate="{StaticResource MemorySummaryTemplate}"
-                          AutomationProperties.Name="Recent memories" />
-          </StackPanel>
-
-          <StackPanel Spacing="8">
-            <TextBlock Text="Task outcomes" Classes="sectionHeading" />
-            <TextBlock Text="No task outcomes stored yet."
-                       Classes="metadata"
-                       IsVisible="{Binding HasNoTaskOutcomes}" />
-            <ItemsControl ItemsSource="{Binding Dashboard.RecentTaskOutcomes}"
-                          ItemTemplate="{StaticResource MemorySummaryTemplate}"
-                          AutomationProperties.Name="Task outcomes" />
-          </StackPanel>
-
-          <StackPanel Spacing="8">
-            <TextBlock Text="Indexed knowledge" Classes="sectionHeading" />
-            <TextBlock Text="No indexed documents yet."
-                       Classes="metadata"
-                       IsVisible="{Binding HasNoDocuments}" />
-            <ItemsControl ItemsSource="{Binding Dashboard.RecentDocuments}"
-                          ItemTemplate="{StaticResource DocumentSummaryTemplate}"
-                          AutomationProperties.Name="Indexed documents" />
-          </StackPanel>
+    <Border x:Name="TrustSummary"
+            Grid.Row="1"
+            Classes="memorySurface"
+            Padding="24"
+            AutomationProperties.Name="Memory privacy and overview">
+      <StackPanel Spacing="16">
+        <StackPanel Orientation="Horizontal" Spacing="7">
+          <Ellipse Width="6"
+                   Height="6"
+                   Fill="{DynamicResource MutedTextBrush}"
+                   VerticalAlignment="Center" />
+          <TextBlock Text="{Binding PrivacyStatusText}"
+                     FontSize="13"
+                     Foreground="{DynamicResource SecondaryTextBrush}"
+                     TextWrapping="Wrap" />
         </StackPanel>
-      </ScrollViewer>
-
-      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="18">
-          <Border Padding="16"
-                  BorderBrush="{DynamicResource AedaBorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="8">
-            <StackPanel Spacing="8">
-              <TextBlock Text="Add explicit memory" Classes="sectionHeading" />
-              <TextBox PlaceholderText="What should AEDA remember?"
-                        AcceptsReturn="True"
-                        MinHeight="76"
-                        TextWrapping="Wrap"
-                        Text="{Binding NewMemoryText}"
-                        AutomationProperties.Name="Explicit memory content" />
-              <TextBox PlaceholderText="Why are you saving this?"
-                        Text="{Binding NewMemorySourceReason}"
-                        AutomationProperties.Name="Memory source reason" />
-              <Button HorizontalAlignment="Left"
-                      Content="Add memory"
-                      Command="{Binding CreateExplicitMemoryCommand}"
-                      AutomationProperties.Name="Add explicit memory" />
+        <WrapPanel>
+          <Border Classes="memorySubtleSurface"
+                  MinWidth="150"
+                  Margin="0,0,12,8"
+                  Padding="16,12"
+                  AutomationProperties.Name="Memory count summary">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="7" Height="7" Fill="{DynamicResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding TotalMemoryCountText}" FontSize="13" FontWeight="SemiBold" />
             </StackPanel>
           </Border>
+          <Border Classes="memorySubtleSurface"
+                  MinWidth="150"
+                  Margin="0,0,12,8"
+                  Padding="16,12"
+                  AutomationProperties.Name="Indexed knowledge summary">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="7" Height="7" Fill="{DynamicResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding IndexedKnowledgeText}" FontSize="13" FontWeight="SemiBold" />
+            </StackPanel>
+          </Border>
+          <Border Classes="memorySubtleSurface"
+                  MinWidth="150"
+                  Margin="0,0,0,8"
+                  Padding="16,12"
+                  AutomationProperties.Name="Retrieval availability summary">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="7" Height="7" Fill="{DynamicResource SecondaryTextBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding RetrievalStatusText}" FontSize="13" FontWeight="SemiBold" />
+            </StackPanel>
+          </Border>
+        </WrapPanel>
+      </StackPanel>
+    </Border>
 
-          <Border Padding="16"
-                  BorderBrush="{DynamicResource AedaBorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="8">
-            <StackPanel Spacing="8">
-              <TextBlock Text="Retrieval preview" Classes="sectionHeading" />
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox PlaceholderText="Preview query"
-                         Text="{Binding RetrievalQuery}"
-                         AutomationProperties.Name="Retrieval preview query" />
-                <Button Grid.Column="1"
-                        Content="Preview"
-                        Command="{Binding PreviewRetrievalCommand}"
-                        AutomationProperties.Name="Run retrieval preview" />
+    <Border x:Name="StatusSurface"
+            Grid.Row="2"
+            Background="{DynamicResource AccentSoftBrush}"
+            CornerRadius="9"
+            Padding="14,9"
+            HorizontalAlignment="Left"
+            IsVisible="{Binding SafeStatusMessage, Converter={x:Static memory:MemoryPresentationConverters.HasText}}">
+      <StackPanel Orientation="Horizontal" Spacing="7">
+        <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding SafeStatusMessage}"
+                   FontSize="12.5"
+                   Foreground="{DynamicResource PrimaryTextBrush}"
+                   TextWrapping="Wrap"
+                   AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer Grid.Row="3"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Auto">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Button x:Name="CompactBackButton"
+                IsVisible="False"
+                HorizontalAlignment="Left"
+                MinHeight="40"
+                Padding="10,6"
+                Background="Transparent"
+                BorderBrush="Transparent"
+                Content="Back to Memory overview"
+                Click="OnCompactBackClick"
+                AutomationProperties.Name="Back to Memory overview" />
+
+        <Grid x:Name="WorkspaceLayout"
+              Grid.Row="1"
+              ColumnDefinitions="200,380,*,320"
+              RowDefinitions="Auto,Auto,Auto"
+              ColumnSpacing="24"
+              RowSpacing="24">
+          <StackPanel x:Name="SourceNavigation"
+                      Grid.Column="0"
+                      Spacing="6"
+                      AutomationProperties.Name="Memory sources">
+            <Button x:Name="RecentSourceButton"
+                    Classes="memoryNav selected"
+                    Click="OnRecentSourceClick"
+                    AutomationProperties.Name="Show Recent memories">
+              <TextBlock Text="Recent memories" TextWrapping="Wrap" />
+            </Button>
+            <Button x:Name="TaskSourceButton"
+                    Classes="memoryNav"
+                    Click="OnTaskSourceClick"
+                    AutomationProperties.Name="Show Task outcomes">
+              <TextBlock Text="Task outcomes" TextWrapping="Wrap" />
+            </Button>
+            <Button x:Name="IndexedSourceButton"
+                    Classes="memoryNav"
+                    Click="OnIndexedSourceClick"
+                    AutomationProperties.Name="Show Indexed knowledge">
+              <TextBlock Text="Indexed knowledge" TextWrapping="Wrap" />
+            </Button>
+          </StackPanel>
+
+          <StackPanel x:Name="CompactOverview"
+                      Grid.Column="0"
+                      Grid.ColumnSpan="4"
+                      IsVisible="False"
+                      Focusable="True"
+                      Spacing="8"
+                      AutomationProperties.Name="Memory overview">
+            <Button x:Name="OverviewRecentButton"
+                    Classes="memoryOverview"
+                    Click="OnRecentSourceClick"
+                    AutomationProperties.Name="Open Recent memories">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Recent memories" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Browse recent memory records" Classes="metadata" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="›" FontSize="22" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
               </Grid>
-              <TextBlock Text="No retrieval preview results yet."
-                         Classes="metadata"
-                         IsVisible="{Binding !HasRetrievalPreview}" />
-              <ItemsControl ItemsSource="{Binding RetrievalPreview}"
-                            ItemTemplate="{StaticResource RetrievalPreviewTemplate}"
-                            AutomationProperties.Name="Retrieval preview results" />
-            </StackPanel>
-          </Border>
+            </Button>
+            <Button x:Name="OverviewTaskButton"
+                    Classes="memoryOverview"
+                    Click="OnTaskSourceClick"
+                    AutomationProperties.Name="Open Task outcomes">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Task outcomes" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Browse records from completed tasks" Classes="metadata" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="›" FontSize="22" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+            <Button x:Name="OverviewIndexedButton"
+                    Classes="memoryOverview"
+                    Click="OnIndexedSourceClick"
+                    AutomationProperties.Name="Open Indexed knowledge">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Indexed knowledge" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Browse indexed documents" Classes="metadata" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="›" FontSize="22" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+            <Button x:Name="OverviewAddButton"
+                    Classes="memoryOverview"
+                    Click="OnOpenAddMemoryClick"
+                    AutomationProperties.Name="Open Add explicit memory">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Add explicit memory" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Save something yourself" Classes="metadata" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="›" FontSize="22" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+            <Button x:Name="OverviewRetrievalButton"
+                    Classes="memoryOverview"
+                    Click="OnOpenRetrievalClick"
+                    AutomationProperties.Name="Open Retrieval preview">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Retrieval preview" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="See what a workflow would retrieve" Classes="metadata" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="›" FontSize="22" Foreground="{DynamicResource MutedTextBrush}" VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+          </StackPanel>
 
-          <Border Padding="16"
-                  BorderBrush="{DynamicResource AedaBorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="8">
-            <StackPanel Spacing="8">
-              <TextBlock Text="Selected memory" Classes="sectionHeading" />
-              <TextBlock Text="Select a memory to view its safe detail."
-                         Classes="metadata"
-                         TextWrapping="Wrap"
-                         IsVisible="{Binding HasNoSelectedMemory}" />
-              <StackPanel Spacing="4" IsVisible="{Binding HasSelectedMemory}">
+          <StackPanel x:Name="RecordWorkspace"
+                      Grid.Column="1"
+                      Focusable="True"
+                      Spacing="14"
+                      AutomationProperties.Name="Memory record workspace">
+            <Border Classes="memorySurface" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Search memories" FontSize="12.5" FontWeight="SemiBold" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBox x:Name="MemorySearchTextBox"
+                           MinHeight="36"
+                           PlaceholderText="Search memories"
+                           Text="{Binding SearchText}"
+                           AutomationProperties.Name="Search memories" />
+                  <Button Grid.Column="1"
+                          MinHeight="36"
+                          Padding="14,6"
+                          Content="Search"
+                          Command="{Binding SearchMemoriesCommand}"
+                          AutomationProperties.Name="Run memory search" />
+                </Grid>
+                <TextBlock Text="Searches memory records only — not indexed knowledge."
+                           Classes="metadata"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="memorySurface" AutomationProperties.Name="Search results surface">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Search results" FontSize="13" FontWeight="Bold" />
+                <TextBlock Text="No search results to show."
+                           Classes="metadata"
+                           IsVisible="{Binding !HasSearchResults}" />
+                <ItemsControl ItemsSource="{Binding SearchResults}"
+                              ItemTemplate="{StaticResource MemorySummaryTemplate}"
+                              IsVisible="{Binding HasSearchResults}"
+                              AutomationProperties.Name="Search results" />
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="RecentMemoriesSurface" Classes="memorySurface">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Recent memories" FontSize="13" FontWeight="Bold" />
+                <TextBlock Text="No recent memories to show."
+                           Classes="metadata"
+                           IsVisible="{Binding HasNoRecentMemories}" />
+                <ItemsControl x:Name="RecentMemoryList"
+                              ItemsSource="{Binding Dashboard.RecentMemories}"
+                              ItemTemplate="{StaticResource MemorySummaryTemplate}"
+                              AutomationProperties.Name="Recent memories" />
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="TaskOutcomesSurface" Classes="memorySurface" IsVisible="False">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Task outcomes" FontSize="13" FontWeight="Bold" />
+                <TextBlock Text="No task outcomes to show."
+                           Classes="metadata"
+                           IsVisible="{Binding HasNoTaskOutcomes}" />
+                <ItemsControl x:Name="TaskOutcomeList"
+                              ItemsSource="{Binding Dashboard.RecentTaskOutcomes}"
+                              ItemTemplate="{StaticResource MemorySummaryTemplate}"
+                              AutomationProperties.Name="Task outcomes" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <Border x:Name="SelectedDetailSurface"
+                  Grid.Column="2"
+                  Classes="memorySurface"
+                  MinWidth="280"
+                  AutomationProperties.Name="Selected memory detail">
+            <StackPanel Spacing="14">
+              <TextBlock x:Name="SelectedMemoryDetailHeading"
+                         Text="Selected memory"
+                         FontSize="14"
+                         FontWeight="Bold"
+                         Focusable="True" />
+              <Border BorderBrush="{DynamicResource BorderBrush}"
+                      BorderThickness="1"
+                      CornerRadius="12"
+                      Padding="26"
+                      IsVisible="{Binding HasNoSelectedMemory}">
+                <TextBlock Text="Select a memory to view its safe detail."
+                           Classes="metadata"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
+              </Border>
+              <StackPanel Spacing="10" IsVisible="{Binding HasSelectedMemory}">
                 <TextBlock Text="{Binding SelectedMemory.Text}"
+                           FontSize="13"
                            FontWeight="SemiBold"
                            TextWrapping="Wrap"
-                           MaxLines="6" />
-                <TextBlock Text="{Binding SelectedMemory.Visibility}" Classes="metadata" />
-                <TextBlock Text="{Binding SelectedMemory.SensitivityStatus}" Classes="metadata" />
-                <TextBlock Text="{Binding SelectedMemory.Confidence}" Classes="metadata" />
-                <TextBlock Text="{Binding SelectedMemory.Source.DisplayName}" Classes="metadata" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding SelectedMemory.Source.RelativePath}" Classes="metadata" TextTrimming="CharacterEllipsis" />
+                           MaxLines="8" />
+                <WrapPanel>
+                  <StackPanel MinWidth="110" Margin="0,0,16,10" Spacing="2">
+                    <TextBlock Text="Kind" Classes="memoryFieldLabel" />
+                    <TextBlock Text="{Binding SelectedMemory.Kind.Label}" Classes="metadata" />
+                  </StackPanel>
+                  <StackPanel MinWidth="110" Margin="0,0,16,10" Spacing="2">
+                    <TextBlock Text="Visibility" Classes="memoryFieldLabel" />
+                    <TextBlock Text="{Binding SelectedMemory.Visibility}" Classes="metadata" />
+                  </StackPanel>
+                  <StackPanel MinWidth="110" Margin="0,0,16,10" Spacing="2">
+                    <TextBlock Text="Sensitivity" Classes="memoryFieldLabel" />
+                    <TextBlock Text="{Binding SelectedMemory.SensitivityStatus}" Classes="metadata" />
+                  </StackPanel>
+                  <StackPanel MinWidth="110" Margin="0,0,16,10" Spacing="2">
+                    <TextBlock Text="Confidence" Classes="memoryFieldLabel" />
+                    <TextBlock Text="{Binding SelectedMemory.Confidence}" Classes="metadata" />
+                  </StackPanel>
+                  <StackPanel MinWidth="110" Margin="0,0,16,10" Spacing="2">
+                    <TextBlock Text="Created" Classes="memoryFieldLabel" />
+                    <TextBlock Text="{Binding SelectedMemory.CreatedAtUtc, Converter={x:Static memory:MemoryPresentationConverters.Timestamp}}" Classes="metadata" />
+                  </StackPanel>
+                  <StackPanel MinWidth="110" Margin="0,0,16,10" Spacing="2">
+                    <TextBlock Text="Updated" Classes="memoryFieldLabel" />
+                    <TextBlock Text="{Binding SelectedMemory.UpdatedAtUtc, Converter={x:Static memory:MemoryPresentationConverters.Timestamp}}" Classes="metadata" />
+                  </StackPanel>
+                  <StackPanel MinWidth="110" Margin="0,0,16,10" Spacing="2">
+                    <TextBlock Text="Source" Classes="memoryFieldLabel" />
+                    <TextBlock Text="{Binding SelectedMemory.Source.DisplayName}" Classes="metadata" TextWrapping="Wrap" />
+                  </StackPanel>
+                </WrapPanel>
+                <TextBlock Text="{Binding SelectedMemory.Source.RelativePath}"
+                           Classes="metadata"
+                           TextTrimming="CharacterEllipsis" />
               </StackPanel>
             </StackPanel>
           </Border>
-        </StackPanel>
-      </ScrollViewer>
-    </Grid>
+
+          <Border x:Name="IndexedKnowledgeSurface"
+                  Grid.Column="1"
+                  Grid.ColumnSpan="2"
+                  Classes="memorySurface"
+                  IsVisible="False">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Indexed knowledge" FontSize="13" FontWeight="Bold" />
+              <TextBlock Text="Read-only document summaries. Not selectable in this milestone."
+                         Classes="metadata"
+                         TextWrapping="Wrap" />
+              <TextBlock Text="No indexed documents to show."
+                         Classes="metadata"
+                         IsVisible="{Binding HasNoDocuments}" />
+              <ItemsControl ItemsSource="{Binding Dashboard.RecentDocuments}"
+                            ItemTemplate="{StaticResource DocumentSummaryTemplate}"
+                            AutomationProperties.Name="Indexed documents" />
+            </StackPanel>
+          </Border>
+
+          <StackPanel x:Name="ToolsPanel" Grid.Column="3" Spacing="24">
+            <Border x:Name="AddMemorySurface"
+                    Classes="memorySurface"
+                    AutomationProperties.Name="Add explicit memory">
+              <StackPanel Spacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Add explicit memory" FontSize="14" FontWeight="Bold" />
+                  <TextBlock Text="Add memory saves this as an explicit user-initiated memory."
+                             Classes="metadata"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Memory content" Classes="memoryFieldLabel" />
+                  <TextBox MinHeight="80"
+                           PlaceholderText="What should AEDA remember?"
+                           AcceptsReturn="True"
+                           TextWrapping="Wrap"
+                           Text="{Binding NewMemoryText}"
+                           AutomationProperties.Name="Memory content" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Why are you saving this?" Classes="memoryFieldLabel" />
+                  <TextBox MinHeight="36"
+                           PlaceholderText="Why are you saving this?"
+                           Text="{Binding NewMemorySourceReason}"
+                           AutomationProperties.Name="Memory source reason" />
+                </StackPanel>
+                <Button HorizontalAlignment="Left"
+                        Classes="memoryPrimary"
+                        Content="Add memory"
+                        Command="{Binding CreateExplicitMemoryCommand}"
+                        AutomationProperties.Name="Add memory" />
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="RetrievalSurface"
+                    Classes="memorySurface"
+                    AutomationProperties.Name="Retrieval preview">
+              <StackPanel Spacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Retrieval preview" FontSize="14" FontWeight="Bold" />
+                  <TextBlock Text="Preview the memory and knowledge results retrieved for a query."
+                             Classes="metadata"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBox MinHeight="36"
+                           PlaceholderText="Preview query"
+                           Text="{Binding RetrievalQuery}"
+                           AutomationProperties.Name="Retrieval query" />
+                  <Button Grid.Column="1"
+                          MinHeight="36"
+                          Padding="14,6"
+                          Content="Preview"
+                          Command="{Binding PreviewRetrievalCommand}"
+                          AutomationProperties.Name="Preview retrieval" />
+                </Grid>
+                <TextBlock Text="No retrieval preview results yet."
+                           Classes="metadata"
+                           IsVisible="{Binding !HasRetrievalPreview}" />
+                <ItemsControl ItemsSource="{Binding RetrievalPreview}"
+                              ItemTemplate="{StaticResource RetrievalPreviewTemplate}"
+                              IsVisible="{Binding HasRetrievalPreview}"
+                              AutomationProperties.Name="Retrieval preview results" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </ScrollViewer>
   </Grid>
 </UserControl>
