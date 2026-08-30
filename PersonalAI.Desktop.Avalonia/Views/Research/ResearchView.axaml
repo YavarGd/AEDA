@@ -1,205 +1,666 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="using:PersonalAI.Core.Research"
+             xmlns:research="using:PersonalAI.Desktop.Avalonia.Views.Research"
              xmlns:vm="using:PersonalAI.Desktop.Presentation.ViewModels"
              x:Class="PersonalAI.Desktop.Avalonia.Views.Research.ResearchView"
              x:DataType="vm:AedaResearchModuleViewModel"
              AutomationProperties.Name="Research">
 
+  <UserControl.Styles>
+    <Style Selector="Border.researchCard">
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+    </Style>
+    <Style Selector="Button.researchOverview">
+      <Setter Property="MinHeight" Value="56" />
+      <Setter Property="Padding" Value="16,12" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+    <Style Selector="ToggleButton.researchReportRow">
+      <Setter Property="MinHeight" Value="68" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="9" />
+    </Style>
+    <Style Selector="ToggleButton.researchReportRow:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.researchReportRow:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="TextBlock.researchSectionLabel">
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </UserControl.Styles>
+
   <UserControl.Resources>
-    <DataTemplate x:Key="ClaimTemplate" x:DataType="core:ResearchClaim">
+    <DataTemplate x:Key="ExtractedClaimTemplate"
+                  x:DataType="core:ResearchClaim"
+                  x:CompileBindings="False">
       <Border Margin="0,0,0,8"
-              Padding="12"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8">
-        <StackPanel Spacing="4">
-          <TextBlock Text="{Binding Text}" TextWrapping="Wrap" MaxLines="3" />
-          <TextBlock Text="{Binding Kind}" Classes="metadata" />
+              Padding="12,10"
+              Background="{DynamicResource SubtleSurfaceBrush}"
+              CornerRadius="9"
+              AutomationProperties.Name="{Binding Converter={x:Static research:ResearchPresentationConverters.BoundedName}, ConverterParameter=Extracted claim}">
+        <StackPanel Spacing="3">
+          <TextBlock Text="{Binding Text}"
+                     Foreground="{DynamicResource PrimaryTextBrush}"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     MaxLines="4" />
+          <TextBlock Text="{Binding Kind}"
+                     Foreground="{DynamicResource MutedTextBrush}"
+                     FontSize="11" />
         </StackPanel>
       </Border>
     </DataTemplate>
 
-    <DataTemplate x:Key="ReportSummaryTemplate" x:DataType="core:VerificationReport">
-      <Button Margin="0,0,0,8"
-              Padding="12"
-              HorizontalAlignment="Stretch"
-              HorizontalContentAlignment="Stretch"
-              Background="Transparent"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              Click="OnReportClick"
-              AutomationProperties.Name="{Binding Question.Text}">
-        <StackPanel Spacing="4">
-          <TextBlock Text="{Binding Question.Text}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <TextBlock Text="{Binding OverallVerdict}" Classes="metadata" />
-            <TextBlock Grid.Column="1" Text="{Binding Confidence}" Classes="metadata" />
-          </Grid>
-        </StackPanel>
-      </Button>
-    </DataTemplate>
-
-    <DataTemplate x:Key="EvidenceTemplate" x:DataType="core:EvidenceItem">
-      <StackPanel Margin="0,0,0,8" Spacing="2">
-        <TextBlock Text="{Binding Excerpt}" TextWrapping="Wrap" MaxLines="3" />
-        <TextBlock Text="{Binding Source.Label}" Classes="metadata" TextWrapping="Wrap" />
-        <TextBlock Text="{Binding Score}" Classes="metadata" />
-      </StackPanel>
-    </DataTemplate>
-
-    <DataTemplate x:Key="CitationTemplate" x:DataType="core:CitationReference">
-      <TextBlock Text="{Binding SourceLabel}"
-                 TextTrimming="CharacterEllipsis"
-                 Margin="0,0,0,4" />
-    </DataTemplate>
-
-    <DataTemplate x:Key="FindingTemplate" x:DataType="core:VerificationFinding">
+    <DataTemplate x:Key="ReportClaimTemplate"
+                  x:DataType="core:ResearchClaim"
+                  x:CompileBindings="False">
       <Border Margin="0,0,0,8"
-              Padding="12"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
+              Padding="11,9"
+              BorderBrush="{DynamicResource BorderBrush}"
               BorderThickness="1"
-              CornerRadius="8">
-        <StackPanel Spacing="4">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <TextBlock Text="{Binding Verdict}" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="1" Text="{Binding Confidence}" Classes="metadata" />
-          </Grid>
-          <TextBlock Text="{Binding SafeSummary}" TextWrapping="Wrap" MaxLines="3" />
+              CornerRadius="8"
+              AutomationProperties.Name="{Binding Converter={x:Static research:ResearchPresentationConverters.BoundedName}, ConverterParameter=Report claim}">
+        <StackPanel Spacing="3">
+          <TextBlock Text="{Binding Text}"
+                     Foreground="{DynamicResource PrimaryTextBrush}"
+                     TextWrapping="Wrap"
+                     MaxLines="4" />
+          <TextBlock Text="{Binding Kind}"
+                     Foreground="{DynamicResource MutedTextBrush}"
+                     FontSize="11" />
         </StackPanel>
       </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="ReportSummaryTemplate"
+                  x:DataType="core:VerificationReport"
+                  x:CompileBindings="False">
+      <ToggleButton Margin="0,0,0,8"
+                    Classes="researchReportRow"
+                    Click="OnReportClick"
+                    AutomationProperties.Name="{Binding Converter={x:Static research:ResearchPresentationConverters.BoundedName}, ConverterParameter=Verification report}">
+        <ToggleButton.IsChecked>
+          <MultiBinding Converter="{x:Static research:ResearchPresentationConverters.IsSelectedReport}">
+            <Binding Path="Id" />
+            <Binding Path="DataContext.SelectedReport.Id"
+                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+          </MultiBinding>
+        </ToggleButton.IsChecked>
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Question.Text}"
+                     Foreground="{DynamicResource PrimaryTextBrush}"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     MaxLines="2"
+                     TextTrimming="CharacterEllipsis" />
+          <WrapPanel Orientation="Horizontal">
+            <TextBlock Text="{Binding CreatedAtUtc, Converter={x:Static research:ResearchPresentationConverters.Timestamp}}"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       FontSize="11"
+                       Margin="0,0,8,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+              <TextBlock Text="{Binding Claims, Converter={x:Static research:ResearchPresentationConverters.Count}}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+              <TextBlock Text=" claims" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="{Binding Evidence, Converter={x:Static research:ResearchPresentationConverters.Count}}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+              <TextBlock Text=" evidence" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+            </StackPanel>
+          </WrapPanel>
+          <WrapPanel Orientation="Horizontal">
+            <TextBlock Text="{Binding OverallVerdict}"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Margin="0,0,8,0" />
+            <TextBlock Text="{Binding Status}"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       FontSize="11"
+                       Margin="0,0,8,0" />
+            <TextBlock Foreground="{DynamicResource MutedTextBrush}"
+                       FontSize="11"
+                       TextWrapping="Wrap">
+              <TextBlock.Text>
+                <MultiBinding Converter="{x:Static research:ResearchPresentationConverters.Provenance}">
+                  <Binding Path="LocalEvidenceOnly" />
+                  <Binding Path="RemoteSearchWasUsed" />
+                </MultiBinding>
+              </TextBlock.Text>
+            </TextBlock>
+          </WrapPanel>
+        </StackPanel>
+      </ToggleButton>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FindingTemplate"
+                  x:DataType="core:VerificationFinding"
+                  x:CompileBindings="False">
+      <Border Margin="0,0,0,8"
+              Padding="12,10"
+              Background="{DynamicResource SubtleSurfaceBrush}"
+              CornerRadius="9"
+              AutomationProperties.Name="{Binding Converter={x:Static research:ResearchPresentationConverters.BoundedName}}">
+        <StackPanel Spacing="4">
+          <WrapPanel Orientation="Horizontal">
+            <TextBlock Text="{Binding Verdict}"
+                       Foreground="{DynamicResource PrimaryTextBrush}"
+                       FontWeight="SemiBold"
+                       Margin="0,0,8,0" />
+            <TextBlock Text="{Binding Confidence}"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       FontSize="12"
+                       Margin="0,0,4,0" />
+            <TextBlock Text="confidence"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       FontSize="12" />
+          </WrapPanel>
+          <TextBlock Text="{Binding SafeSummary}"
+                     Foreground="{DynamicResource SecondaryTextBrush}"
+                     TextWrapping="Wrap"
+                     MaxLines="4" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="EvidenceTemplate"
+                  x:DataType="core:EvidenceItem"
+                  x:CompileBindings="False">
+      <Border Margin="0,0,0,8"
+              MinHeight="64"
+              Padding="11,9"
+              Background="{DynamicResource SubtleSurfaceBrush}"
+              CornerRadius="8"
+              AutomationProperties.Name="{Binding Converter={x:Static research:ResearchPresentationConverters.BoundedName}}">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Excerpt}"
+                     Foreground="{DynamicResource PrimaryTextBrush}"
+                     TextWrapping="Wrap"
+                     MaxLines="6" />
+          <WrapPanel Orientation="Horizontal">
+            <TextBlock Text="{Binding Source.Label}"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Margin="0,0,8,0"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Source.Type}"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       FontSize="11"
+                       Margin="0,0,8,0" />
+            <TextBlock Text="{Binding Source.IsLocal, Converter={x:Static research:ResearchPresentationConverters.LocalSource}}"
+                       Foreground="{DynamicResource MutedTextBrush}"
+                       FontSize="11"
+                       Margin="0,0,8,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+              <TextBlock Text="Score " Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+              <TextBlock Text="{Binding Score}" Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+            </StackPanel>
+            <TextBlock Foreground="{DynamicResource MutedTextBrush}" FontSize="11">
+              <TextBlock.Text>
+                <MultiBinding Converter="{x:Static research:ResearchPresentationConverters.EvidenceRelation}">
+                  <Binding Path="SupportsClaim" />
+                  <Binding Path="ContradictsClaim" />
+                </MultiBinding>
+              </TextBlock.Text>
+            </TextBlock>
+          </WrapPanel>
+          <TextBlock Text="{Binding Source.RelativePath}"
+                     Foreground="{DynamicResource MutedTextBrush}"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding Source.RelativePath, Converter={x:Static research:ResearchPresentationConverters.HasText}}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CitationTemplate"
+                  x:DataType="core:CitationReference"
+                  x:CompileBindings="False">
+      <Border Margin="0,0,0,8"
+              Padding="11,8"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="1"
+              CornerRadius="8"
+              AutomationProperties.Name="{Binding Converter={x:Static research:ResearchPresentationConverters.BoundedName}}">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding CitationId}"
+                     Foreground="{DynamicResource MutedTextBrush}"
+                     FontSize="11" />
+          <TextBlock Text="{Binding SourceLabel}"
+                     Foreground="{DynamicResource SecondaryTextBrush}"
+                     TextWrapping="Wrap"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="GapTemplate" x:CompileBindings="False">
+      <TextBlock Text="{Binding}"
+                 Margin="0,0,0,8"
+                 Foreground="{DynamicResource SecondaryTextBrush}"
+                 TextWrapping="Wrap" />
     </DataTemplate>
   </UserControl.Resources>
 
-  <Grid Margin="28" RowDefinitions="Auto,Auto,*" RowSpacing="18">
-    <StackPanel Spacing="4">
-      <TextBlock Text="Research" FontSize="26" FontWeight="SemiBold" />
-      <TextBlock Text="{Binding PrivacyStatusText}"
-                 Classes="metadata"
-                 TextWrapping="Wrap" />
-      <TextBlock Text="{Binding SafeStatusMessage}"
-                 Classes="metadata"
-                 TextWrapping="Wrap"
-                 AutomationProperties.LiveSetting="Polite" />
+  <Grid x:Name="PageLayout"
+        Margin="32"
+        RowDefinitions="Auto,Auto,*"
+        RowSpacing="24">
+    <StackPanel x:Name="PageHeader" Spacing="16">
+      <StackPanel Spacing="5">
+        <TextBlock x:Name="PageHeading"
+                   Text="Research"
+                   Foreground="{DynamicResource PrimaryTextBrush}"
+                   FontSize="28"
+                   FontWeight="Bold" />
+        <TextBlock Text="Verify factual claims against evidence already available to AEDA."
+                   Foreground="{DynamicResource SecondaryTextBrush}"
+                   FontSize="14"
+                   TextWrapping="Wrap" />
+        <TextBlock Text="{Binding PrivacyStatusText}"
+                   Foreground="{DynamicResource SecondaryTextBrush}"
+                   FontSize="13"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <Border x:Name="CapabilitySummary"
+              Classes="researchCard"
+              Padding="24"
+              AutomationProperties.Name="Research privacy and evidence providers">
+        <ItemsControl ItemsSource="{Binding ProviderStatusLabels}"
+                      AutomationProperties.Name="Evidence provider status">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:CompileBindings="False">
+              <Border Margin="0,0,12,8"
+                      MinWidth="220"
+                      Padding="16,12"
+                      Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}"
+                      BorderThickness="1"
+                      CornerRadius="10">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Ellipse Width="7"
+                           Height="7"
+                           Fill="{DynamicResource SecondaryTextBrush}"
+                           VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding}"
+                             Foreground="{DynamicResource PrimaryTextBrush}"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
     </StackPanel>
 
-    <ItemsControl Grid.Row="1"
-                  ItemsSource="{Binding ProviderStatusLabels}"
-                  AutomationProperties.Name="Evidence provider status">
-      <ItemsControl.ItemsPanel>
-        <ItemsPanelTemplate>
-          <WrapPanel Orientation="Horizontal" />
-        </ItemsPanelTemplate>
-      </ItemsControl.ItemsPanel>
-      <ItemsControl.ItemTemplate>
-        <DataTemplate x:CompileBindings="False">
-          <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
-            <TextBlock Text="{Binding}" />
-          </Border>
-        </DataTemplate>
-      </ItemsControl.ItemTemplate>
-    </ItemsControl>
+    <Border x:Name="StatusSurface"
+            Grid.Row="1"
+            Padding="14,9"
+            HorizontalAlignment="Left"
+            Background="{DynamicResource AccentSoftBrush}"
+            CornerRadius="9">
+      <StackPanel Orientation="Horizontal" Spacing="7">
+        <Ellipse Width="6"
+                 Height="6"
+                 Fill="{DynamicResource AccentBrush}"
+                 VerticalAlignment="Center" />
+        <TextBlock Text="{Binding SafeStatusMessage}"
+                   Foreground="{DynamicResource PrimaryTextBrush}"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+    </Border>
 
-    <Grid Grid.Row="2"
-          ColumnDefinitions="2*,3*"
-          ColumnSpacing="18">
-      <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="18">
-          <StackPanel Spacing="8">
-            <TextBlock Text="Verify a claim" Classes="sectionHeading" />
-            <TextBox x:Name="VerificationTextBox"
-                     PlaceholderText="Paste an answer or factual claim"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     MinHeight="96"
-                     Text="{Binding VerificationText}"
-                     AutomationProperties.Name="Research verification input" />
-            <WrapPanel Orientation="Horizontal">
-              <Button Margin="0,0,8,0"
-                      Content="Extract claims"
-                      Command="{Binding ExtractClaimsCommand}"
-                      AutomationProperties.Name="Extract claims" />
-              <Button Content="Verify locally"
-                      Command="{Binding VerifyWithLocalEvidenceCommand}"
-                      AutomationProperties.Name="Verify with local evidence" />
-            </WrapPanel>
-            <TextBlock Text="No claims extracted yet."
-                       Classes="metadata"
-                       IsVisible="{Binding HasNoClaims}" />
-            <ItemsControl ItemsSource="{Binding ExtractedClaims}"
-                          ItemTemplate="{StaticResource ClaimTemplate}"
-                          AutomationProperties.Name="Extracted claims" />
-          </StackPanel>
+    <ScrollViewer Grid.Row="2"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Button x:Name="CompactBackButton"
+                IsVisible="False"
+                HorizontalAlignment="Left"
+                MinHeight="40"
+                Padding="10,6"
+                Background="Transparent"
+                BorderBrush="Transparent"
+                Click="OnCompactBackClick"
+                Content="Back to Research overview"
+                AutomationProperties.Name="Back to Research overview" />
 
-          <StackPanel Spacing="8">
-            <TextBlock Text="Recent reports" Classes="sectionHeading" />
-            <TextBlock Text="No verification reports yet. Local-only evidence is used to build reports."
-                       Classes="metadata"
-                       TextWrapping="Wrap"
-                       IsVisible="{Binding HasNoRecentReports}" />
-            <ItemsControl ItemsSource="{Binding RecentReports}"
-                          ItemTemplate="{StaticResource ReportSummaryTemplate}"
-                          AutomationProperties.Name="Recent reports" />
-          </StackPanel>
-        </StackPanel>
-      </ScrollViewer>
-
-      <Border Grid.Column="1"
-              Padding="16"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8">
-        <Grid RowDefinitions="Auto,*" RowSpacing="12">
-          <StackPanel Spacing="4">
-            <TextBlock Text="No report selected. Choose a recent report or verify a claim to build one from local evidence."
-                       Classes="metadata"
-                       TextWrapping="Wrap"
-                       IsVisible="{Binding HasNoSelectedReport}" />
-            <StackPanel Spacing="4" IsVisible="{Binding HasSelectedReport}">
-              <TextBlock Text="{Binding SelectedReport.Question.Text}"
-                         FontSize="18"
-                         FontWeight="SemiBold"
-                         TextWrapping="Wrap" />
-              <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12">
-                <TextBlock Text="{Binding SelectedReport.OverallVerdict}" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="1" Text="{Binding SelectedReport.Confidence}" Classes="metadata" />
+        <Grid x:Name="WorkspaceLayout"
+              Grid.Row="1"
+              ColumnDefinitions="400,320,*"
+              RowDefinitions="*,0"
+              ColumnSpacing="24"
+              RowSpacing="24">
+          <StackPanel x:Name="CompactOverview"
+                      Grid.ColumnSpan="3"
+                      IsVisible="False"
+                      Focusable="True"
+                      Spacing="8"
+                      AutomationProperties.Name="Research overview">
+            <Button x:Name="OverviewClaimButton"
+                    Classes="researchOverview"
+                    Click="OnOpenClaimPaneClick"
+                    AutomationProperties.Name="Open Verify a claim">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Verify a claim" FontWeight="SemiBold" />
+                  <TextBlock Text="Paste an answer or claim to check"
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             FontSize="12" />
+                </StackPanel>
+                <Path Grid.Column="1"
+                      Width="8"
+                      Height="14"
+                      Data="M1,1 L7,7 L1,13"
+                      Stroke="{DynamicResource SecondaryTextBrush}"
+                      StrokeThickness="2"
+                      VerticalAlignment="Center" />
               </Grid>
-            </StackPanel>
+            </Button>
+            <Button x:Name="OverviewExtractedButton"
+                    Classes="researchOverview"
+                    Click="OnOpenExtractedPaneClick"
+                    AutomationProperties.Name="Open Extracted claims">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Extracted claims" FontWeight="SemiBold" />
+                  <TextBlock Text="Preview claims detected in your input"
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             FontSize="12" />
+                </StackPanel>
+                <Path Grid.Column="1"
+                      Width="8"
+                      Height="14"
+                      Data="M1,1 L7,7 L1,13"
+                      Stroke="{DynamicResource SecondaryTextBrush}"
+                      StrokeThickness="2"
+                      VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+            <Button x:Name="OverviewReportsButton"
+                    Classes="researchOverview"
+                    Click="OnOpenReportsPaneClick"
+                    AutomationProperties.Name="Open Recent reports">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Recent reports" FontWeight="SemiBold" />
+                  <TextBlock Text="Browse process-local verification reports"
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             FontSize="12" />
+                </StackPanel>
+                <Path Grid.Column="1"
+                      Width="8"
+                      Height="14"
+                      Data="M1,1 L7,7 L1,13"
+                      Stroke="{DynamicResource SecondaryTextBrush}"
+                      StrokeThickness="2"
+                      VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+            <Button x:Name="OverviewSelectedReportButton"
+                    Classes="researchOverview"
+                    Click="OnOpenSelectedReportPaneClick"
+                    IsVisible="{Binding HasSelectedReport}"
+                    AutomationProperties.Name="Open Selected verification report">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Selected report" FontWeight="SemiBold" />
+                  <TextBlock Text="Read findings, evidence, citations, and unresolved gaps"
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <Path Grid.Column="1"
+                      Width="8"
+                      Height="14"
+                      Data="M1,1 L7,7 L1,13"
+                      Stroke="{DynamicResource SecondaryTextBrush}"
+                      StrokeThickness="2"
+                      VerticalAlignment="Center" />
+              </Grid>
+            </Button>
           </StackPanel>
 
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasSelectedReport}">
-            <StackPanel Spacing="12">
-              <TextBlock Text="Findings" Classes="sectionHeading" />
-              <ItemsControl ItemsSource="{Binding Findings}"
-                            ItemTemplate="{StaticResource FindingTemplate}"
-                            AutomationProperties.Name="Verification findings" />
+          <StackPanel x:Name="ClaimColumn"
+                      Grid.Column="0"
+                      Spacing="24">
+            <Border x:Name="ClaimWorkspaceSurface"
+                    Classes="researchCard"
+                    Padding="24"
+                    AutomationProperties.Name="Verify a claim workspace">
+              <StackPanel Spacing="12">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Verify a claim"
+                             Foreground="{DynamicResource PrimaryTextBrush}"
+                             FontSize="15"
+                             FontWeight="Bold" />
+                  <TextBlock Text="Paste a factual claim or a longer answer. Extract claims previews the factual statements AEDA detects; Verify locally checks the current input directly."
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBox x:Name="VerificationTextBox"
+                         PlaceholderText="Paste a factual claim or a longer answer"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="96"
+                         MaxHeight="240"
+                         Text="{Binding VerificationText}"
+                         AutomationProperties.Name="Research verification input" />
+                <WrapPanel Orientation="Horizontal">
+                  <Button Margin="0,0,10,8"
+                          MinHeight="40"
+                          Padding="16,8"
+                          Content="Verify locally"
+                          Command="{Binding VerifyWithLocalEvidenceCommand}"
+                          Background="{DynamicResource AccentBrush}"
+                          Foreground="{DynamicResource AccentTextBrush}"
+                          BorderBrush="{DynamicResource AccentBrush}"
+                          AutomationProperties.Name="Verify with local evidence" />
+                  <Button Margin="0,0,0,8"
+                          MinHeight="40"
+                          Padding="14,8"
+                          Content="Extract claims"
+                          Command="{Binding ExtractClaimsCommand}"
+                          Background="Transparent"
+                          BorderBrush="{DynamicResource BorderBrush}"
+                          AutomationProperties.Name="Extract claims" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
 
-              <TextBlock Text="Evidence" Classes="sectionHeading" />
-              <TextBlock Text="No local evidence found."
-                         Classes="metadata"
-                         IsVisible="{Binding !HasEvidenceItems}" />
-              <ItemsControl ItemsSource="{Binding EvidenceItems}"
-                            ItemTemplate="{StaticResource EvidenceTemplate}"
-                            AutomationProperties.Name="Evidence items" />
+            <Border x:Name="ExtractedClaimsSurface"
+                    Classes="researchCard"
+                    Padding="16"
+                    Focusable="True"
+                    AutomationProperties.Name="Extracted claims preview">
+              <StackPanel Spacing="10">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Extracted claims"
+                             Foreground="{DynamicResource PrimaryTextBrush}"
+                             FontWeight="Bold" />
+                  <TextBlock Text="A read-only preview. Extracting first is optional and does not change what Verify locally checks."
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             FontSize="11"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBlock Text="No claims extracted yet."
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasNoClaims}" />
+                <ItemsControl ItemsSource="{Binding ExtractedClaims}"
+                              ItemTemplate="{StaticResource ExtractedClaimTemplate}"
+                              AutomationProperties.Name="Extracted claims" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
 
-              <TextBlock Text="Citations" Classes="sectionHeading" />
-              <TextBlock Text="No citations available."
-                         Classes="metadata"
-                         IsVisible="{Binding !HasCitations}" />
-              <ItemsControl ItemsSource="{Binding Citations}"
-                            ItemTemplate="{StaticResource CitationTemplate}"
-                            AutomationProperties.Name="Citations" />
-
-              <TextBlock Text="Unresolved gaps" Classes="sectionHeading" />
-              <TextBlock Text="No unresolved gaps identified."
-                         Classes="metadata"
-                         IsVisible="{Binding !HasUnresolvedGaps}" />
-              <ItemsControl ItemsSource="{Binding UnresolvedGaps}"
-                            AutomationProperties.Name="Unresolved gaps" />
+          <Border x:Name="RecentReportsSurface"
+                  Grid.Column="1"
+                  Classes="researchCard"
+                  Padding="16"
+                  Focusable="True"
+                  AutomationProperties.Name="Recent reports region">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Recent reports"
+                         Foreground="{DynamicResource PrimaryTextBrush}"
+                         FontWeight="Bold" />
+              <TextBlock Text="Reports are process-local and remain available for this app session."
+                         Foreground="{DynamicResource MutedTextBrush}"
+                         FontSize="12"
+                         TextWrapping="Wrap" />
+              <TextBlock Text="No recent verification reports. Verifying a claim builds one from local evidence."
+                         Foreground="{DynamicResource MutedTextBrush}"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasNoRecentReports}" />
+              <ItemsControl ItemsSource="{Binding RecentReports}"
+                            ItemTemplate="{StaticResource ReportSummaryTemplate}"
+                            AutomationProperties.Name="Recent reports" />
             </StackPanel>
-          </ScrollViewer>
+          </Border>
+
+          <Border x:Name="SelectedReportSurface"
+                  Grid.Column="2"
+                  Classes="researchCard"
+                  Padding="20"
+                  AutomationProperties.Name="Selected verification report">
+            <StackPanel Spacing="14">
+              <StackPanel Spacing="4" IsVisible="{Binding HasNoSelectedReport}">
+                <TextBlock Text="No report selected"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="No report selected. Choose a recent report or verify a claim to build one from local evidence."
+                           Foreground="{DynamicResource MutedTextBrush}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+
+              <StackPanel Spacing="16" IsVisible="{Binding HasSelectedReport}">
+                <StackPanel Spacing="5">
+                  <TextBlock x:Name="SelectedReportHeading"
+                             Text="{Binding SelectedReport.Question.Text}"
+                             Foreground="{DynamicResource PrimaryTextBrush}"
+                             FontSize="18"
+                             FontWeight="Bold"
+                             TextWrapping="Wrap"
+                             MaxLines="6"
+                             Focusable="True"
+                             AutomationProperties.Name="Selected report question" />
+                  <WrapPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding SelectedReport.CreatedAtUtc, Converter={x:Static research:ResearchPresentationConverters.Timestamp}}"
+                               Foreground="{DynamicResource MutedTextBrush}"
+                               FontSize="11"
+                               Margin="0,0,10,0" />
+                    <TextBlock Foreground="{DynamicResource MutedTextBrush}"
+                               FontSize="11"
+                               TextWrapping="Wrap">
+                      <TextBlock.Text>
+                        <MultiBinding Converter="{x:Static research:ResearchPresentationConverters.Provenance}">
+                          <Binding Path="SelectedReport.LocalEvidenceOnly" />
+                          <Binding Path="SelectedReport.RemoteSearchWasUsed" />
+                        </MultiBinding>
+                      </TextBlock.Text>
+                    </TextBlock>
+                  </WrapPanel>
+                </StackPanel>
+
+                <Border Padding="12,10"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        CornerRadius="9">
+                  <WrapPanel Orientation="Horizontal">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                      <TextBlock Text="Verdict: " FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding SelectedReport.OverallVerdict}" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                      <TextBlock Text="Confidence: " Foreground="{DynamicResource SecondaryTextBrush}" />
+                      <TextBlock Text="{Binding SelectedReport.Confidence}" Foreground="{DynamicResource SecondaryTextBrush}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="Status: " Foreground="{DynamicResource SecondaryTextBrush}" />
+                      <TextBlock Text="{Binding SelectedReport.Status}" Foreground="{DynamicResource SecondaryTextBrush}" />
+                    </StackPanel>
+                  </WrapPanel>
+                </Border>
+
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Report claims" Classes="researchSectionLabel" />
+                  <ItemsControl ItemsSource="{Binding SelectedReport.Claims}"
+                                ItemTemplate="{StaticResource ReportClaimTemplate}"
+                                AutomationProperties.Name="Report claims" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Findings" Classes="researchSectionLabel" />
+                  <TextBlock Text="No findings for this report."
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             IsVisible="{Binding Findings, Converter={x:Static research:ResearchPresentationConverters.IsEmpty}}" />
+                  <ItemsControl ItemsSource="{Binding Findings}"
+                                ItemTemplate="{StaticResource FindingTemplate}"
+                                AutomationProperties.Name="Verification findings" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Evidence" Classes="researchSectionLabel" />
+                  <TextBlock Text="No local evidence was found for this report."
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             IsVisible="{Binding !HasEvidenceItems}" />
+                  <ItemsControl ItemsSource="{Binding EvidenceItems}"
+                                ItemTemplate="{StaticResource EvidenceTemplate}"
+                                AutomationProperties.Name="Evidence items" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Citations" Classes="researchSectionLabel" />
+                  <TextBlock Text="No citations for this report."
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             IsVisible="{Binding !HasCitations}" />
+                  <ItemsControl ItemsSource="{Binding Citations}"
+                                ItemTemplate="{StaticResource CitationTemplate}"
+                                AutomationProperties.Name="Citations" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Unresolved gaps" Classes="researchSectionLabel" />
+                  <TextBlock Text="No unresolved gaps identified."
+                             Foreground="{DynamicResource MutedTextBrush}"
+                             IsVisible="{Binding !HasUnresolvedGaps}" />
+                  <ItemsControl ItemsSource="{Binding UnresolvedGaps}"
+                                ItemTemplate="{StaticResource GapTemplate}"
+                                AutomationProperties.Name="Unresolved gaps" />
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
         </Grid>
-      </Border>
-    </Grid>
+      </Grid>
+    </ScrollViewer>
   </Grid>
 </UserControl>
