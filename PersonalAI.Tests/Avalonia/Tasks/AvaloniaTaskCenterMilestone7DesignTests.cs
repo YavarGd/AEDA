@@ -185,7 +185,7 @@ public sealed partial class AvaloniaTaskCenterMilestone7DesignTests
     {
         var source = ReadAvaloniaSource("Views", "Tasks", "TaskCenterView.axaml.cs");
         var enumSource = source[source.IndexOf("private enum CompactPane", StringComparison.Ordinal)..];
-        var paneNames = Regex.Matches(enumSource, @"^\s{8}([A-Za-z]+),?$", RegexOptions.Multiline)
+        var paneNames = Regex.Matches(enumSource, @"^\s{8}([A-Za-z]+),?\r?$", RegexOptions.Multiline)
             .Select(match => match.Groups[1].Value)
             .ToArray();
         var back = MethodSlice(source, "private void OnCompactBackClick", "private void ArrangeWorkspace");
