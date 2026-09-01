@@ -1,51 +1,140 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="using:PersonalAI.Core.Tasks"
+             xmlns:tasks="using:PersonalAI.Desktop.Avalonia.Views.Tasks"
              xmlns:vm="using:PersonalAI.Desktop.Presentation.ViewModels"
              x:Class="PersonalAI.Desktop.Avalonia.Views.Tasks.TaskCenterView"
+             x:Name="TaskCenterRoot"
              x:DataType="vm:AedaTaskCenterViewModel"
              AutomationProperties.Name="Task Center">
 
+  <UserControl.Styles>
+    <Style Selector="Border.taskSurface">
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+    <Style Selector="Border.taskSubtleSurface">
+      <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="9" />
+    </Style>
+    <Style Selector="Button.taskRow">
+      <Setter Property="MinHeight" Value="68" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.taskRow:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <Style Selector="Button.taskOverview">
+      <Setter Property="MinHeight" Value="64" />
+      <Setter Property="Padding" Value="16,12" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+    <Style Selector="Button.taskOverview:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <Style Selector="Button.taskBack">
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.taskSectionLabel">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+    </Style>
+  </UserControl.Styles>
+
   <UserControl.Resources>
-    <DataTemplate x:Key="TaskCardTemplate" x:DataType="core:AedaTaskSummary">
-      <Button Margin="0,0,0,8"
-              Padding="12"
-              HorizontalAlignment="Stretch"
-              HorizontalContentAlignment="Stretch"
-              Background="Transparent"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              Click="OnTaskClick"
-              AutomationProperties.Name="{Binding Title}">
-        <StackPanel Spacing="4">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <TextBlock Text="{Binding Title}"
-                       FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis" />
+    <DataTemplate x:Key="TaskRowTemplate"
+                  x:DataType="core:AedaTaskSummary"
+                  x:CompileBindings="False">
+      <Button Classes="taskRow"
+              Margin="0,0,0,6"
+              Tag="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+              Click="OnTaskClick">
+        <AutomationProperties.Name>
+          <MultiBinding Converter="{x:Static tasks:TaskCenterPresentationConverters.TaskAccessibleName}">
+            <Binding Path="Id" />
+            <Binding Path="Title" />
+            <Binding Path="DataContext.SelectedTask.Id"
+                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+          </MultiBinding>
+        </AutomationProperties.Name>
+        <Grid>
+          <Border Background="{DynamicResource AccentSoftBrush}"
+                  CornerRadius="9"
+                  IsHitTestVisible="False">
+            <Border.IsVisible>
+              <MultiBinding Converter="{x:Static tasks:TaskCenterPresentationConverters.IsSelectedTask}">
+                <Binding Path="Id" />
+                <Binding Path="DataContext.SelectedTask.Id"
+                         RelativeSource="{RelativeSource AncestorType=UserControl}" />
+              </MultiBinding>
+            </Border.IsVisible>
+          </Border>
+          <Grid Margin="12,10"
+                ColumnDefinitions="*,Auto"
+                ColumnSpacing="10">
+            <StackPanel Spacing="3">
+              <TextBlock Text="{Binding Title}"
+                         FontSize="13"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap"
+                         MaxLines="2" />
+              <TextBlock Text="{Binding SafeSummary}"
+                         Classes="metadata"
+                         TextWrapping="Wrap"
+                         MaxLines="2" />
+              <WrapPanel>
+                <TextBlock Text="{Binding Module.Label}"
+                           Classes="metadata"
+                           Margin="0,0,6,0" />
+                <TextBlock Text="·"
+                           Classes="metadata"
+                           Margin="0,0,6,0" />
+                <TextBlock Text="{Binding UpdatedAtUtc, Converter={x:Static tasks:TaskCenterPresentationConverters.Timestamp}}"
+                           Classes="metadata" />
+              </WrapPanel>
+            </StackPanel>
             <TextBlock Grid.Column="1"
                        Text="{Binding Status.Label}"
-                       Classes="metadata" />
+                       Classes="metadata"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap"
+                       MaxWidth="132" />
           </Grid>
-          <TextBlock Text="{Binding SafeSummary}"
-                     Classes="metadata"
-                     TextWrapping="Wrap"
-                     MaxLines="2" />
-          <TextBlock Text="{Binding Module.Label}"
-                     Classes="metadata" />
-        </StackPanel>
+        </Grid>
       </Button>
     </DataTemplate>
 
-    <DataTemplate x:Key="ApprovalCardTemplate" x:DataType="core:AedaTaskApprovalSummary">
-      <Border Margin="0,0,0,8"
-              Padding="12"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8">
-        <StackPanel Spacing="4">
+    <DataTemplate x:Key="ApprovalRowTemplate" x:DataType="core:AedaTaskApprovalSummary">
+      <Border Classes="taskSubtleSurface"
+              Margin="0,0,0,8"
+              Padding="12,10"
+              MinHeight="72"
+              AutomationProperties.Name="{Binding Converter={x:Static tasks:TaskCenterPresentationConverters.BoundedName}, ConverterParameter=Approval request}">
+        <StackPanel Spacing="3">
           <TextBlock Text="{Binding Title}"
+                     FontSize="12.5"
                      FontWeight="SemiBold"
-                     TextTrimming="CharacterEllipsis" />
+                     TextWrapping="Wrap"
+                     MaxLines="2" />
           <TextBlock Text="{Binding SafeSummary}"
                      Classes="metadata"
                      TextWrapping="Wrap"
@@ -53,136 +142,401 @@
           <TextBlock Text="{Binding SafeScope}"
                      Classes="metadata"
                      TextWrapping="Wrap" />
+          <WrapPanel>
+            <TextBlock Text="{Binding Module.Label}"
+                       Classes="metadata"
+                       Margin="0,0,6,0" />
+            <TextBlock Text="·"
+                       Classes="metadata"
+                       Margin="0,0,6,0" />
+            <TextBlock Text="{Binding RequestedAtUtc, Converter={x:Static tasks:TaskCenterPresentationConverters.Timestamp}}"
+                       Classes="metadata" />
+          </WrapPanel>
         </StackPanel>
       </Border>
     </DataTemplate>
 
     <DataTemplate x:Key="ArtifactTemplate" x:DataType="core:AedaTaskArtifactLink">
-      <StackPanel Margin="0,4,0,0" Spacing="2">
-        <TextBlock Text="{Binding Label}"
-                   FontWeight="SemiBold"
-                   TextWrapping="Wrap" />
-        <TextBlock Text="{Binding SafeSummary}"
-                   Classes="metadata"
-                   TextWrapping="Wrap" />
-        <TextBlock Text="{Binding SafeUnavailableReason}"
-                   Classes="metadata"
-                   TextWrapping="Wrap" />
-      </StackPanel>
+      <Border Margin="0,4,0,0"
+              Padding="10,8"
+              Background="{DynamicResource SubtleSurfaceBrush}"
+              CornerRadius="8"
+              AutomationProperties.Name="{Binding Converter={x:Static tasks:TaskCenterPresentationConverters.BoundedName}, ConverterParameter=Artifact}">
+        <StackPanel Spacing="2">
+          <TextBlock Text="{Binding Label}"
+                     FontSize="11.5"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="{Binding SafeSummary}"
+                     Classes="metadata"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="{Binding SafeUnavailableReason}"
+                     Classes="metadata"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding SafeUnavailableReason, Converter={x:Static tasks:TaskCenterPresentationConverters.HasText}}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="TimelineItemTemplate" x:DataType="core:AedaTaskTimelineItem">
+      <Border MinHeight="44"
+              Padding="0,10"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="0,1,0,0"
+              AutomationProperties.Name="{Binding Converter={x:Static tasks:TaskCenterPresentationConverters.BoundedName}, ConverterParameter=Activity}">
+        <Grid ColumnDefinitions="8,*"
+              ColumnSpacing="12">
+          <Border Width="8"
+                  Height="8"
+                  Margin="0,5,0,0"
+                  VerticalAlignment="Top"
+                  Background="{DynamicResource MutedTextBrush}"
+                  CornerRadius="4" />
+          <StackPanel Grid.Column="1" Spacing="3">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <TextBlock Text="{Binding Title}"
+                         FontSize="12.5"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding Status.Label}"
+                         Classes="metadata"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap"
+                         MaxWidth="132" />
+            </Grid>
+            <TextBlock Text="{Binding Summary}"
+                       FontSize="12"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Detail}"
+                       Classes="metadata"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding Detail, Converter={x:Static tasks:TaskCenterPresentationConverters.HasText}}" />
+            <WrapPanel>
+              <TextBlock Text="{Binding TimestampUtc, Converter={x:Static tasks:TaskCenterPresentationConverters.Timestamp}}"
+                         Classes="metadata"
+                         Margin="0,0,6,0" />
+              <TextBlock Text="·"
+                         Classes="metadata"
+                         Margin="0,0,6,0" />
+              <TextBlock Text="{Binding Module.Label}"
+                         Classes="metadata" />
+            </WrapPanel>
+            <ItemsControl ItemsSource="{Binding Links}"
+                          ItemTemplate="{StaticResource ArtifactTemplate}" />
+          </StackPanel>
+        </Grid>
+      </Border>
     </DataTemplate>
   </UserControl.Resources>
 
-  <Grid Margin="28" RowDefinitions="Auto,*" RowSpacing="18">
-    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-      <StackPanel Spacing="4">
-        <TextBlock Text="Task Center"
-                   FontSize="26"
-                   FontWeight="SemiBold" />
-        <TextBlock Text="{Binding SafeStatusMessage}"
-                   Classes="metadata"
-                   TextWrapping="Wrap"
-                   AutomationProperties.LiveSetting="Polite" />
-      </StackPanel>
-      <Button x:Name="RefreshButton"
-              Grid.Column="1"
-              Content="Refresh"
-              Command="{Binding RefreshCommand}"
-              AutomationProperties.Name="Refresh Task Center" />
-    </Grid>
+  <Grid x:Name="PageLayout"
+        Margin="32"
+        RowDefinitions="Auto,*"
+        RowSpacing="24">
+    <Border x:Name="StatusSurface"
+            Padding="12,8"
+            HorizontalAlignment="Left"
+            Background="{DynamicResource AccentSoftBrush}"
+            CornerRadius="9">
+      <TextBlock Text="{Binding SafeStatusMessage}"
+                 FontSize="12.5"
+                 Foreground="{DynamicResource PrimaryTextBrush}"
+                 TextWrapping="Wrap"
+                 AutomationProperties.LiveSetting="Polite" />
+    </Border>
 
-    <Grid Grid.Row="1"
-          ColumnDefinitions="2*,3*"
-          ColumnSpacing="18">
-      <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="18">
-          <WrapPanel Orientation="Horizontal">
-            <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
-              <TextBlock Text="{Binding ActiveTaskCountText}" />
-            </Border>
-            <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
-              <TextBlock Text="{Binding WaitingApprovalCountText}" />
-            </Border>
-            <Border Margin="0,0,8,4" Padding="8,4" BorderBrush="{DynamicResource AedaBorderBrush}" BorderThickness="1" CornerRadius="12">
-              <TextBlock Text="{Binding RecentFailureCountText}" />
-            </Border>
-          </WrapPanel>
+    <ScrollViewer Grid.Row="1"
+                  VerticalScrollBarVisibility="Auto">
+      <StackPanel x:Name="ContentStack" Spacing="24">
+        <Border x:Name="HeaderSurface" Classes="taskSurface" Padding="24">
+          <StackPanel Spacing="16">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+              <StackPanel HorizontalAlignment="Left"
+                          MaxWidth="720"
+                          Spacing="4">
+                <TextBlock x:Name="PageHeading"
+                           Text="Task Center"
+                           FontSize="28"
+                           FontWeight="Bold" />
+                <TextBlock Text="Review task activity across AEDA and see anything waiting on you."
+                           FontSize="13.5"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+              <StackPanel Grid.Column="1"
+                          HorizontalAlignment="Right"
+                          Spacing="6">
+                <Button x:Name="RefreshButton"
+                        MinHeight="36"
+                        Padding="14,7"
+                        Content="Refresh"
+                        Command="{Binding RefreshCommand}"
+                        AutomationProperties.Name="Refresh Task Center" />
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="7"
+                            IsVisible="{Binding IsRefreshing}">
+                  <ProgressBar Width="40"
+                               Height="3"
+                               VerticalAlignment="Center"
+                               IsIndeterminate="True" />
+                  <TextBlock Text="Refreshing"
+                             Classes="metadata"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </StackPanel>
+            </Grid>
 
-          <StackPanel Spacing="8">
-            <TextBlock Text="Waiting for approval" Classes="sectionHeading" />
-            <TextBlock Text="No approvals need attention." Classes="metadata" IsVisible="{Binding HasNoWaitingApprovals}" />
-            <ItemsControl ItemsSource="{Binding WaitingApprovals}" ItemTemplate="{StaticResource ApprovalCardTemplate}" />
+            <WrapPanel x:Name="SummarySurface"
+                       Orientation="Horizontal"
+                       AutomationProperties.Name="Task Center summary">
+              <Border Classes="taskSubtleSurface" Margin="0,0,10,6" Padding="14,8">
+                <TextBlock Text="{Binding ActiveTaskCountText}" FontSize="12.5" FontWeight="SemiBold" />
+              </Border>
+              <Border Classes="taskSubtleSurface" Margin="0,0,10,6" Padding="14,8">
+                <TextBlock Text="{Binding WaitingApprovalCountText}" FontSize="12.5" FontWeight="SemiBold" />
+              </Border>
+              <Border Classes="taskSubtleSurface" Margin="0,0,10,6" Padding="14,8">
+                <TextBlock Text="{Binding RecentFailureCountText}" FontSize="12.5" FontWeight="SemiBold" />
+              </Border>
+            </WrapPanel>
           </StackPanel>
+        </Border>
 
-          <StackPanel Spacing="8">
-            <TextBlock Text="Active tasks" Classes="sectionHeading" />
-            <TextBlock Text="No active tasks." Classes="metadata" IsVisible="{Binding HasNoActiveTasks}" />
-            <ItemsControl ItemsSource="{Binding ActiveTasks}" ItemTemplate="{StaticResource TaskCardTemplate}" />
-          </StackPanel>
+        <Button x:Name="CompactBackButton"
+                Classes="taskBack"
+                Content="Back to Task Center overview"
+                Click="OnCompactBackClick"
+                IsVisible="False" />
 
-          <StackPanel Spacing="8">
-            <TextBlock Text="Recent tasks" Classes="sectionHeading" />
-            <TextBlock Text="No recent task history." Classes="metadata" IsVisible="{Binding HasNoRecentTasks}" />
-            <ItemsControl ItemsSource="{Binding RecentTasks}" ItemTemplate="{StaticResource TaskCardTemplate}" />
-          </StackPanel>
-
-          <StackPanel Spacing="8">
-            <TextBlock Text="Failed or cancelled" Classes="sectionHeading" />
-            <TextBlock Text="No recent failures or cancellations." Classes="metadata" IsVisible="{Binding HasNoFailedOrCancelledTasks}" />
-            <ItemsControl ItemsSource="{Binding FailedOrCancelledTasks}" ItemTemplate="{StaticResource TaskCardTemplate}" />
-          </StackPanel>
+        <StackPanel x:Name="CompactOverview"
+                    Spacing="8"
+                    Focusable="True"
+                    IsVisible="False"
+                    AutomationProperties.Name="Task Center overview">
+          <Button Classes="taskOverview"
+                  Tag="Approvals"
+                  Click="OnOpenCompactPaneClick"
+                  AutomationProperties.Name="Open Waiting for approval">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Waiting for approval" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding WaitingApprovalCountText}" Classes="metadata" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="Open" Classes="metadata" VerticalAlignment="Center" />
+            </Grid>
+          </Button>
+          <Button Classes="taskOverview"
+                  Tag="Active"
+                  Click="OnOpenCompactPaneClick"
+                  AutomationProperties.Name="Open Active tasks">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Active tasks" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding ActiveTaskCountText}" Classes="metadata" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="Open" Classes="metadata" VerticalAlignment="Center" />
+            </Grid>
+          </Button>
+          <Button Classes="taskOverview"
+                  Tag="Recent"
+                  Click="OnOpenCompactPaneClick"
+                  AutomationProperties.Name="Open Recent tasks">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Recent tasks" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="Browse recent task history" Classes="metadata" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="Open" Classes="metadata" VerticalAlignment="Center" />
+            </Grid>
+          </Button>
+          <Button Classes="taskOverview"
+                  Tag="Failed"
+                  Click="OnOpenCompactPaneClick"
+                  AutomationProperties.Name="Open Failed or cancelled tasks">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Failed or cancelled" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding RecentFailureCountText}" Classes="metadata" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="Open" Classes="metadata" VerticalAlignment="Center" />
+            </Grid>
+          </Button>
+          <Button Classes="taskOverview"
+                  Tag="SelectedTask"
+                  Click="OnOpenCompactPaneClick"
+                  IsVisible="{Binding SelectedTask, Converter={x:Static tasks:TaskCenterPresentationConverters.HasValue}}"
+                  AutomationProperties.Name="Open Selected task">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Selected task" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="View activity" Classes="metadata" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="Open" Classes="metadata" VerticalAlignment="Center" />
+            </Grid>
+          </Button>
         </StackPanel>
-      </ScrollViewer>
 
-      <Border Grid.Column="1"
-              Padding="16"
-              BorderBrush="{DynamicResource AedaBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8">
-        <Grid RowDefinitions="Auto,*" RowSpacing="12">
-          <StackPanel Spacing="4">
-            <TextBlock Text="{Binding SelectedTask.Title}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-            <TextBlock Text="{Binding SelectedTask.SafeSummary}" Classes="metadata" TextWrapping="Wrap" />
+        <Grid x:Name="WorkspaceLayout"
+              ColumnDefinitions="420,*"
+              RowDefinitions="*,0"
+              ColumnSpacing="24"
+              RowSpacing="24">
+          <StackPanel x:Name="QueueRail"
+                      Grid.Row="0"
+                      Grid.Column="0"
+                      Spacing="24"
+                      AutomationProperties.Name="Task queues">
+            <Border x:Name="ApprovalSurface"
+                    Classes="taskSurface"
+                    Focusable="True"
+                    AutomationProperties.Name="Waiting for approval">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Waiting for approval" Classes="taskSectionLabel" />
+                <TextBlock Text="No approvals need attention."
+                           Classes="metadata"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasNoWaitingApprovals}" />
+                <ItemsControl ItemsSource="{Binding WaitingApprovals}"
+                              ItemTemplate="{StaticResource ApprovalRowTemplate}" />
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="ActiveSurface"
+                    Classes="taskSurface"
+                    Focusable="True"
+                    AutomationProperties.Name="Active tasks">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Active tasks" Classes="taskSectionLabel" />
+                <TextBlock Text="No active tasks."
+                           Classes="metadata"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasNoActiveTasks}" />
+                <ItemsControl x:Name="ActiveTaskRows"
+                              Tag="Active"
+                              ItemsSource="{Binding ActiveTasks}"
+                              ItemTemplate="{StaticResource TaskRowTemplate}" />
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="RecentSurface"
+                    Classes="taskSurface"
+                    Focusable="True"
+                    AutomationProperties.Name="Recent tasks">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Recent tasks" Classes="taskSectionLabel" />
+                <TextBlock Text="No recent task history."
+                           Classes="metadata"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasNoRecentTasks}" />
+                <ItemsControl x:Name="RecentTaskRows"
+                              Tag="Recent"
+                              ItemsSource="{Binding RecentTasks}"
+                              ItemTemplate="{StaticResource TaskRowTemplate}" />
+              </StackPanel>
+            </Border>
+
+            <Border x:Name="FailedSurface"
+                    Classes="taskSurface"
+                    Focusable="True"
+                    AutomationProperties.Name="Failed or cancelled">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Failed or cancelled" Classes="taskSectionLabel" />
+                <TextBlock Text="No recent failures or cancellations."
+                           Classes="metadata"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasNoFailedOrCancelledTasks}" />
+                <ItemsControl x:Name="FailedTaskRows"
+                              Tag="Failed"
+                              ItemsSource="{Binding FailedOrCancelledTasks}"
+                              ItemTemplate="{StaticResource TaskRowTemplate}" />
+              </StackPanel>
+            </Border>
           </StackPanel>
 
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
-              <TextBlock Text="Select a task to view its safe activity timeline."
-                         Classes="metadata"
-                         IsVisible="{Binding HasNoTimeline}" />
-              <ItemsControl ItemsSource="{Binding TimelineGroups}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="core:AedaTaskActivityGroup">
-                    <StackPanel Margin="0,0,0,12" Spacing="8">
-                      <TextBlock Text="{Binding Title}" Classes="sectionHeading" />
-                      <ItemsControl ItemsSource="{Binding Items}">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate x:DataType="core:AedaTaskTimelineItem">
-                            <Border Margin="0,0,0,8"
-                                    Padding="12"
-                                    BorderBrush="{DynamicResource AedaBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="8">
-                              <StackPanel Spacing="4">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                  <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                  <TextBlock Grid.Column="1" Text="{Binding Status.Label}" Classes="metadata" />
-                                </Grid>
-                                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding Detail}" Classes="metadata" TextWrapping="Wrap" />
-                                <ItemsControl ItemsSource="{Binding Links}" ItemTemplate="{StaticResource ArtifactTemplate}" />
-                              </StackPanel>
-                            </Border>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </ScrollViewer>
+          <Border x:Name="SelectedDetailSurface"
+                  Grid.Row="0"
+                  Grid.Column="1"
+                  Classes="taskSurface"
+                  MinWidth="500"
+                  Focusable="True"
+                  AutomationProperties.Name="Selected task activity">
+            <Grid>
+              <StackPanel HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Spacing="8"
+                          IsVisible="{Binding SelectedTask, Converter={x:Static tasks:TaskCenterPresentationConverters.IsNull}}">
+                <TextBlock Text="No task selected"
+                           HorizontalAlignment="Center"
+                           FontSize="14"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="Select a task to view its safe activity timeline."
+                           Classes="metadata"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           MaxWidth="360" />
+              </StackPanel>
+
+              <StackPanel Spacing="16"
+                          IsVisible="{Binding SelectedTask, Converter={x:Static tasks:TaskCenterPresentationConverters.HasValue}}">
+                <StackPanel Spacing="4">
+                  <TextBlock x:Name="SelectedTaskHeading"
+                             Text="{Binding SelectedTask.Title}"
+                             FontSize="15"
+                             FontWeight="Bold"
+                             TextWrapping="Wrap"
+                             Focusable="True" />
+                  <TextBlock Text="{Binding SelectedTask.SafeSummary}"
+                             FontSize="12.5"
+                             Foreground="{DynamicResource SecondaryTextBrush}"
+                             TextWrapping="Wrap" />
+                  <WrapPanel Margin="0,4,0,0">
+                    <TextBlock Text="Status: " Classes="metadata" />
+                    <TextBlock Text="{Binding SelectedTask.Status.Label}" Classes="metadata" Margin="0,0,16,0" />
+                    <TextBlock Text="Source: " Classes="metadata" />
+                    <TextBlock Text="{Binding SelectedTask.Module.Label}" Classes="metadata" Margin="0,0,16,0" />
+                    <TextBlock Text="Created " Classes="metadata" />
+                    <TextBlock Text="{Binding SelectedTask.CreatedAtUtc, Converter={x:Static tasks:TaskCenterPresentationConverters.Timestamp}}"
+                               Classes="metadata"
+                               Margin="0,0,16,0" />
+                    <TextBlock Text="Updated " Classes="metadata" />
+                    <TextBlock Text="{Binding SelectedTask.UpdatedAtUtc, Converter={x:Static tasks:TaskCenterPresentationConverters.Timestamp}}"
+                               Classes="metadata" />
+                  </WrapPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="12" AutomationProperties.Name="Task activity">
+                  <TextBlock Text="Activity"
+                             FontSize="12"
+                             FontWeight="SemiBold"
+                             Foreground="{DynamicResource SecondaryTextBrush}" />
+                  <TextBlock Text="No timeline events are available for this task."
+                             Classes="metadata"
+                             TextWrapping="Wrap"
+                             IsVisible="{Binding HasNoTimeline}" />
+                  <ItemsControl ItemsSource="{Binding TimelineGroups}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="core:AedaTaskActivityGroup">
+                        <StackPanel Margin="0,0,0,14" Spacing="4">
+                          <TextBlock Text="{Binding Title}"
+                                     FontSize="11"
+                                     FontWeight="Bold"
+                                     Foreground="{DynamicResource MutedTextBrush}"
+                                     TextWrapping="Wrap" />
+                          <ItemsControl ItemsSource="{Binding Items}"
+                                        ItemTemplate="{StaticResource TimelineItemTemplate}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </StackPanel>
+            </Grid>
+          </Border>
         </Grid>
-      </Border>
-    </Grid>
+      </StackPanel>
+    </ScrollViewer>
   </Grid>
 </UserControl>

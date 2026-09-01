@@ -10,6 +10,7 @@ using PersonalAI.Desktop.Avalonia.Views.Chat;
 using PersonalAI.Desktop.Avalonia.Views.Code;
 using PersonalAI.Desktop.Avalonia.Views.Memory;
 using PersonalAI.Desktop.Avalonia.Views.Research;
+using PersonalAI.Desktop.Avalonia.Views.Tasks;
 
 namespace PersonalAI.Desktop.Avalonia;
 
@@ -248,6 +249,11 @@ public partial class MainWindow : Window
         if (_activePresentationScreen?.Content is ResearchView researchRoute)
         {
             researchRoute.ApplyResponsiveMode(compact, medium);
+        }
+
+        if (_activePresentationScreen?.Content is TaskCenterView taskCenterRoute)
+        {
+            taskCenterRoute.ApplyResponsiveMode(compact, medium);
         }
 
         ShellGrid.RowDefinitions[0].Height = new GridLength(compact ? 56 : 64);
