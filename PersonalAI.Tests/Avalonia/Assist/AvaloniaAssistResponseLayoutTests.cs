@@ -16,14 +16,15 @@ public sealed class AvaloniaAssistResponseLayoutTests
         var markup = ReadAssistView();
 
         Assert.Contains("<Grid x:Name=\"ResponseSurface\"", markup);
-        Assert.Contains("RowDefinitions=\"Auto,*,Auto\"", markup);
+        Assert.Contains("RowDefinitions=\"*,Auto\"", markup);
 
         var surface = ResponseSurface(markup);
 
-        // Heading Auto row, content Star row, actions Auto row.
-        Assert.Contains("Text=\"Response\"", surface);
+        // Response content occupies the Star row only when present; actions keep an Auto row.
+        Assert.Contains("x:Name=\"ResponseRegion\"", surface);
         Assert.Contains("<ScrollViewer Grid.Row=\"1\"", surface);
-        Assert.Contains("<StackPanel Grid.Row=\"2\" Orientation=\"Horizontal\"", surface);
+        Assert.Contains("x:Name=\"ResponseActions\"", surface);
+        Assert.Contains("Grid.Row=\"1\"", surface);
     }
 
     [Fact]
@@ -33,6 +34,7 @@ public sealed class AvaloniaAssistResponseLayoutTests
 
         Assert.Contains("<ScrollViewer Grid.Row=\"1\"", surface);
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", surface);
+        Assert.Contains("HorizontalScrollBarVisibility=\"Disabled\"", surface);
         Assert.Contains("x:Name=\"ResponseText\"", surface);
 
         // A fixed MaxHeight made the surface demand more room than the window had; the Star
@@ -61,9 +63,9 @@ public sealed class AvaloniaAssistResponseLayoutTests
 
         // The state host must pass the finite available height through. A StackPanel here
         // measures children with infinite height, which reintroduces the defect.
-        Assert.Contains("<Panel Grid.Row=\"1\">", markup);
+        Assert.Contains("<Panel x:Name=\"StateHost\" Grid.Row=\"1\">", markup);
 
-        var host = Between(markup, "<Panel Grid.Row=\"1\">", "<Grid x:Name=\"ResponseSurface\"");
+        var host = Between(markup, "<Panel x:Name=\"StateHost\" Grid.Row=\"1\">", "<Grid x:Name=\"ResponseSurface\"");
         Assert.DoesNotContain("<StackPanel Grid.Row=\"1\"", host);
     }
 
@@ -78,7 +80,7 @@ public sealed class AvaloniaAssistResponseLayoutTests
         Assert.Contains("x:Name=\"CompactPill\"", markup);
         Assert.Contains("x:Name=\"FullSurface\"", markup);
         Assert.Contains("HostMode = AssistViewHostMode.CompactWindow", window);
-        Assert.Contains("FullSurface.Margin = compact ? new Thickness(12) : new Thickness(28)", code);
+        Assert.Contains("FullSurface.Margin = new Thickness(6)", code);
         Assert.Contains("CompactPill.IsVisible = compact && idle", code);
     }
 
@@ -97,11 +99,15 @@ public sealed class AvaloniaAssistResponseLayoutTests
         Assert.Contains("AutomationProperties.Name=\"Copy response\"", surface);
         Assert.Contains("AutomationProperties.Name=\"Open in AEDA\"", surface);
         Assert.Contains("AutomationProperties.Name=\"Assist response\"", surface);
-        Assert.Contains("AutomationProperties.LiveSetting=\"Polite\"", surface);
+        Assert.DoesNotContain("AutomationProperties.LiveSetting", surface);
+        Assert.Equal(1, Count(ReadAssistView(), "AutomationProperties.LiveSetting=\"Polite\""));
     }
 
     private static string ResponseSurface(string markup) =>
-        Between(markup, "<Grid x:Name=\"ResponseSurface\"", "</Grid>");
+        Between(markup, "<Grid x:Name=\"ResponseSurface\"", "</UserControl>");
+
+    private static int Count(string source, string value) =>
+        source.Split(value, StringSplitOptions.None).Length - 1;
 
     private static string Between(string source, string start, string end)
     {

@@ -30,10 +30,12 @@ public sealed class AvaloniaAssistViewTests
         var source = ReadSource("Views", "Assist", "AssistView.axaml");
 
         Assert.Contains("AutomationProperties.Name=\"Assist\"", source);
-        Assert.Contains("AutomationProperties.Name=\"Assist status\"", source);
         Assert.Contains("AutomationProperties.Name=\"Assist prompt\"", source);
         Assert.Contains("AutomationProperties.Name=\"Assist response\"", source);
-        Assert.Contains("AutomationProperties.LiveSetting=\"Polite\"", source);
+        Assert.Equal(1, Count(source, "AutomationProperties.LiveSetting=\"Polite\""));
+        var status = Between(source, "x:Name=\"StatusText\"", "/>" );
+        Assert.Contains("Text=\"{Binding StatusText}\"", status);
+        Assert.DoesNotContain("AutomationProperties.Name", status);
         Assert.DoesNotContain("Animation", source);
         Assert.DoesNotContain("Transitions", source);
     }
@@ -49,7 +51,7 @@ public sealed class AvaloniaAssistViewTests
         // a fixed MaxHeight. A fixed height made the surface demand more room than the
         // Assist window had, pushing the action row outside the window where a pointer could
         // not reach it.
-        Assert.Contains("RowDefinitions=\"Auto,*,Auto\"", source);
+        Assert.Contains("RowDefinitions=\"*,Auto\"", source);
         Assert.Contains("<ScrollViewer Grid.Row=\"1\"", source);
         Assert.DoesNotContain("MaxHeight=\"420\"", source);
     }
@@ -177,6 +179,9 @@ public sealed class AvaloniaAssistViewTests
         var endIndex = source.IndexOf(end, startIndex + start.Length, StringComparison.Ordinal);
         return endIndex < 0 ? source[startIndex..] : source[startIndex..endIndex];
     }
+
+    private static int Count(string source, string value) =>
+        source.Split(value, StringSplitOptions.None).Length - 1;
 
     private static string GetRepositoryRoot(
         [CallerFilePath] string testFilePath = "")

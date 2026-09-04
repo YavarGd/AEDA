@@ -12,9 +12,10 @@
             Background="{DynamicResource ElevatedSurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1"
-            IsVisible="False" />
+            IsVisible="False"
+            IsHitTestVisible="False" />
 
-    <!-- Compact host, idle: a lightweight rounded-triangle vector. -->
+    <!-- The native idle host remains a single 52x52 invokable launcher. -->
     <Button x:Name="CompactPill"
             Classes="assistLauncher"
             IsVisible="False"
@@ -34,7 +35,6 @@
             <Path x:Name="AssistLauncherGeometry"
                   Classes="launcherSurface"
                   Data="{StaticResource AssistOuterGeometry}" />
-
             <Viewbox x:Name="AssistIdleMark"
                      Width="20" Height="20"
                      HorizontalAlignment="Center"
@@ -50,155 +50,237 @@
                          Canvas.Left="11" Canvas.Top="11" />
               </Canvas>
             </Viewbox>
-
-            <!-- Inner marks supplement state color without changing the silhouette. -->
-            <Grid x:Name="AssistListeningMark"
-                  IsVisible="False"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center">
-              <Ellipse Classes="launcherMarkOutline" Width="23" Height="23"
-                       StrokeThickness="2" />
-            </Grid>
-            <StackPanel x:Name="AssistThinkingMark"
-                        IsVisible="False"
-                        Orientation="Horizontal"
-                        Spacing="2"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Margin="0,22,0,0">
-              <Ellipse Classes="launcherMark" Width="3" Height="3" />
-              <Ellipse Classes="launcherMark" Width="3" Height="3" />
-              <Ellipse Classes="launcherMark" Width="3" Height="3" />
-            </StackPanel>
-            <Path x:Name="AssistActionReadyMark"
-                  Classes="launcherMarkOutline"
-                  IsVisible="False"
-                  Data="M1,5 L4,8 L10,1"
-                  Width="11" Height="9"
-                  Stretch="Uniform"
-                  StrokeThickness="2.5"
-                  HorizontalAlignment="Right"
-                  VerticalAlignment="Bottom"
-                  Margin="0,0,11,13" />
-            <Grid x:Name="AssistErrorMark"
-                  IsVisible="False"
-                  Width="6" Height="13"
-                  HorizontalAlignment="Right"
-                  VerticalAlignment="Bottom"
-                  Margin="0,0,13,12">
-              <Path Classes="launcherMarkOutline"
-                    Data="M3,1 L3,7"
-                    StrokeThickness="2.5" />
-              <Ellipse Classes="launcherMark" Width="3" Height="3"
-                       VerticalAlignment="Bottom" />
-            </Grid>
           </Grid>
         </Viewbox>
       </Grid>
     </Button>
 
-  <Grid x:Name="FullSurface" Margin="28" RowDefinitions="Auto,*" RowSpacing="18">
-    <StackPanel x:Name="ModuleHeader" Spacing="4">
-      <TextBlock Text="Assist" FontSize="26" FontWeight="SemiBold" />
-      <TextBlock Text="{Binding StatusText}"
-                 Classes="metadata"
-                 TextWrapping="Wrap"
-                 AutomationProperties.Name="Assist status"
-                 AutomationProperties.LiveSetting="Polite" />
-    </StackPanel>
-
-    <!-- The three states are mutually exclusive, so a Panel overlays them and passes the
-         finite available height straight through. A StackPanel here would measure each
-         child with infinite height, which is what pushed the response action row outside
-         the bounded Assist window. -->
-    <Panel Grid.Row="1">
-
-      <!-- Idle state -->
-      <StackPanel Spacing="8" VerticalAlignment="Top" IsVisible="{Binding IsIdle}">
-        <TextBlock Text="Ready" Classes="sectionHeading" />
-        <TextBlock Text="Ask AEDA to explain selected content or answer a question."
+    <Grid x:Name="FullSurface"
+          Margin="32"
+          RowDefinitions="Auto,*"
+          RowSpacing="24">
+      <StackPanel x:Name="ModuleHeader" Spacing="6">
+        <TextBlock x:Name="ModuleTitle"
+                   Text="Assist"
+                   FontSize="28"
+                   FontWeight="SemiBold" />
+        <TextBlock Text="Get quick help with selected text or ask AEDA a question."
                    Classes="metadata"
                    TextWrapping="Wrap" />
-        <Button x:Name="AskButton"
-                Content="Ask AEDA"
-                Click="OnAskClick"
-                HorizontalAlignment="Left"
-                ToolTip.Tip="Start Assist"
-                AutomationProperties.Name="Ask AEDA" />
       </StackPanel>
 
-      <!-- Spotlight prompt state -->
-      <StackPanel Spacing="8" VerticalAlignment="Top" IsVisible="{Binding IsFallbackInput}">
-        <TextBlock Text="Ask AEDA" Classes="sectionHeading" />
-        <TextBox x:Name="PromptBox"
-                 Text="{Binding Prompt, Mode=TwoWay}"
-                 AcceptsReturn="False"
-                 TextWrapping="Wrap"
-                 MinHeight="40"
-                 PlaceholderText="Ask a question…"
-                 KeyDown="OnPromptKeyDown"
-                 AutomationProperties.Name="Assist prompt" />
-        <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button x:Name="SendButton"
-                  Content="Send"
-                  Command="{Binding SubmitCommand}"
-                  ToolTip.Tip="Send (Enter)"
-                  AutomationProperties.Name="Send prompt" />
-          <Button x:Name="SelectScreenTextButton"
-                  Content="Select screen text"
-                  Command="{Binding SelectScreenTextCommand}"
-                  ToolTip.Tip="Capture text from the screen"
-                  AutomationProperties.Name="Select screen text" />
-        </StackPanel>
-      </StackPanel>
+      <Border x:Name="StateSurface"
+              Grid.Row="1"
+              Classes="assistSurface"
+              MaxWidth="860"
+              Padding="24"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Top"
+              Background="{DynamicResource CardSurfaceBrush}"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="1"
+              CornerRadius="14">
+        <Grid x:Name="StateLayout" RowDefinitions="Auto,*" RowSpacing="18">
+          <!-- Mounted once for every visible Assist state. Its changing text is the
+               sole polite announcement source. -->
+          <Grid x:Name="StatusRow" ColumnDefinitions="Auto,*" ColumnSpacing="14">
+            <Grid x:Name="ExpandedIdentity"
+                  Classes="assistIdentity"
+                  Width="44" Height="44"
+                  VerticalAlignment="Top"
+                  IsHitTestVisible="False">
+              <Viewbox x:Name="ExpandedIdentityViewbox" Width="44" Height="44">
+                <Grid Width="64" Height="64">
+                  <Path Classes="identityAura"
+                        Data="{StaticResource AssistOuterGeometry}" />
+                  <Path Classes="identitySurface"
+                        Data="{StaticResource AssistOuterGeometry}" />
+                  <Viewbox Width="20" Height="20"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Margin="0,-2,0,0">
+                    <Canvas Width="24" Height="24">
+                      <Path Classes="identityGlyph"
+                            Data="{StaticResource AedaEyeGeometry}" />
+                      <Ellipse Classes="identityIris" Width="7" Height="7"
+                               Canvas.Left="8.5" Canvas.Top="8.5" />
+                      <Ellipse Classes="identityPupil" Width="2" Height="2"
+                               Canvas.Left="11" Canvas.Top="11" />
+                    </Canvas>
+                  </Viewbox>
 
-      <!-- Response / status surface.
-           Auto heading, Star scrollable content, Auto actions. The Star row absorbs the
-           leftover height, so the response can never grow past the window and hide the
-           action row: Copy and Open in AEDA stay inside the host at any response length. -->
-      <Grid x:Name="ResponseSurface"
-            RowDefinitions="Auto,*,Auto"
-            RowSpacing="8"
-            IsVisible="{Binding IsResponseSurface}">
-        <TextBlock Text="Response" Classes="sectionHeading" />
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-          <SelectableTextBlock x:Name="ResponseText"
-                                Text="{Binding Response}"
-                                TextWrapping="Wrap"
-                                AutomationProperties.Name="Assist response"
-                                AutomationProperties.LiveSetting="Polite" />
-        </ScrollViewer>
+                  <Ellipse x:Name="AssistListeningMark"
+                           Classes="identityMarkOutline"
+                           Width="25" Height="25"
+                           StrokeThickness="2"
+                           IsVisible="False"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+                  <StackPanel x:Name="AssistThinkingMark"
+                              Classes="identityDots"
+                              IsVisible="False"
+                              Orientation="Horizontal"
+                              Spacing="2"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Margin="0,24,0,0">
+                    <Ellipse Classes="identityMark dotOne" Width="3" Height="3" />
+                    <Ellipse Classes="identityMark dotTwo" Width="3" Height="3" />
+                    <Ellipse Classes="identityMark dotThree" Width="3" Height="3" />
+                  </StackPanel>
+                  <Path x:Name="AssistActionReadyMark"
+                        Classes="identityMarkOutline"
+                        IsVisible="False"
+                        Data="M1,5 L4,8 L10,1"
+                        Width="11" Height="9"
+                        Stretch="Uniform"
+                        StrokeThickness="2.5"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,11,13" />
+                  <Grid x:Name="AssistErrorMark"
+                        IsVisible="False"
+                        Width="6" Height="13"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,13,12">
+                    <Path Classes="identityMarkOutline"
+                          Data="M3,1 L3,7"
+                          StrokeThickness="2.5" />
+                    <Ellipse Classes="identityMark" Width="3" Height="3"
+                             VerticalAlignment="Bottom" />
+                  </Grid>
+                  <Path x:Name="AssistCancelledMark"
+                        Classes="identityMarkOutline"
+                        IsVisible="False"
+                        Data="M1,1 L9,1"
+                        Width="10" Height="2"
+                        Stretch="Uniform"
+                        StrokeThickness="2.5"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,11,15" />
+                </Grid>
+              </Viewbox>
+            </Grid>
 
-        <!-- Outside the ScrollViewer, in a fixed Auto row: never scrolls away. -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
-          <Button x:Name="CancelButton"
-                  Content="Cancel"
-                  Command="{Binding CancelCommand}"
-                  IsVisible="{Binding CanCancel}"
-                  ToolTip.Tip="Stop generating (Escape)"
-                  AutomationProperties.Name="Cancel generation" />
-          <Button x:Name="RetryButton"
-                  Content="Retry"
-                  Command="{Binding RetryCommand}"
-                  IsVisible="{Binding CanRetry}"
-                  ToolTip.Tip="Retry"
-                  AutomationProperties.Name="Retry" />
-          <Button x:Name="CopyButton"
-                  Content="Copy"
-                  Command="{Binding CopyResponseCommand}"
-                  IsVisible="{Binding CanShowResponseActions}"
-                  ToolTip.Tip="Copy response"
-                  AutomationProperties.Name="Copy response" />
-          <Button x:Name="OpenInAedaButton"
-                  Content="Open in AEDA"
-                  Command="{Binding OpenInAedaCommand}"
-                  IsVisible="{Binding CanShowResponseActions}"
-                  ToolTip.Tip="Open this reply in AEDA"
-                  AutomationProperties.Name="Open in AEDA" />
-        </StackPanel>
-      </Grid>
+            <TextBlock x:Name="StatusText"
+                       Grid.Column="1"
+                       Text="{Binding StatusText}"
+                       Classes="metadata"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite" />
+          </Grid>
 
-    </Panel>
-  </Grid>
+          <Panel x:Name="StateHost" Grid.Row="1">
+            <TextBlock x:Name="DisabledSurface"
+                       Text="Assist is disabled in Settings."
+                       Classes="metadata"
+                       TextWrapping="Wrap"
+                       IsVisible="False"
+                       VerticalAlignment="Top" />
+
+            <StackPanel x:Name="IdleSurface"
+                        Spacing="10"
+                        VerticalAlignment="Top"
+                        IsVisible="{Binding IsIdle}">
+              <TextBlock Text="AEDA checks selected text first. When no useful text is available, you can type a question."
+                         Classes="metadata"
+                         TextWrapping="Wrap"
+                         MaxWidth="620"
+                         HorizontalAlignment="Left" />
+              <Button x:Name="AskButton"
+                      Content="Ask AEDA"
+                      Click="OnAskClick"
+                      HorizontalAlignment="Left"
+                      ToolTip.Tip="Start Assist"
+                      AutomationProperties.Name="Ask AEDA" />
+            </StackPanel>
+
+            <StackPanel x:Name="PromptSurface"
+                        Spacing="10"
+                        VerticalAlignment="Top"
+                        IsVisible="{Binding IsFallbackInput}">
+              <TextBox x:Name="PromptBox"
+                       Text="{Binding Prompt, Mode=TwoWay}"
+                       AcceptsReturn="False"
+                       TextWrapping="NoWrap"
+                       MinHeight="40"
+                       PlaceholderText="Ask a question…"
+                       KeyDown="OnPromptKeyDown"
+                       AutomationProperties.Name="Assist prompt" />
+              <WrapPanel Orientation="Horizontal">
+                <Button x:Name="SendButton"
+                        Content="Send"
+                        Command="{Binding SubmitCommand}"
+                        Margin="0,0,8,8"
+                        ToolTip.Tip="Send (Enter)"
+                        AutomationProperties.Name="Send prompt" />
+                <Button x:Name="SelectScreenTextButton"
+                        Content="Select screen text"
+                        Command="{Binding SelectScreenTextCommand}"
+                        Margin="0,0,8,8"
+                        ToolTip.Tip="Capture text from the screen"
+                        AutomationProperties.Name="Select screen text" />
+              </WrapPanel>
+            </StackPanel>
+
+            <Grid x:Name="ResponseSurface"
+                  RowDefinitions="*,Auto"
+                  RowSpacing="10"
+                  IsVisible="{Binding IsResponseSurface}">
+              <Grid x:Name="ResponseRegion"
+                    RowDefinitions="Auto,*"
+                    RowSpacing="8"
+                    IsVisible="{Binding HasResponse}">
+                <TextBlock Text="Response" Classes="sectionHeading" />
+                <ScrollViewer Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                  <SelectableTextBlock x:Name="ResponseText"
+                                       Text="{Binding Response}"
+                                       TextWrapping="Wrap"
+                                       AutomationProperties.Name="Assist response" />
+                </ScrollViewer>
+              </Grid>
+
+              <WrapPanel x:Name="ResponseActions"
+                         Grid.Row="1"
+                         Orientation="Horizontal">
+                <Button x:Name="CancelButton"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsVisible="{Binding CanCancel}"
+                        Margin="0,0,8,8"
+                        ToolTip.Tip="Stop generating (Escape)"
+                        AutomationProperties.Name="Cancel generation" />
+                <Button x:Name="RetryButton"
+                        Content="Retry"
+                        Command="{Binding RetryCommand}"
+                        IsVisible="{Binding CanRetry}"
+                        Margin="0,0,8,8"
+                        ToolTip.Tip="Retry"
+                        AutomationProperties.Name="Retry" />
+                <Button x:Name="CopyButton"
+                        Content="Copy"
+                        Command="{Binding CopyResponseCommand}"
+                        IsVisible="{Binding CanShowResponseActions}"
+                        Margin="0,0,8,8"
+                        ToolTip.Tip="Copy response"
+                        AutomationProperties.Name="Copy response" />
+                <Button x:Name="OpenInAedaButton"
+                        Content="Open in AEDA"
+                        Command="{Binding OpenInAedaCommand}"
+                        IsVisible="{Binding CanShowResponseActions}"
+                        Margin="0,0,8,8"
+                        ToolTip.Tip="Open this reply in AEDA"
+                        AutomationProperties.Name="Open in AEDA" />
+              </WrapPanel>
+            </Grid>
+          </Panel>
+        </Grid>
+      </Border>
+    </Grid>
   </Panel>
 </UserControl>

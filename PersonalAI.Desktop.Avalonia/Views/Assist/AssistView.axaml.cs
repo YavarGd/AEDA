@@ -1,9 +1,11 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using PersonalAI.Desktop.Presentation.ViewModels;
+using Windows.UI.ViewManagement;
 
 namespace PersonalAI.Desktop.Avalonia.Views.Assist;
 
@@ -24,7 +26,9 @@ public enum AssistViewHostMode
 public partial class AssistView : UserControl
 {
     private AssistViewHostMode _hostMode = AssistViewHostMode.FullModule;
-
+    private readonly bool _animationsEnabled = ReadAnimationsEnabled();
+    private bool _routeCompact;
+    private bool _routeMedium;
     private AssistPillViewModel? _viewModel;
 
     public AssistView()
@@ -56,7 +60,8 @@ public partial class AssistView : UserControl
         // Idle drives whether the compact window shows the Pill or the expanded surface.
         if (e.PropertyName is nameof(AssistPillViewModel.IsIdle) or
             nameof(AssistPillViewModel.IsEnabled) or
-            nameof(AssistPillViewModel.State))
+            nameof(AssistPillViewModel.State) or
+            nameof(AssistPillViewModel.HasResponse))
         {
             ApplyHostMode();
         }
@@ -84,29 +89,31 @@ public partial class AssistView : UserControl
     private void ApplyHostMode()
     {
         var compact = _hostMode == AssistViewHostMode.CompactWindow;
-
-        // Idle in the compact window shows only the Pill; every other state expands the
-        // window, so the surface is shown with compact margins rather than module spacing.
         var idle = DataContext is AssistPillViewModel { IsIdle: true };
+        var enabled = _viewModel?.IsEnabled == true;
+        var state = _viewModel?.State;
+
         CompactPill.IsEnabled = _viewModel?.IsEnabled ?? false;
         CompactPill.IsVisible = compact && idle;
-        ExpandedBackground.IsVisible = !(compact && idle);
-        var state = _viewModel?.State;
-        CompactPill.Classes.Set("listening", state == AssistPillState.DetectingContext);
-        CompactPill.Classes.Set("thinking", state == AssistPillState.StreamingResponse);
-        CompactPill.Classes.Set("actionReady", state == AssistPillState.Completed);
-        CompactPill.Classes.Set("error", state == AssistPillState.Failed);
-        ExpandedBackground.Classes.Set("listening", state == AssistPillState.DetectingContext);
-        ExpandedBackground.Classes.Set("thinking", state == AssistPillState.StreamingResponse);
-        ExpandedBackground.Classes.Set("actionReady", state == AssistPillState.Completed);
-        ExpandedBackground.Classes.Set("error", state == AssistPillState.Failed);
+        ExpandedBackground.IsVisible = compact && !idle;
+        SetStateClasses(CompactPill, state);
+        SetStateClasses(ExpandedBackground, state);
+        SetStateClasses(StateSurface, state);
+        SetStateClasses(ExpandedIdentity, state);
+        ExpandedIdentity.Classes.Set("motion", _animationsEnabled);
         AssistListeningMark.IsVisible = state == AssistPillState.DetectingContext;
         AssistThinkingMark.IsVisible = state == AssistPillState.StreamingResponse;
         AssistActionReadyMark.IsVisible = state == AssistPillState.Completed;
         AssistErrorMark.IsVisible = state == AssistPillState.Failed;
+        AssistCancelledMark.IsVisible = state == AssistPillState.Cancelled;
         FullSurface.IsVisible = !(compact && idle);
-        FullSurface.Margin = compact ? new Thickness(12) : new Thickness(28);
         ModuleHeader.IsVisible = !compact;
+        StatusRow.IsVisible = enabled;
+        DisabledSurface.IsVisible = !enabled;
+        ResponseSurface.RowDefinitions[0].Height = _viewModel?.HasResponse == true
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0);
+        ApplyLayout(compact);
     }
 
     /// <summary>
@@ -121,7 +128,22 @@ public partial class AssistView : UserControl
             return;
         }
 
-        AskButton.Focus();
+        if (DataContext is AssistPillViewModel { IsIdle: true })
+        {
+            AskButton.Focus();
+        }
+    }
+
+    public void ApplyResponsiveMode(bool compact, bool medium)
+    {
+        if (_hostMode == AssistViewHostMode.CompactWindow)
+        {
+            return;
+        }
+
+        _routeCompact = compact;
+        _routeMedium = medium;
+        ApplyLayout(compactWindow: false);
     }
 
     private async void OnAskClick(object? sender, RoutedEventArgs e)
@@ -167,6 +189,71 @@ public partial class AssistView : UserControl
         if (viewModel.CancelCommand.CanExecute(null))
         {
             viewModel.CancelCommand.Execute(null);
+        }
+    }
+
+    private void ApplyLayout(bool compactWindow)
+    {
+        if (compactWindow)
+        {
+            FullSurface.Margin = new Thickness(6);
+            FullSurface.RowSpacing = 0;
+            StateSurface.Padding = new Thickness(8);
+            StateSurface.MaxWidth = double.PositiveInfinity;
+            StateSurface.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
+            StateSurface.VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch;
+            StateLayout.RowSpacing = 6;
+            StatusRow.ColumnSpacing = 10;
+            ExpandedIdentity.Width = ExpandedIdentity.Height = 32;
+            ExpandedIdentityViewbox.Width = ExpandedIdentityViewbox.Height = 32;
+            PromptSurface.Spacing = 8;
+            SendButton.Margin = new Thickness(0, 0, 8, 0);
+            SelectScreenTextButton.Margin = new Thickness(0);
+            return;
+        }
+
+        var pagePadding = _routeCompact ? 16 : _routeMedium ? 24 : 32;
+        FullSurface.Margin = new Thickness(pagePadding);
+        FullSurface.RowSpacing = _routeCompact ? 16 : _routeMedium ? 20 : 24;
+        ModuleTitle.FontSize = _routeCompact ? 22 : _routeMedium ? 24 : 28;
+        StateSurface.Padding = new Thickness(_routeCompact ? 16 : _routeMedium ? 20 : 24);
+        StateSurface.MaxWidth = _routeCompact || _routeMedium
+            ? double.PositiveInfinity
+            : 860;
+        StateSurface.HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch;
+        StateSurface.VerticalAlignment = _viewModel?.HasResponse == true
+            ? global::Avalonia.Layout.VerticalAlignment.Stretch
+            : global::Avalonia.Layout.VerticalAlignment.Top;
+        StateLayout.RowSpacing = _routeCompact ? 14 : _routeMedium ? 16 : 18;
+        StatusRow.ColumnSpacing = 14;
+        ExpandedIdentity.Width = ExpandedIdentity.Height = 44;
+        ExpandedIdentityViewbox.Width = ExpandedIdentityViewbox.Height = 44;
+        PromptSurface.Spacing = 10;
+        SendButton.Margin = new Thickness(0, 0, 8, 8);
+        SelectScreenTextButton.Margin = new Thickness(0, 0, 8, 8);
+    }
+
+    private static void SetStateClasses(StyledElement element, AssistPillState? state)
+    {
+        element.Classes.Set("listening", state == AssistPillState.DetectingContext);
+        element.Classes.Set("thinking", state == AssistPillState.StreamingResponse);
+        element.Classes.Set("actionReady", state == AssistPillState.Completed);
+        element.Classes.Set("cancelled", state == AssistPillState.Cancelled);
+        element.Classes.Set("error", state == AssistPillState.Failed);
+    }
+
+    private static bool ReadAnimationsEnabled()
+    {
+        try
+        {
+            return new UISettings().AnimationsEnabled;
+        }
+        catch (Exception exception) when (
+            exception is COMException or
+            PlatformNotSupportedException or
+            TypeInitializationException)
+        {
+            return false;
         }
     }
 }

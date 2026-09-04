@@ -12,9 +12,9 @@
   <Style Selector="Button.assistLauncher Path.launcherAura">
     <Setter Property="Fill" Value="Transparent" />
     <Setter Property="Stroke" Value="{DynamicResource AccentSoftBrush}" />
-    <Setter Property="StrokeThickness" Value="6" />
+    <Setter Property="StrokeThickness" Value="5" />
     <Setter Property="StrokeJoin" Value="Round" />
-    <Setter Property="Opacity" Value="0.7" />
+    <Setter Property="Opacity" Value="0.28" />
   </Style>
 
   <Style Selector="Button.assistLauncher Path.launcherSurface">
@@ -36,25 +36,14 @@
     <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher Ellipse.launcherMark">
-    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
-  </Style>
-
-  <Style Selector="Button.assistLauncher Path.launcherMarkOutline, Button.assistLauncher Ellipse.launcherMarkOutline">
-    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="StrokeLineCap" Value="Round" />
-  </Style>
-
   <Style Selector="Button.assistLauncher:pointerover Path.launcherSurface">
     <Setter Property="Fill" Value="{DynamicResource SurfaceAltBrush}" />
-    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
     <Setter Property="StrokeThickness" Value="2" />
   </Style>
 
   <Style Selector="Button.assistLauncher:pointerover Path.launcherAura">
     <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="StrokeThickness" Value="7" />
-    <Setter Property="Opacity" Value="0.3" />
+    <Setter Property="Opacity" Value="0.32" />
   </Style>
 
   <Style Selector="Button.assistLauncher:focus-visible Path.launcherSurface">
@@ -64,8 +53,8 @@
 
   <Style Selector="Button.assistLauncher:focus-visible Path.launcherAura">
     <Setter Property="Stroke" Value="{DynamicResource FocusRingBrush}" />
-    <Setter Property="StrokeThickness" Value="8" />
-    <Setter Property="Opacity" Value="0.38" />
+    <Setter Property="StrokeThickness" Value="7" />
+    <Setter Property="Opacity" Value="0.36" />
   </Style>
 
   <Style Selector="Button.assistLauncher:pressed">
@@ -77,45 +66,27 @@
     <Setter Property="Stroke" Value="{DynamicResource AccentPressedBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.listening Path.launcherAura">
-    <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
-    <Setter Property="StrokeThickness" Value="7" />
-    <Setter Property="Opacity" Value="0.34" />
+  <Style Selector="Button.assistLauncher:disabled">
+    <Setter Property="Opacity" Value="0.45" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.listening Path.launcherSurface">
+  <Style Selector="Button.assistLauncher.listening Path.launcherAura, Button.assistLauncher.listening Path.launcherSurface">
     <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.listening Path.launcherGlyph, Button.assistLauncher.listening Ellipse.launcherPupil, Button.assistLauncher.listening Ellipse.launcherMark">
+  <Style Selector="Button.assistLauncher.listening Path.launcherGlyph, Button.assistLauncher.listening Ellipse.launcherPupil">
     <Setter Property="Fill" Value="{DynamicResource ListeningBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.listening Path.launcherMarkOutline, Button.assistLauncher.listening Ellipse.launcherMarkOutline">
-    <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
-  </Style>
-
-  <Style Selector="Button.assistLauncher.thinking Path.launcherAura">
-    <Setter Property="Stroke" Value="{DynamicResource WarningBrush}" />
-    <Setter Property="StrokeThickness" Value="7" />
-    <Setter Property="Opacity" Value="0.32" />
-  </Style>
-
-  <Style Selector="Button.assistLauncher.thinking Path.launcherSurface">
+  <Style Selector="Button.assistLauncher.thinking Path.launcherAura, Button.assistLauncher.thinking Path.launcherSurface">
     <Setter Property="Stroke" Value="{DynamicResource WarningBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.thinking Path.launcherGlyph, Button.assistLauncher.thinking Ellipse.launcherPupil, Button.assistLauncher.thinking Ellipse.launcherMark">
+  <Style Selector="Button.assistLauncher.thinking Path.launcherGlyph, Button.assistLauncher.thinking Ellipse.launcherPupil">
     <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.actionReady Path.launcherAura">
-    <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
-    <Setter Property="StrokeThickness" Value="7" />
-    <Setter Property="Opacity" Value="0.32" />
-  </Style>
-
-  <Style Selector="Button.assistLauncher.actionReady Path.launcherSurface">
+  <Style Selector="Button.assistLauncher.actionReady Path.launcherAura, Button.assistLauncher.actionReady Path.launcherSurface">
     <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
   </Style>
 
@@ -123,27 +94,153 @@
     <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.actionReady Path.launcherMarkOutline">
-    <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
-  </Style>
-
-  <Style Selector="Button.assistLauncher.error Path.launcherAura">
-    <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
-    <Setter Property="StrokeThickness" Value="7" />
-    <Setter Property="Opacity" Value="0.32" />
-  </Style>
-
-  <Style Selector="Button.assistLauncher.error Path.launcherSurface">
+  <Style Selector="Button.assistLauncher.error Path.launcherAura, Button.assistLauncher.error Path.launcherSurface">
     <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher.error Path.launcherGlyph, Button.assistLauncher.error Ellipse.launcherPupil, Button.assistLauncher.error Ellipse.launcherMark, Button.assistLauncher.error Path.launcherMarkOutline">
-    <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
+  <Style Selector="Button.assistLauncher.error Path.launcherGlyph, Button.assistLauncher.error Ellipse.launcherPupil">
     <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
   </Style>
 
-  <Style Selector="Button.assistLauncher:disabled">
-    <Setter Property="Opacity" Value="0.45" />
+  <Style Selector="Grid.assistIdentity Path.identityAura">
+    <Setter Property="Fill" Value="Transparent" />
+    <Setter Property="Stroke" Value="{DynamicResource AccentSoftBrush}" />
+    <Setter Property="StrokeThickness" Value="5" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="Opacity" Value="0.28" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity Path.identitySurface">
+    <Setter Property="Fill" Value="{DynamicResource ElevatedSurfaceBrush}" />
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="StrokeThickness" Value="1.75" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity Path.identityGlyph">
+    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity Ellipse.identityIris">
+    <Setter Property="Fill" Value="{DynamicResource ElevatedSurfaceBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity Ellipse.identityPupil, Grid.assistIdentity Ellipse.identityMark">
+    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity Path.identityMarkOutline, Grid.assistIdentity Ellipse.identityMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.listening Path.identityAura">
+    <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
+    <Setter Property="Opacity" Value="0.34" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.listening Path.identitySurface, Grid.assistIdentity.listening Path.identityMarkOutline, Grid.assistIdentity.listening Ellipse.identityMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource ListeningBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.listening Path.identityGlyph, Grid.assistIdentity.listening Ellipse.identityPupil, Grid.assistIdentity.listening Ellipse.identityMark">
+    <Setter Property="Fill" Value="{DynamicResource ListeningBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.thinking Path.identityAura">
+    <Setter Property="Stroke" Value="{DynamicResource WarningBrush}" />
+    <Setter Property="Opacity" Value="0.3" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.thinking Path.identitySurface, Grid.assistIdentity.thinking Path.identityMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.thinking Path.identityGlyph, Grid.assistIdentity.thinking Ellipse.identityPupil, Grid.assistIdentity.thinking Ellipse.identityMark">
+    <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.actionReady Path.identityAura">
+    <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
+    <Setter Property="Opacity" Value="0.3" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.actionReady Path.identitySurface, Grid.assistIdentity.actionReady Path.identityMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.actionReady Path.identityGlyph, Grid.assistIdentity.actionReady Ellipse.identityPupil">
+    <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.cancelled Path.identityAura">
+    <Setter Property="Stroke" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="Opacity" Value="0.26" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.cancelled Path.identitySurface, Grid.assistIdentity.cancelled Path.identityMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource SecondaryTextBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.cancelled Path.identityGlyph, Grid.assistIdentity.cancelled Ellipse.identityPupil">
+    <Setter Property="Fill" Value="{DynamicResource SecondaryTextBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.error Path.identityAura">
+    <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
+    <Setter Property="Opacity" Value="0.3" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.error Path.identitySurface, Grid.assistIdentity.error Path.identityMarkOutline">
+    <Setter Property="Stroke" Value="{DynamicResource ErrorBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.error Path.identityGlyph, Grid.assistIdentity.error Ellipse.identityPupil, Grid.assistIdentity.error Ellipse.identityMark">
+    <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.motion.listening Path.identityAura">
+    <Style.Animations>
+      <Animation Duration="0:0:1.4" IterationCount="Infinite">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.2" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0.44" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.2" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.motion.thinking Ellipse.dotOne">
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+        <KeyFrame Cue="25%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.motion.thinking Ellipse.dotTwo">
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+        <KeyFrame Cue="25%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        <KeyFrame Cue="75%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <Style Selector="Grid.assistIdentity.motion.thinking Ellipse.dotThree">
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+        <KeyFrame Cue="75%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.35" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
   </Style>
 
   <Style Selector="Border.assistSurface.listening">
@@ -156,6 +253,10 @@
 
   <Style Selector="Border.assistSurface.actionReady">
     <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="Border.assistSurface.cancelled">
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
   </Style>
 
   <Style Selector="Border.assistSurface.error">

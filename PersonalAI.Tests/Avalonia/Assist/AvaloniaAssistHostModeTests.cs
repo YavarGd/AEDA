@@ -64,7 +64,8 @@ public sealed class AvaloniaAssistHostModeTests
         Assert.Contains("VerticalAlignment=\"Stretch\"", markup);
 
         // Expanded states in the compact window use tighter margins than the module.
-        Assert.Contains("FullSurface.Margin = compact ? new Thickness(12) : new Thickness(28)", view);
+        Assert.Contains("FullSurface.Margin = new Thickness(6)", view);
+        Assert.Contains("ApplyLayout(compact)", view);
         Assert.Contains("ModuleHeader.IsVisible = !compact", view);
     }
 
@@ -102,8 +103,8 @@ public sealed class AvaloniaAssistHostModeTests
         Assert.Contains("x:Key=\"AssistOuterGeometry\"", foundation);
         Assert.Contains("x:Key=\"AedaEyeGeometry\"", foundation);
         Assert.DoesNotContain("AedaMarkGeometry", foundation + markup);
-        Assert.Equal(2, Count(markup, "Data=\"{StaticResource AssistOuterGeometry}\""));
-        Assert.Equal(1, Count(markup, "Data=\"{StaticResource AedaEyeGeometry}\""));
+        Assert.Equal(4, Count(markup, "Data=\"{StaticResource AssistOuterGeometry}\""));
+        Assert.Equal(2, Count(markup, "Data=\"{StaticResource AedaEyeGeometry}\""));
         Assert.Contains("x:Name=\"AssistLauncherAura\"", markup);
         Assert.Contains("Fill\" Value=\"{DynamicResource ElevatedSurfaceBrush}", styles);
         Assert.Contains("Path.launcherAura", styles);
@@ -116,9 +117,9 @@ public sealed class AvaloniaAssistHostModeTests
         Assert.All(new[]
         {
             "AssistIdleMark", "AssistListeningMark", "AssistThinkingMark",
-            "AssistActionReadyMark", "AssistErrorMark"
+            "AssistActionReadyMark", "AssistErrorMark", "AssistCancelledMark"
         }, mark => Assert.Contains($"x:Name=\"{mark}\"", markup));
-        Assert.All(new[] { "listening", "thinking", "actionReady", "error" },
+        Assert.All(new[] { "listening", "thinking", "actionReady", "cancelled", "error" },
             state => Assert.Contains($"Classes.Set(\"{state}\"", view));
         Assert.DoesNotContain("AEDA_VISUAL_QA_ASSIST_STATE", view);
     }
