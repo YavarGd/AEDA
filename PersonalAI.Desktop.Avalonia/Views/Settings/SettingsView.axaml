@@ -1,186 +1,362 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:core="using:PersonalAI.Core.Settings"
+             xmlns:settings="using:PersonalAI.Desktop.Avalonia.Views.Settings"
              xmlns:vm="using:PersonalAI.Desktop.Presentation.ViewModels"
              x:Class="PersonalAI.Desktop.Avalonia.Views.Settings.SettingsView"
+             x:Name="SettingsRoot"
              x:DataType="vm:SettingsViewModel"
              AutomationProperties.Name="Settings">
-  <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="28" MaxWidth="780" Spacing="20" HorizontalAlignment="Left">
+
+  <UserControl.Styles>
+    <Style Selector="Border.settingsPanel">
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="20" />
+    </Style>
+    <Style Selector="Border.settingsSubtlePanel">
+      <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="14" />
+    </Style>
+    <Style Selector="TextBlock.settingsSectionTitle">
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.settingsSectionCopy">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.settingsFieldLabel">
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="RadioButton.settingsCategory">
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+    </Style>
+    <Style Selector="RadioButton.settingsCategory:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <Style Selector="RadioButton.settingsCategory:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="RadioButton.themeChoice">
+      <Setter Property="MinWidth" Value="210" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Margin" Value="0,0,10,10" />
+      <Setter Property="Padding" Value="12,9" />
+      <Setter Property="Background" Value="{DynamicResource ContentSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="RadioButton.themeChoice:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="ComboBox.settingsField">
+      <Setter Property="MinWidth" Value="220" />
+      <Setter Property="MaxWidth" Value="360" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="NumericUpDown.settingsNumber">
+      <Setter Property="Width" Value="180" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled">
+    <StackPanel x:Name="PageLayout"
+                Margin="32"
+                MaxWidth="1080"
+                Spacing="24"
+                HorizontalAlignment="Stretch">
       <StackPanel Spacing="4">
-        <TextBlock Text="Settings" FontSize="26" FontWeight="SemiBold" />
+        <TextBlock x:Name="PageHeading"
+                   Text="Settings"
+                   FontSize="28"
+                   FontWeight="Bold" />
+        <TextBlock Text="Manage AEDA's local appearance, providers, privacy, and workspace access."
+                   Classes="settingsSectionCopy" />
         <TextBlock Text="{Binding StatusMessage}"
                    Classes="metadata"
                    TextWrapping="Wrap"
                    AutomationProperties.LiveSetting="Polite" />
       </StackPanel>
 
-      <Expander Header="Appearance" IsExpanded="True">
-        <StackPanel Margin="0,12,0,0" Spacing="10">
-          <TextBlock Text="Choose one of AEDA's four palettes. Changes apply immediately."
-                     Classes="metadata"
-                     TextWrapping="Wrap" />
-          <RadioButton Content="System Mica"
-                       GroupName="AedaPalette"
-                       Tag="SystemMica"
-                       IsChecked="{Binding IsSystemMicaTheme, Mode=OneWay}"
-                       Click="OnThemeClick" />
-          <RadioButton Content="Graphite"
-                       GroupName="AedaPalette"
-                       Tag="Graphite"
-                       IsChecked="{Binding IsGraphiteTheme, Mode=OneWay}"
-                       Click="OnThemeClick" />
-          <RadioButton Content="Mineral Stone"
-                       GroupName="AedaPalette"
-                       Tag="MineralStone"
-                       IsChecked="{Binding IsMineralStoneTheme, Mode=OneWay}"
-                       Click="OnThemeClick" />
-          <RadioButton Content="Sharp Almond"
-                       GroupName="AedaPalette"
-                       Tag="SharpAlmond"
-                       IsChecked="{Binding IsSharpAlmondTheme, Mode=OneWay}"
-                       Click="OnThemeClick" />
-          <CheckBox Content="Show message metadata"
-                    IsChecked="{Binding ShowMessageMetadata}" />
-        </StackPanel>
-      </Expander>
+      <WrapPanel x:Name="MediumCategoryNavigation"
+                 IsVisible="False"
+                 Orientation="Horizontal"
+                 AutomationProperties.Name="Settings categories">
+        <RadioButton x:Name="AppearanceMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Appearance" Tag="Appearance" IsChecked="True" Margin="0,0,8,8" Click="OnCategoryClick" />
+        <RadioButton x:Name="AssistMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Assist" Tag="Assist" Margin="0,0,8,8" Click="OnCategoryClick" />
+        <RadioButton x:Name="WindowMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Window &amp; startup" Tag="Window" Margin="0,0,8,8" Click="OnCategoryClick" />
+        <RadioButton x:Name="ProviderMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Provider &amp; models" Tag="Provider" Margin="0,0,8,8" Click="OnCategoryClick" />
+        <RadioButton x:Name="PrivacyMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Context &amp; privacy" Tag="Privacy" Margin="0,0,8,8" Click="OnCategoryClick" />
+        <RadioButton x:Name="WorkspacesMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Workspaces" Tag="Workspaces" Margin="0,0,8,8" Click="OnCategoryClick" />
+        <RadioButton x:Name="AdvancedMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Advanced &amp; maintenance" Tag="Advanced" Margin="0,0,8,8" Click="OnCategoryClick" />
+      </WrapPanel>
 
-      <Expander Header="General">
-        <StackPanel Margin="0,12,0,0" Spacing="10">
-          <TextBlock Text="Launch destination" Classes="metadata" />
-          <ComboBox ItemsSource="{Binding LaunchDestinationOptions}"
-                    SelectedItem="{Binding LaunchDestination}"
-                    AutomationProperties.Name="Launch destination" />
-          <CheckBox Content="Preserve composer draft between hide and show"
-                    IsChecked="{Binding PreserveComposerDraftBetweenHideShow}" />
-          <CheckBox Content="Confirm before clearing all attached context"
-                    IsChecked="{Binding ConfirmBeforeClearingAllContext}" />
-          <TextBlock Text="{Binding SettingsPath}" Classes="metadata" TextWrapping="Wrap" />
-        </StackPanel>
-      </Expander>
-
-      <Expander Header="Provider and models" IsExpanded="True">
-        <StackPanel Margin="0,12,0,0" Spacing="10">
-          <TextBlock Text="Chat provider" Classes="metadata" />
-          <ComboBox x:Name="ProviderPicker"
-                    SelectionChanged="OnProviderSelectionChanged"
-                    AutomationProperties.Name="Chat provider" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="Refresh models"
-                    Command="{Binding RefreshModelsCommand}"
-                    AutomationProperties.Name="Refresh provider models" />
-            <Button Content="Reset assignments"
-                    Command="{Binding ResetModelAssignmentsCommand}" />
+      <Grid x:Name="SettingsWorkspace" ColumnDefinitions="224,*" ColumnSpacing="24">
+        <StackPanel x:Name="CategoryRail" Grid.Column="0" Spacing="16" AutomationProperties.Name="Settings categories">
+          <StackPanel Spacing="2">
+            <TextBlock Text="EVERYDAY" Classes="metadata" Margin="10,0,0,4" />
+            <RadioButton x:Name="AppearanceCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Appearance" Tag="Appearance" IsChecked="True" Click="OnCategoryClick" />
+            <RadioButton x:Name="AssistCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Assist" Tag="Assist" Click="OnCategoryClick" />
+            <RadioButton x:Name="WindowCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Window &amp; startup" Tag="Window" Click="OnCategoryClick" />
           </StackPanel>
-          <TextBlock Text="{Binding ModelRefreshStatus}"
-                     Classes="metadata"
-                     TextWrapping="Wrap"
-                     AutomationProperties.LiveSetting="Polite" />
-          <TextBlock Text="General model" Classes="metadata" />
-          <ComboBox ItemsSource="{Binding InstalledModels}"
-                    SelectedItem="{Binding GeneralModel}"
-                    IsEditable="True"
-                    AutomationProperties.Name="General model" />
-          <TextBlock Text="Coding model" Classes="metadata" />
-          <ComboBox ItemsSource="{Binding InstalledModels}"
-                    SelectedItem="{Binding CodingModel}"
-                    IsEditable="True"
-                    AutomationProperties.Name="Coding model" />
-          <TextBlock Text="Vision model" Classes="metadata" />
-          <ComboBox ItemsSource="{Binding VisionModels}"
-                    SelectedItem="{Binding VisionModel}"
-                    AutomationProperties.Name="Vision model" />
-          <TextBlock Text="Fast model" Classes="metadata" />
-          <ComboBox ItemsSource="{Binding InstalledModels}"
-                    SelectedItem="{Binding FastModel}"
-                    IsEditable="True"
-                    AutomationProperties.Name="Fast model" />
-          <TextBlock Text="Reasoning model" Classes="metadata" />
-          <ComboBox ItemsSource="{Binding InstalledModels}"
-                    SelectedItem="{Binding ReasoningModel}"
-                    IsEditable="True"
-                    AutomationProperties.Name="Reasoning model" />
+          <StackPanel Spacing="2">
+            <TextBlock Text="AI" Classes="metadata" Margin="10,0,0,4" />
+            <RadioButton x:Name="ProviderCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Provider &amp; models" Tag="Provider" Click="OnCategoryClick" />
+          </StackPanel>
+          <StackPanel Spacing="2">
+            <TextBlock Text="ACCESS &amp; PRIVACY" Classes="metadata" Margin="10,0,0,4" />
+            <RadioButton x:Name="PrivacyCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Context &amp; privacy" Tag="Privacy" Click="OnCategoryClick" />
+            <RadioButton x:Name="WorkspacesCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Workspaces" Tag="Workspaces" Click="OnCategoryClick" />
+          </StackPanel>
+          <StackPanel Spacing="2">
+            <TextBlock Text="ADVANCED" Classes="metadata" Margin="10,0,0,4" />
+            <RadioButton x:Name="AdvancedCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Advanced &amp; maintenance" Tag="Advanced" Click="OnCategoryClick" />
+          </StackPanel>
         </StackPanel>
-      </Expander>
 
-      <Expander Header="Workspaces" IsExpanded="True">
-        <StackPanel Margin="0,12,0,0" Spacing="10">
-          <TextBlock Text="Only folders you explicitly register are available to workspace tools."
-                     Classes="metadata"
-                     TextWrapping="Wrap" />
-          <WrapPanel>
-            <Button Margin="0,0,8,8"
-                    Content="Choose workspace folder"
-                    Command="{Binding Workspaces.PickWorkspaceFolderCommand}" />
-            <Button Margin="0,0,8,8"
-                    Content="Revalidate all"
-                    Command="{Binding Workspaces.RevalidateAllCommand}" />
-            <Button Margin="0,0,8,8"
-                    Content="Refresh"
-                    Command="{Binding Workspaces.RefreshCommand}" />
-          </WrapPanel>
-          <TextBlock Text="{Binding Workspaces.BusyMessage}" Classes="metadata" />
-          <TextBlock Text="{Binding Workspaces.StatusMessage}"
-                     Classes="metadata"
-                     TextWrapping="Wrap"
-                     AutomationProperties.LiveSetting="Polite" />
+        <StackPanel x:Name="CategoryContent" Grid.Column="1">
+          <Border x:Name="AppearancePanel" Classes="settingsPanel">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Appearance" Classes="settingsSectionTitle" />
+              <TextBlock Text="Choose one of AEDA's four palettes. Changes apply immediately." Classes="settingsSectionCopy" />
+              <WrapPanel>
+                <RadioButton x:Name="SystemMicaThemeOption" Classes="themeChoice" Content="System Mica" GroupName="AedaPalette" Tag="SystemMica" IsChecked="{Binding IsSystemMicaTheme, Mode=OneWay}" Click="OnThemeClick" />
+                <RadioButton Classes="themeChoice" Content="Graphite" GroupName="AedaPalette" Tag="Graphite" IsChecked="{Binding IsGraphiteTheme, Mode=OneWay}" Click="OnThemeClick" />
+                <RadioButton Classes="themeChoice" Content="Mineral Stone" GroupName="AedaPalette" Tag="MineralStone" IsChecked="{Binding IsMineralStoneTheme, Mode=OneWay}" Click="OnThemeClick" />
+                <RadioButton Classes="themeChoice" Content="Sharp Almond" GroupName="AedaPalette" Tag="SharpAlmond" IsChecked="{Binding IsSharpAlmondTheme, Mode=OneWay}" Click="OnThemeClick" />
+              </WrapPanel>
+            </StackPanel>
+          </Border>
 
-          <Border Padding="12"
-                  BorderBrush="{DynamicResource AedaBorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="8"
-                  IsVisible="{Binding Workspaces.HasPendingWorkspace}">
-            <StackPanel Spacing="8">
-              <TextBlock Text="Review workspace" FontWeight="SemiBold" />
-              <TextBox Text="{Binding Workspaces.PendingFolderPath}"
-                       IsReadOnly="True"
-                       AutomationProperties.Name="Selected workspace folder" />
-              <TextBox Text="{Binding Workspaces.PendingDisplayName}"
-                       AutomationProperties.Name="Workspace display name" />
-              <TextBlock Text="Adding grants workspace tools access subject to existing permission policies. Files are not modified by registration."
-                         Classes="metadata"
-                         TextWrapping="Wrap" />
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="Add workspace" Click="OnAddWorkspaceClick" />
-                <Button Content="Cancel"
-                        Command="{Binding Workspaces.CancelPendingWorkspaceCommand}" />
+          <Border x:Name="AssistPanel" Classes="settingsPanel" IsVisible="False">
+            <StackPanel Spacing="16">
+              <TextBlock Text="Assist" Classes="settingsSectionTitle" />
+              <TextBlock Text="Preferences for the floating Ask AEDA launcher." Classes="settingsSectionCopy" />
+              <StackPanel Spacing="4">
+                <CheckBox Content="Enable Assist pill" IsChecked="{Binding AssistPillEnabled}" />
+                <TextBlock Text="Takes effect after restarting AEDA." Classes="metadata" TextWrapping="Wrap" />
+              </StackPanel>
+              <StackPanel Spacing="6">
+                <TextBlock Text="Response preview length" Classes="settingsFieldLabel" />
+                <TextBlock Text="Characters shown before Assist truncates a response preview. Takes effect after restarting AEDA." Classes="metadata" TextWrapping="Wrap" />
+                <NumericUpDown Classes="settingsNumber" Minimum="200" Maximum="4000" Increment="100" Value="{Binding AssistPillResponsePreviewCharacters}" AutomationProperties.Name="Assist response preview characters" />
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <CheckBox Content="Universal selection fallback" IsChecked="{Binding UniversalSelectionFallbackEnabled}" />
+                <TextBlock Text="Allow a clipboard-copy fallback when selected text cannot be read directly. Applies to the next selection." Classes="metadata" TextWrapping="Wrap" />
               </StackPanel>
             </StackPanel>
           </Border>
 
-          <TextBlock Text="No workspaces registered."
-                     Classes="metadata"
-                     IsVisible="{Binding Workspaces.HasNoWorkspaces}" />
-          <ItemsControl ItemsSource="{Binding Workspaces.Workspaces}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:WorkspaceItemViewModel">
-                <Border Margin="0,0,0,8"
-                        Padding="12"
-                        BorderBrush="{DynamicResource AedaBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                  <StackPanel Spacing="6">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                      <StackPanel>
-                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding ShortRootPath}" Classes="metadata" TextTrimming="CharacterEllipsis" />
+          <Border x:Name="WindowPanel" Classes="settingsPanel" IsVisible="False">
+            <StackPanel Spacing="16">
+              <TextBlock Text="Window &amp; startup" Classes="settingsSectionTitle" />
+              <StackPanel Spacing="6">
+                <TextBlock Text="Close behavior" Classes="settingsFieldLabel" />
+                <TextBlock Text="What happens when you close the main window. Applies the next time you close it." Classes="metadata" TextWrapping="Wrap" />
+                <ComboBox Classes="settingsField" ItemsSource="{Binding CloseBehaviorOptions}" SelectedItem="{Binding CloseBehavior}" AutomationProperties.Name="Close behavior" />
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <CheckBox Content="Start minimized to tray" IsChecked="{Binding StartMinimizedToTray}" />
+                <TextBlock Text="Applies on the next application launch." Classes="metadata" TextWrapping="Wrap" />
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <CheckBox Content="Launch AEDA at sign-in" IsChecked="{Binding LaunchAtSignIn}" IsEnabled="{Binding IsStartupRegistrationSupported}" Command="{Binding ToggleStartupCommand}" />
+                <TextBlock Text="Registers directly with Windows and rolls back if registration fails." Classes="metadata" TextWrapping="Wrap" IsVisible="{Binding IsStartupRegistrationSupported}" />
+                <TextBlock Text="Launch at sign-in is unavailable for this host." Classes="metadata" TextWrapping="Wrap" IsVisible="{Binding !IsStartupRegistrationSupported}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="ProviderPanel" Classes="settingsPanel" IsVisible="False">
+            <StackPanel Spacing="16">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Provider &amp; models" Classes="settingsSectionTitle" />
+                <TextBlock Text="Pick the chat provider and which model handles each kind of request." Classes="settingsSectionCopy" />
+              </StackPanel>
+              <StackPanel Spacing="6">
+                <TextBlock Text="Chat provider" Classes="settingsFieldLabel" />
+                <ComboBox x:Name="ProviderPicker" Classes="settingsField" SelectionChanged="OnProviderSelectionChanged" AutomationProperties.Name="Chat provider" />
+              </StackPanel>
+              <WrapPanel>
+                <Button Margin="0,0,8,8" Content="Refresh models" Command="{Binding RefreshModelsCommand}" AutomationProperties.Name="Refresh provider models" />
+                <Button Margin="0,0,8,8" Content="Reset assignments" Command="{Binding ResetModelAssignmentsCommand}" />
+              </WrapPanel>
+              <TextBlock Text="{Binding ModelRefreshStatus, Converter={x:Static settings:SettingsPresentationConverters.SafeProviderStatus}}" Classes="metadata" TextWrapping="Wrap" />
+              <StackPanel Spacing="14">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="General model" Classes="settingsFieldLabel" />
+                  <TextBlock Text="Default everyday and general responses." Classes="metadata" TextWrapping="Wrap" />
+                  <ComboBox Classes="settingsField" ItemsSource="{Binding InstalledModels}" SelectedItem="{Binding GeneralModel}" IsEditable="True" AutomationProperties.Name="General model" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Coding model" Classes="settingsFieldLabel" />
+                  <TextBlock Text="Coding-related requests." Classes="metadata" TextWrapping="Wrap" />
+                  <ComboBox Classes="settingsField" ItemsSource="{Binding InstalledModels}" SelectedItem="{Binding CodingModel}" IsEditable="True" AutomationProperties.Name="Coding model" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Vision model" Classes="settingsFieldLabel" />
+                  <TextBlock Text="Image-capable requests, where supported." Classes="metadata" TextWrapping="Wrap" />
+                  <ComboBox Classes="settingsField" ItemsSource="{Binding VisionModels}" SelectedItem="{Binding VisionModel}" AutomationProperties.Name="Vision model" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Fast model" Classes="settingsFieldLabel" />
+                  <TextBlock Text="The fast routing role." Classes="metadata" TextWrapping="Wrap" />
+                  <ComboBox Classes="settingsField" ItemsSource="{Binding InstalledModels}" SelectedItem="{Binding FastModel}" IsEditable="True" AutomationProperties.Name="Fast model" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Reasoning model" Classes="settingsFieldLabel" />
+                  <TextBlock Text="The reasoning routing role." Classes="metadata" TextWrapping="Wrap" />
+                  <ComboBox Classes="settingsField" ItemsSource="{Binding InstalledModels}" SelectedItem="{Binding ReasoningModel}" IsEditable="True" AutomationProperties.Name="Reasoning model" />
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="PrivacyPanel" Classes="settingsPanel" IsVisible="False">
+            <StackPanel Spacing="16">
+              <TextBlock Text="Context &amp; privacy" Classes="settingsSectionTitle" />
+              <TextBlock Text="Control what AEDA may include when it captures context. Changes apply to subsequent captures." Classes="settingsSectionCopy" />
+              <StackPanel Spacing="4">
+                <CheckBox Content="Include executable path in provider metadata" IsChecked="{Binding IncludeExecutablePathInProviderMetadata}" />
+                <TextBlock Text="Send the active application's executable path with captured context." Classes="metadata" TextWrapping="Wrap" />
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <CheckBox Content="Include window title in provider context" IsChecked="{Binding IncludeWindowTitleInProviderContext}" />
+                <TextBlock Text="Send the active window title with captured context." Classes="metadata" TextWrapping="Wrap" />
+              </StackPanel>
+              <StackPanel Spacing="6">
+                <TextBlock Text="Excluded applications" Classes="settingsFieldLabel" />
+                <TextBlock Text="Enter one process name per line. AEDA will not capture context while a listed application is active." Classes="metadata" TextWrapping="Wrap" />
+                <TextBox Text="{Binding ExcludedApplicationsText}" AcceptsReturn="True" MinHeight="120" MaxWidth="520" HorizontalAlignment="Stretch" TextWrapping="Wrap" AutomationProperties.Name="Excluded application process names" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="WorkspacesPanel" Classes="settingsPanel" IsVisible="False">
+            <StackPanel Spacing="14">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Workspaces" Classes="settingsSectionTitle" />
+                <TextBlock Text="Only folders explicitly registered with AEDA are available to workspace tools. Removing a workspace never deletes files." Classes="settingsSectionCopy" />
+              </StackPanel>
+              <WrapPanel>
+                <Button Margin="0,0,8,8" Content="Choose workspace folder" Command="{Binding Workspaces.PickWorkspaceFolderCommand}" />
+                <Button Margin="0,0,8,8" Content="Revalidate all" Command="{Binding Workspaces.RevalidateAllCommand}" />
+                <Button Margin="0,0,8,8" Content="Refresh" Command="{Binding Workspaces.RefreshCommand}" AutomationProperties.Name="Refresh workspaces" />
+              </WrapPanel>
+              <TextBlock Text="{Binding Workspaces.BusyMessage}" Classes="metadata" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding Workspaces.StatusMessage}" Classes="metadata" TextWrapping="Wrap" />
+
+              <Border Classes="settingsSubtlePanel" IsVisible="{Binding Workspaces.HasPendingWorkspace}">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Review workspace" FontWeight="SemiBold" />
+                  <TextBox Text="{Binding Workspaces.PendingFolderPath}" IsReadOnly="True" TextWrapping="Wrap" AutomationProperties.Name="Selected workspace folder" />
+                  <TextBox Text="{Binding Workspaces.PendingDisplayName}" AutomationProperties.Name="Workspace display name" />
+                  <TextBlock Text="AEDA registers this folder without modifying its files." Classes="metadata" TextWrapping="Wrap" />
+                  <WrapPanel>
+                    <Button Margin="0,0,8,8" Content="Add workspace" Click="OnAddWorkspaceClick" />
+                    <Button Margin="0,0,8,8" Content="Cancel" Command="{Binding Workspaces.CancelPendingWorkspaceCommand}" />
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+
+              <ItemsControl ItemsSource="{Binding Workspaces.Workspaces}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:WorkspaceItemViewModel">
+                    <Border Classes="settingsSubtlePanel" Margin="0,0,0,8">
+                      <StackPanel Spacing="8">
+                        <WrapPanel>
+                          <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Margin="0,0,10,2" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding ReadOnlyBadge}" Classes="metadata" Margin="0,0,0,2" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding ShortRootPath}" Classes="metadata" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Status}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding StatusDetail}" Classes="metadata" TextWrapping="Wrap" />
+                        <WrapPanel>
+                          <Button Margin="0,0,8,8" Content="Rename" Click="OnRenameWorkspaceClick" />
+                          <Button Margin="0,0,8,8" Content="Revalidate" Click="OnRevalidateWorkspaceClick" />
+                          <Button Margin="0,0,8,8" Content="Remove" Click="OnRemoveWorkspaceClick" />
+                        </WrapPanel>
                       </StackPanel>
-                      <TextBlock Grid.Column="1" Text="{Binding ReadOnlyBadge}" Classes="metadata" />
-                    </Grid>
-                    <TextBlock Text="{Binding Status}" />
-                    <TextBlock Text="{Binding StatusDetail}" Classes="metadata" TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <Button Content="Rename" Click="OnRenameWorkspaceClick" />
-                      <Button Content="Revalidate" Click="OnRevalidateWorkspaceClick" />
-                      <Button Content="Remove" Click="OnRemoveWorkspaceClick" />
-                    </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="AdvancedPanel" Classes="settingsPanel" IsVisible="False">
+            <StackPanel Spacing="16">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Advanced &amp; maintenance" Classes="settingsSectionTitle" />
+                <TextBlock Text="Technical limits and maintenance information. Most people will not need these controls." Classes="settingsSectionCopy" />
+              </StackPanel>
+              <Expander Header="Context &amp; vision limits" IsExpanded="False">
+                <StackPanel Margin="0,12,0,0" Spacing="14">
+                  <!-- Direct runtime consumer: AssistPillHost.GenerateAsync. -->
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="Max total text context characters" Classes="settingsFieldLabel" />
+                    <TextBlock Text="Limits total attached text on the next relevant request." Classes="metadata" TextWrapping="Wrap" />
+                    <NumericUpDown Classes="settingsNumber" Minimum="1000" Maximum="100000" Increment="1000" Value="{Binding MaxTotalTextContextCharacters}" AutomationProperties.Name="Maximum total text context characters" />
                   </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+                  <!-- Direct runtime consumers: AvaloniaAssistContextService and AssistPillHost. -->
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="Max individual clipboard characters" Classes="settingsFieldLabel" />
+                    <TextBlock Text="Limits a selected-text or clipboard capture on its next use." Classes="metadata" TextWrapping="Wrap" />
+                    <NumericUpDown Classes="settingsNumber" Minimum="500" Maximum="50000" Increment="500" Value="{Binding MaxIndividualClipboardCharacters}" AutomationProperties.Name="Maximum individual clipboard characters" />
+                  </StackPanel>
+                  <!-- Direct runtime consumer: AssistPillHost.CaptureScreenTextAsync. -->
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="Screenshot max payload bytes" Classes="settingsFieldLabel" />
+                    <TextBlock Text="Limits the next screen-text capture payload." Classes="metadata" TextWrapping="Wrap" />
+                    <NumericUpDown Classes="settingsNumber" Minimum="262144" Maximum="20971520" Increment="262144" Value="{Binding ScreenshotMaxPayloadBytes}" AutomationProperties.Name="Screenshot maximum payload bytes" />
+                  </StackPanel>
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Vision model patterns" Classes="settingsFieldLabel" />
+                    <TextBlock Text="Name patterns AEDA uses with its built-in list to identify installed models that can handle images. Applies on the next relevant use." Classes="metadata" TextWrapping="Wrap" />
+                    <TextBox Text="{Binding VisionPatternsText}" AcceptsReturn="True" MinHeight="100" MaxWidth="520" HorizontalAlignment="Stretch" TextWrapping="Wrap" AutomationProperties.Name="Vision model patterns" />
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+              <StackPanel Spacing="10">
+                <TextBlock Text="Maintenance" Classes="settingsFieldLabel" />
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Settings file" Classes="metadata" />
+                  <TextBlock Text="{Binding SettingsPath}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Schema version" Classes="metadata" />
+                  <TextBlock Text="{Binding SchemaVersionDisplay}" TextWrapping="Wrap" />
+                </StackPanel>
+                <WrapPanel>
+                  <Button Margin="0,0,8,8" Content="Open settings folder" Command="{Binding OpenSettingsFolderCommand}" />
+                </WrapPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
         </StackPanel>
-      </Expander>
+      </Grid>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

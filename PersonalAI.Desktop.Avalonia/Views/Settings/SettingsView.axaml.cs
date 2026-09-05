@@ -17,6 +17,9 @@ public partial class SettingsView : UserControl
     private IApplicationSettingsService? _settingsService;
     private bool _loadingProviders;
     private bool _loaded;
+    private bool _compact;
+    private bool _medium;
+    private SettingsCategory _selectedCategory = SettingsCategory.Appearance;
 
     public SettingsView()
     {
@@ -33,7 +36,51 @@ public partial class SettingsView : UserControl
         _settingsService = settingsService;
     }
 
-    public void FocusPrimaryAction() => ProviderPicker.Focus();
+    public void FocusPrimaryAction()
+    {
+        if (_compact)
+        {
+            SystemMicaThemeOption.Focus();
+            return;
+        }
+
+        GetCategoryControl(_selectedCategory, _medium).Focus();
+    }
+
+    public void ApplyResponsiveMode(bool compact, bool medium)
+    {
+        _compact = compact;
+        _medium = medium;
+        Classes.Set("compact", compact);
+        Classes.Set("medium", medium);
+
+        var layout = ResolveLayout(compact, medium);
+        PageLayout.Margin = new Thickness(layout.PagePadding);
+        PageLayout.MaxWidth = layout.ContentMaxWidth;
+        PageLayout.Spacing = layout.MajorGap;
+        PageHeading.FontSize = layout.HeadingSize;
+        MediumCategoryNavigation.IsVisible = medium;
+        CategoryRail.IsVisible = !compact && !medium;
+        SettingsWorkspace.ColumnDefinitions[0].Width =
+            new GridLength(layout.RailWidth);
+        SettingsWorkspace.ColumnSpacing = layout.RailWidth > 0
+            ? layout.MajorGap
+            : 0;
+        CategoryContent.Spacing = compact ? layout.MajorGap : 0;
+        UpdateCategoryPresentation();
+    }
+
+    internal static (
+        double PagePadding,
+        double ContentMaxWidth,
+        double RailWidth,
+        double MajorGap,
+        double HeadingSize) ResolveLayout(bool compact, bool medium) =>
+        compact
+            ? (16, 640, 0, 16, 22)
+            : medium
+                ? (24, 900, 0, 20, 24)
+                : (32, 1080, 224, 24, 28);
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
@@ -70,6 +117,16 @@ public partial class SettingsView : UserControl
         {
             _themeManager?.Apply(theme);
             viewModel.Theme = theme;
+        }
+    }
+
+    private void OnCategoryClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string value } &&
+            Enum.TryParse<SettingsCategory>(value, out var category))
+        {
+            _selectedCategory = category;
+            UpdateCategoryPresentation();
         }
     }
 
@@ -204,5 +261,61 @@ public partial class SettingsView : UserControl
         {
             _loadingProviders = false;
         }
+    }
+
+    private void UpdateCategoryPresentation()
+    {
+        AppearancePanel.IsVisible = _compact || _selectedCategory == SettingsCategory.Appearance;
+        AssistPanel.IsVisible = _compact || _selectedCategory == SettingsCategory.Assist;
+        WindowPanel.IsVisible = _compact || _selectedCategory == SettingsCategory.Window;
+        ProviderPanel.IsVisible = _compact || _selectedCategory == SettingsCategory.Provider;
+        PrivacyPanel.IsVisible = _compact || _selectedCategory == SettingsCategory.Privacy;
+        WorkspacesPanel.IsVisible = _compact || _selectedCategory == SettingsCategory.Workspaces;
+        AdvancedPanel.IsVisible = _compact || _selectedCategory == SettingsCategory.Advanced;
+
+        AppearanceCategory.IsChecked = AppearanceMediumCategory.IsChecked =
+            _selectedCategory == SettingsCategory.Appearance;
+        AssistCategory.IsChecked = AssistMediumCategory.IsChecked =
+            _selectedCategory == SettingsCategory.Assist;
+        WindowCategory.IsChecked = WindowMediumCategory.IsChecked =
+            _selectedCategory == SettingsCategory.Window;
+        ProviderCategory.IsChecked = ProviderMediumCategory.IsChecked =
+            _selectedCategory == SettingsCategory.Provider;
+        PrivacyCategory.IsChecked = PrivacyMediumCategory.IsChecked =
+            _selectedCategory == SettingsCategory.Privacy;
+        WorkspacesCategory.IsChecked = WorkspacesMediumCategory.IsChecked =
+            _selectedCategory == SettingsCategory.Workspaces;
+        AdvancedCategory.IsChecked = AdvancedMediumCategory.IsChecked =
+            _selectedCategory == SettingsCategory.Advanced;
+    }
+
+    private RadioButton GetCategoryControl(SettingsCategory category, bool medium) =>
+        (category, medium) switch
+        {
+            (SettingsCategory.Assist, false) => AssistCategory,
+            (SettingsCategory.Window, false) => WindowCategory,
+            (SettingsCategory.Provider, false) => ProviderCategory,
+            (SettingsCategory.Privacy, false) => PrivacyCategory,
+            (SettingsCategory.Workspaces, false) => WorkspacesCategory,
+            (SettingsCategory.Advanced, false) => AdvancedCategory,
+            (SettingsCategory.Assist, true) => AssistMediumCategory,
+            (SettingsCategory.Window, true) => WindowMediumCategory,
+            (SettingsCategory.Provider, true) => ProviderMediumCategory,
+            (SettingsCategory.Privacy, true) => PrivacyMediumCategory,
+            (SettingsCategory.Workspaces, true) => WorkspacesMediumCategory,
+            (SettingsCategory.Advanced, true) => AdvancedMediumCategory,
+            (_, true) => AppearanceMediumCategory,
+            _ => AppearanceCategory
+        };
+
+    private enum SettingsCategory
+    {
+        Appearance,
+        Assist,
+        Window,
+        Provider,
+        Privacy,
+        Workspaces,
+        Advanced
     }
 }
