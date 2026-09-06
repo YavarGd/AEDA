@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using System.ComponentModel;
 using PersonalAI.Core.Settings;
 using PersonalAI.Desktop.Avalonia.Themes;
 using PersonalAI.Desktop.Avalonia.Views.Dialogs;
@@ -15,8 +16,11 @@ public partial class SettingsView : UserControl
         new(StringComparer.Ordinal);
     private AvaloniaThemeManager? _themeManager;
     private IApplicationSettingsService? _settingsService;
+    private SettingsViewModel? _statusViewModel;
     private bool _loadingProviders;
     private bool _loaded;
+    private bool _suppressStatusBridge = true;
+    private bool _suppressModelStatusBridge;
     private bool _compact;
     private bool _medium;
     private SettingsCategory _selectedCategory = SettingsCategory.Appearance;
@@ -84,6 +88,7 @@ public partial class SettingsView : UserControl
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
+        DetachStatusBridge();
         if (DataContext is not SettingsViewModel viewModel)
         {
             return;
@@ -91,7 +96,62 @@ public partial class SettingsView : UserControl
 
         viewModel.Workspaces.ConfirmRemoveWorkspaceAsync = ConfirmRemoveAsync;
         viewModel.Workspaces.RequestRenameWorkspaceAsync = RequestRenameAsync;
+        AttachStatusBridge(viewModel);
         LoadProviders();
+    }
+
+    private void AttachStatusBridge(SettingsViewModel viewModel)
+    {
+        _statusViewModel = viewModel;
+        viewModel.PropertyChanged += OnSettingsPropertyChanged;
+        viewModel.Workspaces.PropertyChanged += OnWorkspacePropertyChanged;
+    }
+
+    private void DetachStatusBridge()
+    {
+        if (_statusViewModel is null)
+        {
+            return;
+        }
+
+        _statusViewModel.PropertyChanged -= OnSettingsPropertyChanged;
+        _statusViewModel.Workspaces.PropertyChanged -= OnWorkspacePropertyChanged;
+        _statusViewModel = null;
+    }
+
+    private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_suppressStatusBridge ||
+            _suppressModelStatusBridge ||
+            e.PropertyName != nameof(SettingsViewModel.ModelRefreshStatus) ||
+            sender is not SettingsViewModel viewModel)
+        {
+            return;
+        }
+
+        var status = SettingsPresentationConverters.SanitizeProviderStatus(
+            viewModel.ModelRefreshStatus);
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            viewModel.StatusMessage = status;
+        }
+    }
+
+    private void OnWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_suppressStatusBridge ||
+            e.PropertyName != nameof(WorkspaceManagementViewModel.StatusMessage) ||
+            sender is not WorkspaceManagementViewModel workspaces ||
+            _statusViewModel is null)
+        {
+            return;
+        }
+
+        var status = workspaces.StatusMessage;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            _statusViewModel.StatusMessage = status;
+        }
     }
 
     private async void OnAttachedToVisualTree(
@@ -104,9 +164,17 @@ public partial class SettingsView : UserControl
         }
 
         _loaded = true;
-        _themeManager?.AttachPlatformSettings(this.GetPlatformSettings());
-        await viewModel.Workspaces.RefreshAsync();
-        await viewModel.RefreshModelsAsync();
+        _suppressStatusBridge = true;
+        try
+        {
+            _themeManager?.AttachPlatformSettings(this.GetPlatformSettings());
+            await viewModel.Workspaces.RefreshAsync();
+            await viewModel.RefreshModelsAsync();
+        }
+        finally
+        {
+            _suppressStatusBridge = false;
+        }
     }
 
     private void OnThemeClick(object? sender, RoutedEventArgs e)
@@ -156,7 +224,15 @@ public partial class SettingsView : UserControl
         if (DataContext is SettingsViewModel viewModel)
         {
             viewModel.StatusMessage = "Chat provider updated.";
-            await viewModel.RefreshModelsAsync();
+            _suppressModelStatusBridge = true;
+            try
+            {
+                await viewModel.RefreshModelsAsync();
+            }
+            finally
+            {
+                _suppressModelStatusBridge = false;
+            }
         }
     }
 

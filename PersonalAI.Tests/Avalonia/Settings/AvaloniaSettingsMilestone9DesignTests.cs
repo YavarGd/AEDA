@@ -133,6 +133,8 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
     public void StatusMessageIsTheOnlyUnlabeledPoliteLiveRegion()
     {
         var view = ReadSettingsXaml();
+        var provider = Named(view, "ProviderPanel").ToString();
+        var workspaces = Named(view, "WorkspacesPanel").ToString();
         var liveRegion = Assert.Single(
             view.Descendants(),
             element => AutomationAttribute(element, "LiveSetting") == "Polite");
@@ -141,8 +143,96 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
         Assert.Null(AutomationAttribute(liveRegion, "Name"));
         Assert.Null(AutomationAttribute(liveRegion, "LabeledBy"));
         Assert.Null(AutomationAttribute(liveRegion, "HelpText"));
-        Assert.DoesNotContain("LiveSetting", Named(view, "ProviderPanel").ToString());
-        Assert.DoesNotContain("LiveSetting", Named(view, "WorkspacesPanel").ToString());
+        Assert.Contains("ModelRefreshStatus", provider);
+        Assert.Contains("Workspaces.StatusMessage", workspaces);
+        Assert.Contains("Workspaces.BusyMessage", workspaces);
+        Assert.DoesNotContain("LiveSetting", provider);
+        Assert.DoesNotContain("LiveSetting", workspaces);
+    }
+
+    [Fact]
+    public void LocalResultStatusesFeedTheSoleAnnouncerSafely()
+    {
+        var code = ReadSettingsSource("SettingsView.axaml.cs");
+        var model = MethodSlice(
+            code,
+            "private void OnSettingsPropertyChanged",
+            "private void OnWorkspacePropertyChanged");
+        var workspace = MethodSlice(
+            code,
+            "private void OnWorkspacePropertyChanged",
+            "private async void OnAttachedToVisualTree");
+
+        Assert.Contains("nameof(SettingsViewModel.ModelRefreshStatus)", model);
+        Assert.Contains("SettingsPresentationConverters.SanitizeProviderStatus", model);
+        Assert.Contains("viewModel.StatusMessage = status", model);
+        Assert.DoesNotContain("StatusMessage = viewModel.ModelRefreshStatus", model);
+        Assert.Contains("nameof(WorkspaceManagementViewModel.StatusMessage)", workspace);
+        Assert.Contains("_statusViewModel.StatusMessage = status", workspace);
+        Assert.DoesNotContain("BusyMessage", model);
+        Assert.DoesNotContain("BusyMessage", workspace);
+    }
+
+    [Fact]
+    public void AutomaticAndProviderRefreshesSuppressCompetingAnnouncements()
+    {
+        var code = ReadSettingsSource("SettingsView.axaml.cs");
+        var attach = MethodSlice(
+            code,
+            "private async void OnAttachedToVisualTree",
+            "private void OnThemeClick");
+        var provider = MethodSlice(
+            code,
+            "private async void OnProviderSelectionChanged",
+            "private async void OnAddWorkspaceClick");
+
+        Assert.Contains("_suppressStatusBridge = true", attach);
+        Assert.Contains("await viewModel.Workspaces.RefreshAsync()", attach);
+        Assert.Contains("await viewModel.RefreshModelsAsync()", attach);
+        Assert.Contains("finally", attach);
+        Assert.Contains("_suppressStatusBridge = false", attach);
+        Assert.Contains("viewModel.StatusMessage = \"Chat provider updated.\"", provider);
+        Assert.Contains("_suppressModelStatusBridge = true", provider);
+        Assert.Contains("await viewModel.RefreshModelsAsync()", provider);
+        Assert.Contains("finally", provider);
+        Assert.Contains("_suppressModelStatusBridge = false", provider);
+    }
+
+    [Fact]
+    public void StatusBridgeRewiresWithoutChangingResetAnnouncements()
+    {
+        var code = ReadSettingsSource("SettingsView.axaml.cs");
+        var dataContext = MethodSlice(
+            code,
+            "private void OnDataContextChanged",
+            "private void AttachStatusBridge");
+        var attach = MethodSlice(
+            code,
+            "private void AttachStatusBridge",
+            "private void DetachStatusBridge");
+        var detach = MethodSlice(
+            code,
+            "private void DetachStatusBridge",
+            "private void OnSettingsPropertyChanged");
+        var settingsViewModel = Read(
+            "PersonalAI.Desktop.Presentation",
+            "ViewModels",
+            "SettingsViewModel.cs");
+        var reset = MethodSlice(
+            settingsViewModel,
+            "public async Task ResetModelAssignmentsAsync",
+            "public async Task ToggleStartupAsync");
+
+        Assert.True(
+            dataContext.IndexOf("DetachStatusBridge()", StringComparison.Ordinal) <
+            dataContext.IndexOf("AttachStatusBridge(viewModel)", StringComparison.Ordinal));
+        Assert.Contains("viewModel.PropertyChanged += OnSettingsPropertyChanged", attach);
+        Assert.Contains("viewModel.Workspaces.PropertyChanged += OnWorkspacePropertyChanged", attach);
+        Assert.Contains("_statusViewModel.PropertyChanged -= OnSettingsPropertyChanged", detach);
+        Assert.Contains("_statusViewModel.Workspaces.PropertyChanged -= OnWorkspacePropertyChanged", detach);
+        Assert.Contains("Model assignments reset to built-in defaults.", reset);
+        Assert.Contains("Model assignments reset to detected defaults.", reset);
+        Assert.DoesNotContain("ResetModelAssignments", code);
     }
 
     [Fact]
