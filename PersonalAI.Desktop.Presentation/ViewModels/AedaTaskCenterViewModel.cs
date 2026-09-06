@@ -8,6 +8,7 @@ namespace PersonalAI.Desktop.Presentation.ViewModels;
 public sealed partial class AedaTaskCenterViewModel : ObservableObject
 {
     private readonly IAedaTaskCenterService _taskCenterService;
+    private long _timelineGeneration;
 
     public AedaTaskCenterViewModel(IAedaTaskCenterService taskCenterService)
     {
@@ -77,6 +78,8 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
         try
         {
             IsRefreshing = true;
+            ++_timelineGeneration;
+            var selectedTaskId = SelectedTask?.Id;
             var dashboard = await _taskCenterService.GetDashboardAsync(
                 cancellationToken: cancellationToken);
             Replace(ActiveTasks, dashboard.ActiveTasks);
@@ -96,11 +99,18 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
                     .Select(pair => $"{pair.Key}: {pair.Value}")
                     .ToArray());
             SafeStatusMessage = dashboard.SafeStatusMessage;
-            if (SelectedTask is null)
+            var refreshedSelectedTask = selectedTaskId is null
+                ? null
+                : ActiveTasks.Concat(RecentTasks).Concat(FailedOrCancelledTasks)
+                    .FirstOrDefault(task => task.Id == selectedTaskId);
+            if (SelectedTask?.Id == selectedTaskId)
             {
-                SelectedTask = ActiveTasks.FirstOrDefault()
-                    ?? RecentTasks.FirstOrDefault()
-                    ?? FailedOrCancelledTasks.FirstOrDefault();
+                SelectedTask = refreshedSelectedTask
+                    ?? (selectedTaskId is null
+                        ? ActiveTasks.FirstOrDefault()
+                            ?? RecentTasks.FirstOrDefault()
+                            ?? FailedOrCancelledTasks.FirstOrDefault()
+                        : null);
             }
 
             await LoadSelectedTimelineAsync(cancellationToken);
@@ -128,37 +138,73 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
         AedaTaskSummary? task,
         CancellationToken cancellationToken = default)
     {
+        var sameTask = SelectedTask?.Id == task?.Id;
         SelectedTask = task;
+        if (sameTask)
+        {
+            _timelineGeneration++;
+            TimelineGroups.Clear();
+        }
         await LoadSelectedTimelineAsync(cancellationToken);
     }
 
     partial void OnSelectedTaskChanged(AedaTaskSummary? value)
     {
+        _timelineGeneration++;
         OnPropertyChanged(nameof(HasSelectedTask));
     }
 
     private async Task LoadSelectedTimelineAsync(CancellationToken cancellationToken)
     {
-        TimelineGroups.Clear();
-        if (SelectedTask is null)
+        var task = SelectedTask;
+        var generation = _timelineGeneration;
+        if (task is null)
         {
+            TimelineGroups.Clear();
             SafeStatusMessage = "Select a task to view its timeline.";
             NotifyCountsChanged();
             return;
         }
 
-        var groups = await _taskCenterService.GetTimelineAsync(
-            SelectedTask.Id,
-            cancellationToken: cancellationToken);
-        foreach (var group in groups)
+        try
         {
-            TimelineGroups.Add(group);
-        }
+            var groups = await _taskCenterService.GetTimelineAsync(
+                task.Id,
+                cancellationToken: cancellationToken);
+            if (generation != _timelineGeneration || SelectedTask?.Id != task.Id)
+            {
+                return;
+            }
 
-        SafeStatusMessage = groups.Count == 0
-            ? "No timeline events are available for this task."
-            : "Timeline loaded.";
-        NotifyCountsChanged();
+            TimelineGroups.Clear();
+            foreach (var group in groups)
+            {
+                TimelineGroups.Add(group);
+            }
+
+            SafeStatusMessage = groups.Count == 0
+                ? "No timeline events are available for this task."
+                : "Timeline loaded.";
+            NotifyCountsChanged();
+        }
+        catch (OperationCanceledException) when (
+            generation != _timelineGeneration || SelectedTask?.Id != task.Id)
+        {
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Task Center timeline load cancelled.";
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException ||
+            exception is IOException ||
+            exception is ArgumentException)
+        {
+            if (generation == _timelineGeneration && SelectedTask?.Id == task.Id)
+            {
+                SafeStatusMessage = "Task Center is temporarily unavailable.";
+            }
+        }
     }
 
     private void NotifyCountsChanged()
