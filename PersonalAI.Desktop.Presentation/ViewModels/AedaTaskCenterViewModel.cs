@@ -8,7 +8,7 @@ namespace PersonalAI.Desktop.Presentation.ViewModels;
 public sealed partial class AedaTaskCenterViewModel : ObservableObject
 {
     private readonly IAedaTaskCenterService _taskCenterService;
-    private long _timelineGeneration;
+    private long _timelineRequestVersion;
 
     public AedaTaskCenterViewModel(IAedaTaskCenterService taskCenterService)
     {
@@ -75,11 +75,11 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
             return;
         }
 
+        var selectedTaskId = SelectedTask?.Id;
+        var timelineRequestVersion = _timelineRequestVersion;
         try
         {
             IsRefreshing = true;
-            ++_timelineGeneration;
-            var selectedTaskId = SelectedTask?.Id;
             var dashboard = await _taskCenterService.GetDashboardAsync(
                 cancellationToken: cancellationToken);
             Replace(ActiveTasks, dashboard.ActiveTasks);
@@ -98,7 +98,10 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
                     .OrderBy(pair => pair.Key)
                     .Select(pair => $"{pair.Key}: {pair.Value}")
                     .ToArray());
-            SafeStatusMessage = dashboard.SafeStatusMessage;
+            if (timelineRequestVersion == _timelineRequestVersion)
+            {
+                SafeStatusMessage = dashboard.SafeStatusMessage;
+            }
             var refreshedSelectedTask = selectedTaskId is null
                 ? null
                 : ActiveTasks.Concat(RecentTasks).Concat(FailedOrCancelledTasks)
@@ -117,14 +120,20 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Task Center refresh cancelled.";
+            if (timelineRequestVersion == _timelineRequestVersion)
+            {
+                SafeStatusMessage = "Task Center refresh cancelled.";
+            }
         }
         catch (Exception exception) when (
             exception is InvalidOperationException ||
             exception is IOException ||
             exception is ArgumentException)
         {
-            SafeStatusMessage = "Task Center is temporarily unavailable.";
+            if (timelineRequestVersion == _timelineRequestVersion)
+            {
+                SafeStatusMessage = "Task Center is temporarily unavailable.";
+            }
         }
         finally
         {
@@ -138,26 +147,21 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
         AedaTaskSummary? task,
         CancellationToken cancellationToken = default)
     {
-        var sameTask = SelectedTask?.Id == task?.Id;
         SelectedTask = task;
-        if (sameTask)
-        {
-            _timelineGeneration++;
-            TimelineGroups.Clear();
-        }
+        TimelineGroups.Clear();
+        NotifyCountsChanged();
         await LoadSelectedTimelineAsync(cancellationToken);
     }
 
     partial void OnSelectedTaskChanged(AedaTaskSummary? value)
     {
-        _timelineGeneration++;
         OnPropertyChanged(nameof(HasSelectedTask));
     }
 
     private async Task LoadSelectedTimelineAsync(CancellationToken cancellationToken)
     {
+        var requestVersion = ++_timelineRequestVersion;
         var task = SelectedTask;
-        var generation = _timelineGeneration;
         if (task is null)
         {
             TimelineGroups.Clear();
@@ -171,7 +175,7 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
             var groups = await _taskCenterService.GetTimelineAsync(
                 task.Id,
                 cancellationToken: cancellationToken);
-            if (generation != _timelineGeneration || SelectedTask?.Id != task.Id)
+            if (requestVersion != _timelineRequestVersion || SelectedTask?.Id != task.Id)
             {
                 return;
             }
@@ -188,7 +192,7 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
             NotifyCountsChanged();
         }
         catch (OperationCanceledException) when (
-            generation != _timelineGeneration || SelectedTask?.Id != task.Id)
+            requestVersion != _timelineRequestVersion || SelectedTask?.Id != task.Id)
         {
         }
         catch (OperationCanceledException)
@@ -200,7 +204,7 @@ public sealed partial class AedaTaskCenterViewModel : ObservableObject
             exception is IOException ||
             exception is ArgumentException)
         {
-            if (generation == _timelineGeneration && SelectedTask?.Id == task.Id)
+            if (requestVersion == _timelineRequestVersion && SelectedTask?.Id == task.Id)
             {
                 SafeStatusMessage = "Task Center is temporarily unavailable.";
             }
