@@ -20,7 +20,7 @@ public partial class SettingsView : UserControl
     private bool _loadingProviders;
     private bool _loaded;
     private bool _suppressStatusBridge = true;
-    private bool _suppressModelStatusBridge;
+    private int _suppressedModelStatusBridges;
     private bool _compact;
     private bool _medium;
     private SettingsCategory _selectedCategory = SettingsCategory.Appearance;
@@ -122,7 +122,7 @@ public partial class SettingsView : UserControl
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_suppressStatusBridge ||
-            _suppressModelStatusBridge ||
+            _suppressedModelStatusBridges > 0 ||
             e.PropertyName != nameof(SettingsViewModel.ModelRefreshStatus) ||
             sender is not SettingsViewModel viewModel)
         {
@@ -205,34 +205,38 @@ public partial class SettingsView : UserControl
         if (_loadingProviders ||
             ProviderPicker.SelectedItem is not string label ||
             !_providerIds.TryGetValue(label, out var providerId) ||
-            _settingsService is null)
+            _settingsService is null ||
+            DataContext is not SettingsViewModel viewModel)
         {
             return;
         }
 
-        var current = _settingsService.Current;
-        if (current.ProviderRouting.SelectedChatProvider == providerId)
+        _suppressedModelStatusBridges++;
+        try
         {
-            return;
+            if (!await viewModel.SelectProviderAsync(providerId))
+            {
+                RestorePersistedProviderSelection();
+            }
         }
+        finally
+        {
+            _suppressedModelStatusBridges--;
+        }
+    }
 
-        var routing = current.ProviderRouting with
+    private void RestorePersistedProviderSelection()
+    {
+        _loadingProviders = true;
+        try
         {
-            SelectedChatProvider = providerId
-        };
-        await _settingsService.SaveAsync(current with { ProviderRouting = routing });
-        if (DataContext is SettingsViewModel viewModel)
+            var providerId = _settingsService?.Current.ProviderRouting.SelectedChatProvider;
+            ProviderPicker.SelectedItem = _providerIds.FirstOrDefault(pair =>
+                string.Equals(pair.Value, providerId, StringComparison.Ordinal)).Key;
+        }
+        finally
         {
-            viewModel.StatusMessage = "Chat provider updated.";
-            _suppressModelStatusBridge = true;
-            try
-            {
-                await viewModel.RefreshModelsAsync();
-            }
-            finally
-            {
-                _suppressModelStatusBridge = false;
-            }
+            _loadingProviders = false;
         }
     }
 

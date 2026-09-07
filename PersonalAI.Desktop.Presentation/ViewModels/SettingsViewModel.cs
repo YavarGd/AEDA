@@ -16,8 +16,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action<ApplicationSettings> _applyRuntimeSettings;
     private readonly Action _resetWindowPosition;
     private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _refreshModelsAsync;
+    private readonly SemaphoreSlim _providerSelectionLock = new(1, 1);
     private bool _isLoading;
     private bool _isApplyingHotkey;
+    private long _providerSelectionVersion;
+    private long _modelRefreshVersion;
+    private string _providerSelectionIntent;
     private VoiceSettings _voiceSettings = VoiceSettings.CreateDefault();
 
     public SettingsViewModel(
@@ -35,6 +39,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _applyRuntimeSettings = applyRuntimeSettings;
         _resetWindowPosition = resetWindowPosition;
         _refreshModelsAsync = refreshModelsAsync;
+        _providerSelectionIntent = settingsService.Current.ProviderRouting.SelectedChatProvider;
         Workspaces = workspaces;
         Load(settingsService.Current);
     }
@@ -318,9 +323,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     public async Task RefreshModelsAsync()
     {
+        var requestVersion = ++_modelRefreshVersion;
         try
         {
             var models = await _refreshModelsAsync(CancellationToken.None);
+            if (requestVersion != _modelRefreshVersion)
+            {
+                return;
+            }
+
             InstalledModels.Clear();
             VisionModels.Clear();
 
@@ -346,9 +357,97 @@ public sealed partial class SettingsViewModel : ObservableObject
             exception is InvalidOperationException ||
             exception is TaskCanceledException)
         {
-            ModelRefreshStatus =
-                $"Ollama models unavailable: {exception.Message}";
+            if (requestVersion == _modelRefreshVersion)
+            {
+                ModelRefreshStatus =
+                    $"Ollama models unavailable: {exception.Message}";
+            }
         }
+    }
+
+    public async Task<bool> SelectProviderAsync(
+        string providerId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(providerId) ||
+            string.Equals(providerId, _providerSelectionIntent, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        _providerSelectionIntent = providerId;
+        var requestVersion = ++_providerSelectionVersion;
+        ++_modelRefreshVersion;
+        var lockHeld = false;
+        try
+        {
+            await _providerSelectionLock.WaitAsync(cancellationToken);
+            lockHeld = true;
+            if (requestVersion != _providerSelectionVersion)
+            {
+                return true;
+            }
+
+            var current = _settingsService.Current;
+            if (!string.Equals(
+                    current.ProviderRouting.SelectedChatProvider,
+                    providerId,
+                    StringComparison.Ordinal))
+            {
+                var routing = current.ProviderRouting with
+                {
+                    SelectedChatProvider = providerId
+                };
+                await _settingsService.SaveAsync(
+                    current with { ProviderRouting = routing },
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return HandleCurrentProviderFailure(
+                requestVersion,
+                "Chat provider update cancelled.");
+        }
+        catch (Exception exception) when (
+            exception is IOException ||
+            exception is UnauthorizedAccessException ||
+            exception is InvalidOperationException ||
+            exception is ArgumentException ||
+            exception is NotSupportedException)
+        {
+            return HandleCurrentProviderFailure(
+                requestVersion,
+                "Chat provider could not be saved. Try again.");
+        }
+        finally
+        {
+            if (lockHeld)
+            {
+                _providerSelectionLock.Release();
+            }
+        }
+
+        if (requestVersion != _providerSelectionVersion)
+        {
+            return true;
+        }
+
+        StatusMessage = "Chat provider updated.";
+        await RefreshModelsAsync();
+        return true;
+    }
+
+    private bool HandleCurrentProviderFailure(long requestVersion, string statusMessage)
+    {
+        if (requestVersion != _providerSelectionVersion)
+        {
+            return true;
+        }
+
+        _providerSelectionIntent = _settingsService.Current.ProviderRouting.SelectedChatProvider;
+        StatusMessage = statusMessage;
+        return false;
     }
 
     [RelayCommand]

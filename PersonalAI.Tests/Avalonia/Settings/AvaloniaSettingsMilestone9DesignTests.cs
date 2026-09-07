@@ -105,8 +105,7 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
         Assert.All(new[] { "GeneralModel", "CodingModel", "VisionModel", "FastModel", "ReasoningModel" },
             model => Assert.Contains($"SelectedItem=\"{{Binding {model}}}\"", source));
         Assert.Contains("ProviderRouting.SelectedChatProvider", code);
-        Assert.Contains("_settingsService.SaveAsync", code);
-        Assert.Contains("await viewModel.RefreshModelsAsync()", code);
+        Assert.Contains("await viewModel.SelectProviderAsync(providerId)", code);
     }
 
     [Fact]
@@ -191,11 +190,11 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
         Assert.Contains("await viewModel.RefreshModelsAsync()", attach);
         Assert.Contains("finally", attach);
         Assert.Contains("_suppressStatusBridge = false", attach);
-        Assert.Contains("viewModel.StatusMessage = \"Chat provider updated.\"", provider);
-        Assert.Contains("_suppressModelStatusBridge = true", provider);
-        Assert.Contains("await viewModel.RefreshModelsAsync()", provider);
+        Assert.Contains("_suppressedModelStatusBridges++", provider);
+        Assert.Contains("await viewModel.SelectProviderAsync(providerId)", provider);
+        Assert.Contains("RestorePersistedProviderSelection()", provider);
         Assert.Contains("finally", provider);
-        Assert.Contains("_suppressModelStatusBridge = false", provider);
+        Assert.Contains("_suppressedModelStatusBridges--", provider);
     }
 
     [Fact]
