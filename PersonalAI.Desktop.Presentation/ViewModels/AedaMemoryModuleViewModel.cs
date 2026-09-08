@@ -9,7 +9,10 @@ namespace PersonalAI.Desktop.Presentation.ViewModels;
 public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 {
     private const int SummaryLimit = 8;
+    private const string StorageFailureMessage =
+        "Memory records could not be loaded or saved.";
     private readonly IAedaMemoryModuleService _moduleService;
+    private long _newMemoryDraftVersion;
 
     public AedaMemoryModuleViewModel(
         IAedaMemoryModuleService moduleService,
@@ -176,12 +179,23 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCreateMemory))]
     public async Task CreateExplicitMemoryAsync()
     {
-        var result = await _moduleService.CreateExplicitMemoryAsync(
-            new AedaMemoryCreateRequest(
-                MemoryKind.ExplicitUserPreference,
-                MemoryScope.Global,
-                NewMemoryText,
-                NewMemorySourceReason));
+        var draftVersion = _newMemoryDraftVersion;
+        var text = NewMemoryText;
+        var sourceReason = NewMemorySourceReason;
+        var result = await RunMemoryOperationAsync(
+            () => _moduleService.CreateExplicitMemoryAsync(
+                new AedaMemoryCreateRequest(
+                    MemoryKind.ExplicitUserPreference,
+                    MemoryScope.Global,
+                    text,
+                    sourceReason)),
+            "Memory save cancelled.",
+            "Memory could not be saved. Try again.");
+
+        if (result is null)
+        {
+            return;
+        }
 
         if (!result.Succeeded)
         {
@@ -189,9 +203,14 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
             return;
         }
 
-        NewMemoryText = string.Empty;
+        if (draftVersion == _newMemoryDraftVersion)
+        {
+            NewMemoryText = string.Empty;
+        }
+
         SafeStatusMessage = "Explicit memory saved.";
-        await InitializeAsync();
+        await RefreshAfterMutationAsync(
+            "Memory was saved, but the dashboard could not be refreshed.");
     }
 
     [RelayCommand]
@@ -217,12 +236,24 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
             return;
         }
 
-        var result = await _moduleService.ArchiveMemoryAsync(
-            new MemoryId(summary.Id));
-        SafeStatusMessage = result.Succeeded
-            ? "Memory archived."
-            : result.SafeReasonCode ?? "Memory was not archived.";
-        await InitializeAsync();
+        var result = await RunMemoryOperationAsync(
+            () => _moduleService.ArchiveMemoryAsync(new MemoryId(summary.Id)),
+            "Memory archive cancelled.",
+            "Memory could not be archived. Try again.");
+        if (result is null)
+        {
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            SafeStatusMessage = result.SafeReasonCode ?? "Memory was not archived.";
+            return;
+        }
+
+        SafeStatusMessage = "Memory archived.";
+        await RefreshAfterMutationAsync(
+            "Memory was archived, but the dashboard could not be refreshed.");
     }
 
     [RelayCommand]
@@ -279,14 +310,55 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     partial void OnNewMemoryTextChanged(string value)
     {
+        _newMemoryDraftVersion++;
         OnPropertyChanged(nameof(CanCreateMemory));
         CreateExplicitMemoryCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnNewMemorySourceReasonChanged(string value)
     {
+        _newMemoryDraftVersion++;
         OnPropertyChanged(nameof(CanCreateMemory));
         CreateExplicitMemoryCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task<AedaMemoryOperationResult?> RunMemoryOperationAsync(
+        Func<Task<AedaMemoryOperationResult>> operation,
+        string cancellationStatus,
+        string failureStatus)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = cancellationStatus;
+        }
+        catch (InvalidOperationException exception) when (
+            string.Equals(exception.Message, StorageFailureMessage, StringComparison.Ordinal))
+        {
+            SafeStatusMessage = failureStatus;
+        }
+
+        return null;
+    }
+
+    private async Task RefreshAfterMutationAsync(string failureStatus)
+    {
+        try
+        {
+            await InitializeAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Memory refresh cancelled.";
+        }
+        catch (InvalidOperationException exception) when (
+            string.Equals(exception.Message, StorageFailureMessage, StringComparison.Ordinal))
+        {
+            SafeStatusMessage = failureStatus;
+        }
     }
 
     private void NotifyDashboardChanged()
