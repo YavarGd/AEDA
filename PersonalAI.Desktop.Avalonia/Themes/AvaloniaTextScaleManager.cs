@@ -14,7 +14,7 @@ public sealed class AvaloniaTextScaleManager : IDisposable
     private readonly Action<Action> _dispatch;
     private readonly List<Action<double>> _targets = [];
     private readonly Dictionary<Window, IDisposable> _windows = [];
-    private readonly ConditionalWeakTable<AvaloniaObject, Dictionary<AvaloniaProperty, double>> _baselines = new();
+    private readonly ConditionalWeakTable<AvaloniaObject, Dictionary<AvaloniaProperty, FontSizeState>> _states = new();
     private bool _disposed;
 
     public AvaloniaTextScaleManager(
@@ -119,17 +119,38 @@ public sealed class AvaloniaTextScaleManager : IDisposable
             return;
         }
 
-        var properties = _baselines.GetOrCreateValue(target);
-        if (!properties.TryGetValue(property, out var baseline))
+        var observed = target.GetValue(property);
+        var properties = _states.GetOrCreateValue(target);
+        if (!properties.TryGetValue(property, out var state))
         {
-            baseline = target.GetValue(property);
-            properties.Add(property, baseline);
+            state = new FontSizeState(observed);
+            properties.Add(property, state);
         }
 
-        var scaled = ScaleFontSize(baseline, factor);
-        if (Math.Abs(target.GetValue(property) - scaled) > 0.01)
+        state.Apply(observed, factor, scaled => target.SetCurrentValue(property, scaled));
+    }
+
+    internal sealed class FontSizeState(double baseline)
+    {
+        private double _baseline = baseline;
+        private double? _lastManagerValue;
+
+        internal void Apply(double observed, double factor, Action<double> write)
         {
-            target.SetCurrentValue(property, scaled);
+            if (_lastManagerValue is not double last || Different(observed, last))
+            {
+                _baseline = observed;
+                _lastManagerValue = null;
+            }
+
+            var scaled = ScaleFontSize(_baseline, factor);
+            if (!Different(observed, scaled))
+            {
+                return;
+            }
+
+            _lastManagerValue = scaled;
+            write(scaled);
         }
     }
 
@@ -174,6 +195,9 @@ public sealed class AvaloniaTextScaleManager : IDisposable
 
     private static double Normalize(double factor) =>
         double.IsFinite(factor) && factor > 0 ? factor : 1;
+
+    private static bool Different(double left, double right) =>
+        Math.Abs(left - right) > 0.01;
 
     private sealed class Subscription(Action dispose) : IDisposable
     {

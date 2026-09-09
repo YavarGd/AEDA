@@ -46,6 +46,151 @@ public sealed class AvaloniaTextScaleTests
         Assert.DoesNotContain("JsonApplicationSettings", app + manager + source, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(1, 32, 24)]
+    [InlineData(1.5, 48, 36)]
+    [InlineData(2, 64, 48)]
+    public void ResponsiveWritesReplaceTheApplicationBase(
+        double factor,
+        double initialScaled,
+        double responsiveScaled)
+    {
+        var size = 32d;
+        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+
+        size = Apply(state, size, factor);
+        Assert.Equal(initialScaled, size);
+
+        size = 24;
+        size = Apply(state, size, factor);
+        Assert.Equal(responsiveScaled, size);
+    }
+
+    [Fact]
+    public void ManagerWritesAndRepeatedLayoutsDoNotDrift()
+    {
+        var size = 32d;
+        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+
+        for (var pass = 0; pass < 5; pass++)
+        {
+            size = Apply(state, size, 1.5);
+            Assert.Equal(48, size);
+        }
+    }
+
+    [Fact]
+    public void FactorTransitionsUseTheLatestResponsiveBase()
+    {
+        var size = 32d;
+        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+
+        size = Apply(state, size, 1);
+        Assert.Equal(32, size);
+        size = 24;
+        size = Apply(state, size, 1);
+        Assert.Equal(24, size);
+        size = Apply(state, size, 1.5);
+        Assert.Equal(36, size);
+        size = Apply(state, size, 2);
+        Assert.Equal(48, size);
+        size = Apply(state, size, 1);
+        Assert.Equal(24, size);
+    }
+
+    [Fact]
+    public void ExternalWriteClearsStaleManagerOwnership()
+    {
+        var size = 32d;
+        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+
+        size = Apply(state, size, 1.5);
+        size = Apply(state, size, 1);
+        Assert.Equal(32, size);
+
+        size = Apply(state, 24, 1);
+        Assert.Equal(24, size);
+        size = Apply(state, 32, 1);
+        Assert.Equal(32, size);
+    }
+
+    [Theory]
+    [InlineData(1, 32, 24)]
+    [InlineData(1.5, 48, 36)]
+    [InlineData(2, 64, 48)]
+    public void WideCompactWideUsesEachLatestBase(
+        double factor,
+        double wideScaled,
+        double compactScaled)
+    {
+        var size = 32d;
+        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+
+        size = Apply(state, size, factor);
+        Assert.Equal(wideScaled, size);
+        size = Apply(state, 24, factor);
+        Assert.Equal(compactScaled, size);
+        size = Apply(state, 32, factor);
+        Assert.Equal(wideScaled, size);
+    }
+
+    [Fact]
+    public void ControlsKeepIndependentResponsiveBases()
+    {
+        var heading = 32d;
+        var body = 14d;
+        var headingState = new AvaloniaTextScaleManager.FontSizeState(heading);
+        var bodyState = new AvaloniaTextScaleManager.FontSizeState(body);
+
+        heading = Apply(headingState, heading, 1.5);
+        body = Apply(bodyState, body, 1.5);
+        Assert.Equal(48, heading);
+        Assert.Equal(21, body);
+
+        heading = Apply(headingState, 24, 1.5);
+        body = Apply(bodyState, body, 1.5);
+        Assert.Equal(36, heading);
+        Assert.Equal(21, body);
+    }
+
+    [Fact]
+    public void NewlyDiscoveredControlReceivesCurrentScaleWithoutChangingExistingControl()
+    {
+        var existing = 32d;
+        var existingState = new AvaloniaTextScaleManager.FontSizeState(existing);
+        existing = Apply(existingState, existing, 1.5);
+
+        var added = 18d;
+        var addedState = new AvaloniaTextScaleManager.FontSizeState(added);
+        added = Apply(addedState, added, 1.5);
+        existing = Apply(existingState, existing, 1.5);
+
+        Assert.Equal(27, added);
+        Assert.Equal(48, existing);
+    }
+
+    [Fact]
+    public void ManagerWriteCanReenterWithoutBecomingTheBase()
+    {
+        var size = 32d;
+        var writes = 0;
+        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+
+        state.Apply(size, 1.5, scaled =>
+        {
+            writes++;
+            size = scaled;
+            state.Apply(size, 1.5, nested =>
+            {
+                writes++;
+                size = nested;
+            });
+        });
+
+        Assert.Equal(1, writes);
+        Assert.Equal(48, size);
+    }
+
     [Fact]
     public void LiveFactorsAreIdempotentAndNeverCumulative()
     {
@@ -181,6 +326,16 @@ public sealed class AvaloniaTextScaleTests
         public void Dispose()
         {
         }
+    }
+
+    private static double Apply(
+        AvaloniaTextScaleManager.FontSizeState state,
+        double observed,
+        double factor)
+    {
+        var result = observed;
+        state.Apply(observed, factor, scaled => result = scaled);
+        return result;
     }
 
     private static string ReadAvaloniaSource(params string[] path) =>
