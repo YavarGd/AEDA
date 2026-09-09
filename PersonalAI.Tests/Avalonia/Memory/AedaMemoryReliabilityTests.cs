@@ -198,36 +198,268 @@ public sealed class AedaMemoryReliabilityTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task UnexpectedInvalidOperationIsNotSwallowed(bool create)
+    public async Task InitializeFailurePreservesDashboard(bool cancel)
+    {
+        var pending = Pending<AedaMemoryDashboardModel>();
+        var service = new ServiceState { Dashboard = _ => pending.Task };
+        var viewModel = CreateViewModel(service);
+        var dashboard = Dashboard();
+        viewModel.Dashboard = dashboard;
+
+        var initialize = viewModel.InitializeAsync();
+        if (cancel)
+        {
+            pending.SetCanceled();
+        }
+        else
+        {
+            pending.SetException(StorageFailure());
+        }
+
+        await initialize.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Same(dashboard, viewModel.Dashboard);
+        Assert.Equal(1, service.DashboardCalls);
+        Assert.Equal(
+            cancel ? "Memory load cancelled." : "Memory could not be loaded. Try again.",
+            viewModel.SafeStatusMessage);
+        Assert.DoesNotContain(StorageFailureMessage, viewModel.SafeStatusMessage);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SearchFailurePreservesResults(bool cancel)
+    {
+        var pending = Pending<IReadOnlyList<AedaMemoryRecordSummary>>();
+        var service = new ServiceState();
+        var viewModel = CreateViewModel(service);
+        viewModel.SearchText = "saved search";
+        await viewModel.SearchMemoriesAsync();
+        var results = viewModel.SearchResults;
+        service.Search = (_, _, _) => pending.Task;
+
+        var search = viewModel.SearchMemoriesAsync();
+        if (cancel)
+        {
+            pending.SetCanceled();
+        }
+        else
+        {
+            pending.SetException(StorageFailure());
+        }
+
+        await search.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Same(results, viewModel.SearchResults);
+        Assert.Equal(2, service.SearchCalls);
+        Assert.Equal(
+            cancel
+                ? "Memory search cancelled."
+                : "Memory search is temporarily unavailable. Try again.",
+            viewModel.SafeStatusMessage);
+        Assert.NotEqual("No memories matched.", viewModel.SafeStatusMessage);
+        Assert.NotEqual("Memory search complete.", viewModel.SafeStatusMessage);
+        Assert.DoesNotContain(StorageFailureMessage, viewModel.SafeStatusMessage);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DetailFailurePreservesSelection(bool cancel)
+    {
+        var pending = Pending<AedaMemoryRecordDetail?>();
+        var service = new ServiceState();
+        var viewModel = CreateViewModel(service);
+        await viewModel.OpenMemoryDetailAsync(MemoryRow);
+        var detail = viewModel.SelectedMemory;
+        service.Detail = (_, _) => pending.Task;
+
+        var load = viewModel.OpenMemoryDetailAsync(MemoryRow);
+        if (cancel)
+        {
+            pending.SetCanceled();
+        }
+        else
+        {
+            pending.SetException(StorageFailure());
+        }
+
+        await load.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Same(detail, viewModel.SelectedMemory);
+        Assert.Equal(2, service.DetailCalls);
+        Assert.Equal(
+            cancel
+                ? "Memory detail load cancelled."
+                : "Memory detail could not be loaded. Try again.",
+            viewModel.SafeStatusMessage);
+        Assert.NotEqual("Memory not found.", viewModel.SafeStatusMessage);
+        Assert.NotEqual("Memory detail loaded.", viewModel.SafeStatusMessage);
+        Assert.DoesNotContain(StorageFailureMessage, viewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task SuccessfulMissingDetailStillReportsNotFound()
+    {
+        var service = new ServiceState
+        {
+            Detail = (_, _) => Task.FromResult<AedaMemoryRecordDetail?>(null)
+        };
+        var viewModel = CreateViewModel(service);
+        viewModel.SelectedMemory = MemoryDetail();
+
+        await viewModel.OpenMemoryDetailAsync(MemoryRow);
+
+        Assert.Null(viewModel.SelectedMemory);
+        Assert.Equal("Memory not found.", viewModel.SafeStatusMessage);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeleteFailureIsContainedWithoutRefreshOrFalseSuccess(bool cancel)
+    {
+        var pending = PendingOperation();
+        var service = new ServiceState { Delete = (_, _) => pending.Task };
+        var viewModel = CreateViewModel(service);
+        var dashboard = Dashboard();
+        viewModel.Dashboard = dashboard;
+
+        var delete = viewModel.DeleteMemoryAsync(MemoryRow);
+        if (cancel)
+        {
+            pending.SetCanceled();
+        }
+        else
+        {
+            pending.SetException(StorageFailure());
+        }
+
+        await delete.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Same(dashboard, viewModel.Dashboard);
+        Assert.Equal(1, service.DeleteCalls);
+        Assert.Equal(0, service.DashboardCalls);
+        Assert.Equal(
+            cancel
+                ? "Memory delete cancelled."
+                : "Memory could not be deleted. Try again.",
+            viewModel.SafeStatusMessage);
+        Assert.NotEqual("Memory deleted.", viewModel.SafeStatusMessage);
+        Assert.DoesNotContain(StorageFailureMessage, viewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task SuccessfulDeleteDeletesOnceAndRefreshesDashboardOnce()
+    {
+        var service = new ServiceState();
+        var viewModel = CreateViewModel(service);
+
+        await viewModel.DeleteMemoryAsync(MemoryRow);
+
+        Assert.Equal(1, service.DeleteCalls);
+        Assert.Equal(1, service.DashboardCalls);
+        Assert.Same(service.DashboardResult, viewModel.Dashboard);
+        Assert.Equal(service.DashboardResult.SafeStatusMessage, viewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task SuccessfulDeletePreservesSuccessWhenDashboardRefreshFails()
+    {
+        var service = new ServiceState
+        {
+            Dashboard = _ => Task.FromException<AedaMemoryDashboardModel>(StorageFailure())
+        };
+        var viewModel = CreateViewModel(service);
+        var dashboard = Dashboard();
+        viewModel.Dashboard = dashboard;
+
+        await viewModel.DeleteMemoryAsync(MemoryRow);
+
+        Assert.Equal(1, service.DeleteCalls);
+        Assert.Equal(1, service.DashboardCalls);
+        Assert.Same(dashboard, viewModel.Dashboard);
+        Assert.Equal(
+            "Memory was deleted, but the dashboard could not be refreshed.",
+            viewModel.SafeStatusMessage);
+    }
+
+    [Theory]
+    [InlineData("create")]
+    [InlineData("archive")]
+    [InlineData("initialize")]
+    [InlineData("search")]
+    [InlineData("detail")]
+    [InlineData("delete")]
+    public async Task UnexpectedInvalidOperationIsNotSwallowed(string action)
     {
         var unexpected = new InvalidOperationException("programming error");
         var service = new ServiceState
         {
             Create = (_, _) => Task.FromException<AedaMemoryOperationResult>(unexpected),
-            Archive = (_, _) => Task.FromException<AedaMemoryOperationResult>(unexpected)
+            Archive = (_, _) => Task.FromException<AedaMemoryOperationResult>(unexpected),
+            Dashboard = _ => Task.FromException<AedaMemoryDashboardModel>(unexpected),
+            Search = (_, _, _) => Task.FromException<IReadOnlyList<AedaMemoryRecordSummary>>(unexpected),
+            Detail = (_, _) => Task.FromException<AedaMemoryRecordDetail?>(unexpected),
+            Delete = (_, _) => Task.FromException<AedaMemoryOperationResult>(unexpected)
         };
         var viewModel = CreateViewModel(service);
         viewModel.NewMemoryText = "draft A";
 
-        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            create
-                ? viewModel.CreateExplicitMemoryAsync()
-                : viewModel.ArchiveMemoryAsync(MemoryRow));
+        var operation = action switch
+        {
+            "create" => viewModel.CreateExplicitMemoryAsync(),
+            "archive" => viewModel.ArchiveMemoryAsync(MemoryRow),
+            "initialize" => viewModel.InitializeAsync(),
+            "search" => viewModel.SearchMemoriesAsync(),
+            "detail" => viewModel.OpenMemoryDetailAsync(MemoryRow),
+            _ => viewModel.DeleteMemoryAsync(MemoryRow)
+        };
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => operation);
 
         Assert.Same(unexpected, thrown);
-        Assert.Equal(0, service.DashboardCalls);
     }
 
     [Fact]
     public async Task ActualArchiveEventContainsStorageFailureInAnIsolatedProcess()
     {
-        const string probeVariable = "AEDA_MEMORY_ARCHIVE_FAILURE_PROBE";
-        if (Environment.GetEnvironmentVariable(probeVariable) == "1")
+        const string probeVariable = "AEDA_MEMORY_FAILURE_PROBE";
+        var action = Environment.GetEnvironmentVariable(probeVariable);
+        if (action is not null)
         {
-            RunArchiveEventProbe();
+            RunUiBoundaryProbe(action);
             return;
         }
 
+        await RunBoundaryInIsolatedProcessAsync(
+            "archive",
+            nameof(ActualArchiveEventContainsStorageFailureInAnIsolatedProcess));
+    }
+
+    [Fact]
+    public async Task ActualRemainingMemoryBoundariesContainStorageFailureInIsolatedProcesses()
+    {
+        const string probeVariable = "AEDA_MEMORY_FAILURE_PROBE";
+        var action = Environment.GetEnvironmentVariable(probeVariable);
+        if (action is not null)
+        {
+            RunUiBoundaryProbe(action);
+            return;
+        }
+
+        foreach (var boundary in new[] { "initialize", "search", "detail", "delete" })
+        {
+            await RunBoundaryInIsolatedProcessAsync(
+                boundary,
+                nameof(ActualRemainingMemoryBoundariesContainStorageFailureInIsolatedProcesses));
+        }
+    }
+
+    private static async Task RunBoundaryInIsolatedProcessAsync(
+        string action,
+        string testMethod)
+    {
         var startInfo = new System.Diagnostics.ProcessStartInfo
         {
             FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet",
@@ -241,8 +473,8 @@ public sealed class AedaMemoryReliabilityTests
         startInfo.ArgumentList.Add(
             "--TestCaseFilter:FullyQualifiedName=" +
             typeof(AedaMemoryReliabilityTests).FullName +
-            "." + nameof(ActualArchiveEventContainsStorageFailureInAnIsolatedProcess));
-        startInfo.Environment[probeVariable] = "1";
+            "." + testMethod);
+        startInfo.Environment["AEDA_MEMORY_FAILURE_PROBE"] = action;
 
         using var process = System.Diagnostics.Process.Start(startInfo)!;
         var standardOutput = process.StandardOutput.ReadToEndAsync();
@@ -250,10 +482,10 @@ public sealed class AedaMemoryReliabilityTests
         await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
         var output = await standardOutput + await standardError;
 
-        Assert.True(process.ExitCode == 0, output);
+        Assert.True(process.ExitCode == 0, $"{action}: {output}");
     }
 
-    private static void RunArchiveEventProbe()
+    private static void RunUiBoundaryProbe(string action)
     {
         Exception? failure = null;
         using var finished = new ManualResetEventSlim();
@@ -264,48 +496,106 @@ public sealed class AedaMemoryReliabilityTests
                 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
                 SynchronizationContext.SetSynchronizationContext(
                     new AvaloniaSynchronizationContext());
-                var pending = PendingOperation();
-                var service = new ServiceState
-                {
-                    Archive = (_, _) => pending.Task
-                };
+                var pendingDashboard = Pending<AedaMemoryDashboardModel>();
+                var pendingSearch = Pending<IReadOnlyList<AedaMemoryRecordSummary>>();
+                var pendingDetail = Pending<AedaMemoryRecordDetail?>();
+                var pendingOperation = PendingOperation();
+                var service = new ServiceState();
                 var viewModel = CreateViewModel(service);
                 var dashboard = Dashboard();
                 viewModel.Dashboard = dashboard;
+                viewModel.SearchText = "remember";
+                viewModel.SearchMemoriesAsync().GetAwaiter().GetResult();
+                var searchResults = viewModel.SearchResults;
+                viewModel.OpenMemoryDetailAsync(MemoryRow).GetAwaiter().GetResult();
+                var selectedMemory = viewModel.SelectedMemory;
+                service.Dashboard = _ => pendingDashboard.Task;
+                service.Search = (_, _, _) => pendingSearch.Task;
+                service.Detail = (_, _) => pendingDetail.Task;
+                service.Archive = (_, _) => pendingOperation.Task;
+                service.Delete = (_, _) => pendingOperation.Task;
+                var expectedStatus = action switch
+                {
+                    "initialize" => "Memory could not be loaded. Try again.",
+                    "search" => "Memory search is temporarily unavailable. Try again.",
+                    "detail" => "Memory detail could not be loaded. Try again.",
+                    "delete" => "Memory could not be deleted. Try again.",
+                    _ => "Memory could not be archived. Try again."
+                };
                 using var statusChanged = new ManualResetEventSlim();
                 viewModel.PropertyChanged += (_, e) =>
                 {
                     if (e.PropertyName == nameof(AedaMemoryModuleViewModel.SafeStatusMessage) &&
-                        viewModel.SafeStatusMessage.Contains(
-                            "could not be archived",
-                            StringComparison.Ordinal))
+                        viewModel.SafeStatusMessage == expectedStatus)
                     {
                         statusChanged.Set();
                     }
                 };
                 var view = new MemoryView { DataContext = viewModel };
                 var button = new Button { DataContext = MemoryRow };
-                var handler = typeof(MemoryView).GetMethod(
-                    "OnArchiveMemoryClick",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (action == "search")
+                    {
+                        viewModel.SearchMemoriesCommand.Execute(null);
+                        return;
+                    }
 
-                Dispatcher.UIThread.Post(() => handler.Invoke(view, [button, null]));
+                    var handlerName = action switch
+                    {
+                        "initialize" => "OnAttachedToVisualTree",
+                        "detail" => "OnOpenMemoryClick",
+                        "delete" => "OnDeleteMemoryClick",
+                        _ => "OnArchiveMemoryClick"
+                    };
+                    typeof(MemoryView).GetMethod(
+                        handlerName,
+                        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)!.Invoke(
+                            view,
+                            [action == "initialize" ? view : button, null]);
+                });
                 Dispatcher.UIThread.RunJobs();
-                Assert.Equal(1, service.ArchiveCalls);
-                pending.SetException(StorageFailure());
+                switch (action)
+                {
+                    case "initialize":
+                        pendingDashboard.SetException(StorageFailure());
+                        break;
+                    case "search":
+                        pendingSearch.SetException(StorageFailure());
+                        break;
+                    case "detail":
+                        pendingDetail.SetException(StorageFailure());
+                        break;
+                    default:
+                        pendingOperation.SetException(StorageFailure());
+                        break;
+                }
+
                 var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(2);
                 while (!statusChanged.IsSet && DateTime.UtcNow < timeout)
                 {
                     Dispatcher.UIThread.RunJobs();
-                    Thread.Sleep(1);
+                    Thread.Yield();
                 }
 
                 Assert.True(statusChanged.IsSet);
-                Assert.Same(dashboard, viewModel.Dashboard);
-                Assert.Equal(0, service.DashboardCalls);
-                Assert.Equal(
-                    "Memory could not be archived. Try again.",
-                    viewModel.SafeStatusMessage);
+                Assert.Equal(expectedStatus, viewModel.SafeStatusMessage);
+                Assert.DoesNotContain(StorageFailureMessage, viewModel.SafeStatusMessage);
+                Assert.NotEqual("Memory search complete.", viewModel.SafeStatusMessage);
+                Assert.NotEqual("Memory detail loaded.", viewModel.SafeStatusMessage);
+                Assert.NotEqual("Memory deleted.", viewModel.SafeStatusMessage);
+                if (action is "initialize" or "delete" or "archive")
+                {
+                    Assert.Same(dashboard, viewModel.Dashboard);
+                }
+                else if (action == "search")
+                {
+                    Assert.Same(searchResults, viewModel.SearchResults);
+                }
+                else
+                {
+                    Assert.Same(selectedMemory, viewModel.SelectedMemory);
+                }
             }
             catch (Exception exception)
             {
@@ -324,9 +614,12 @@ public sealed class AedaMemoryReliabilityTests
     }
 
     private static AedaMemoryModuleViewModel CreateViewModel(ServiceState service) =>
-        new(service.CreateProxy(), new UnavailableModuleRegistry());
+        new(service.CreateProxy(), new MemoryModuleRegistry());
 
     private static TaskCompletionSource<AedaMemoryOperationResult> PendingOperation() =>
+        Pending<AedaMemoryOperationResult>();
+
+    private static TaskCompletionSource<T> Pending<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static InvalidOperationException StorageFailure() =>
@@ -342,6 +635,23 @@ public sealed class AedaMemoryReliabilityTests
         "Active",
         "Normal",
         "Explicit user save",
+        DateTimeOffset.UtcNow);
+
+    private static AedaMemoryRecordDetail MemoryDetail() => new(
+        MemoryRow.Id,
+        MemoryRow.Kind,
+        MemoryRow.Scope,
+        MemoryRow.PreviewText,
+        MemoryRow.Visibility,
+        MemoryRow.SensitivityStatus,
+        "High",
+        new AedaMemorySourceSummary(
+            "explicit_user_save",
+            "Explicit user save",
+            null,
+            "Explicit user save",
+            DateTimeOffset.UtcNow),
+        DateTimeOffset.UtcNow,
         DateTimeOffset.UtcNow);
 
     private static AedaMemoryDashboardModel Dashboard() => new(
@@ -362,28 +672,47 @@ public sealed class AedaMemoryReliabilityTests
 
     private sealed class ServiceState
     {
-        public Func<CancellationToken, Task<AedaMemoryDashboardModel>> Dashboard { get; init; } =
+        public Func<CancellationToken, Task<AedaMemoryDashboardModel>> Dashboard { get; set; } =
             _ => Task.FromResult(AedaMemoryReliabilityTests.Dashboard());
-        public Func<AedaMemoryCreateRequest, CancellationToken, Task<AedaMemoryOperationResult>> Create { get; init; } =
+        public Func<string, int, CancellationToken, Task<IReadOnlyList<AedaMemoryRecordSummary>>> Search { get; set; } =
+            (_, _, _) => Task.FromResult<IReadOnlyList<AedaMemoryRecordSummary>>([MemoryRow]);
+        public Func<MemoryId, CancellationToken, Task<AedaMemoryRecordDetail?>> Detail { get; set; } =
+            (_, _) => Task.FromResult<AedaMemoryRecordDetail?>(MemoryDetail());
+        public Func<AedaMemoryCreateRequest, CancellationToken, Task<AedaMemoryOperationResult>> Create { get; set; } =
             (_, _) => Task.FromResult(Success);
-        public Func<MemoryId, CancellationToken, Task<AedaMemoryOperationResult>> Archive { get; init; } =
+        public Func<MemoryId, CancellationToken, Task<AedaMemoryOperationResult>> Archive { get; set; } =
+            (_, _) => Task.FromResult(Success);
+        public Func<MemoryId, CancellationToken, Task<AedaMemoryOperationResult>> Delete { get; set; } =
             (_, _) => Task.FromResult(Success);
 
         public AedaMemoryDashboardModel DashboardResult { get; private set; } = null!;
         public AedaMemoryCreateRequest? LastCreateRequest { get; private set; }
         public int DashboardCalls { get; private set; }
+        public int SearchCalls { get; private set; }
+        public int DetailCalls { get; private set; }
         public int CreateCalls { get; private set; }
         public int ArchiveCalls { get; private set; }
+        public int DeleteCalls { get; private set; }
 
         public IAedaMemoryModuleService CreateProxy() =>
             Proxy<IAedaMemoryModuleService>((method, arguments) => method.Name switch
             {
                 nameof(IAedaMemoryModuleService.GetDashboardAsync) => GetDashboard(
                     (CancellationToken)arguments![0]!),
+                nameof(IAedaMemoryModuleService.SearchMemoriesAsync) => SearchMemories(
+                    (string)arguments![0]!,
+                    (int)arguments[1]!,
+                    (CancellationToken)arguments[2]!),
+                nameof(IAedaMemoryModuleService.GetMemoryDetailAsync) => GetMemoryDetail(
+                    (MemoryId)arguments![0]!,
+                    (CancellationToken)arguments[1]!),
                 nameof(IAedaMemoryModuleService.CreateExplicitMemoryAsync) => CreateMemory(
                     (AedaMemoryCreateRequest)arguments![0]!,
                     (CancellationToken)arguments[1]!),
                 nameof(IAedaMemoryModuleService.ArchiveMemoryAsync) => ArchiveMemory(
+                    (MemoryId)arguments![0]!,
+                    (CancellationToken)arguments[1]!),
+                nameof(IAedaMemoryModuleService.DeleteMemoryAsync) => DeleteMemory(
                     (MemoryId)arguments![0]!,
                     (CancellationToken)arguments[1]!),
                 _ => throw new NotSupportedException(method.Name)
@@ -394,6 +723,23 @@ public sealed class AedaMemoryReliabilityTests
             DashboardCalls++;
             DashboardResult = await Dashboard(token);
             return DashboardResult;
+        }
+
+        private Task<IReadOnlyList<AedaMemoryRecordSummary>> SearchMemories(
+            string text,
+            int limit,
+            CancellationToken token)
+        {
+            SearchCalls++;
+            return Search(text, limit, token);
+        }
+
+        private Task<AedaMemoryRecordDetail?> GetMemoryDetail(
+            MemoryId memoryId,
+            CancellationToken token)
+        {
+            DetailCalls++;
+            return Detail(memoryId, token);
         }
 
         private Task<AedaMemoryOperationResult> CreateMemory(
@@ -411,6 +757,14 @@ public sealed class AedaMemoryReliabilityTests
         {
             ArchiveCalls++;
             return Archive(memoryId, token);
+        }
+
+        private Task<AedaMemoryOperationResult> DeleteMemory(
+            MemoryId memoryId,
+            CancellationToken token)
+        {
+            DeleteCalls++;
+            return Delete(memoryId, token);
         }
     }
 
@@ -430,18 +784,40 @@ public sealed class AedaMemoryReliabilityTests
         return proxy;
     }
 
-    private sealed class UnavailableModuleRegistry : IAedaModuleRegistry
+    private sealed class MemoryModuleRegistry : IAedaModuleRegistry
     {
-        public IReadOnlyList<AedaModuleDescriptor> ListModules() => [];
-        public IReadOnlyList<AedaModuleDescriptor> ListEnabledModules() => [];
+        private static readonly AedaModuleDescriptor MemoryModule = new(
+            AedaModuleId.Memory,
+            AedaModuleKind.Memory,
+            "AEDA Memory",
+            "Memory",
+            "",
+            AedaModuleStatus.Available,
+            [
+                new AedaModuleCapability(
+                    "memory_search",
+                    "Memory search",
+                    AedaModuleCapabilityState.Available,
+                    BackendCapability: PersonalAI.Core.Capabilities.BackendCapability.MemorySearch),
+                new AedaModuleCapability(
+                    "memory_edit",
+                    "Memory edit",
+                    AedaModuleCapabilityState.Available,
+                    BackendCapability: PersonalAI.Core.Capabilities.BackendCapability.MemoryEdit)
+            ],
+            new AedaModuleRoute("aeda-memory"));
+
+        public IReadOnlyList<AedaModuleDescriptor> ListModules() => [MemoryModule];
+        public IReadOnlyList<AedaModuleDescriptor> ListEnabledModules() => [MemoryModule];
         public bool TryGetModule(AedaModuleId moduleId, out AedaModuleDescriptor module)
         {
-            module = null!;
-            return false;
+            module = MemoryModule;
+            return moduleId == AedaModuleId.Memory;
         }
 
-        public IReadOnlyList<AedaModuleDescriptor> GetModulesByCapability(string capabilityId) => [];
+        public IReadOnlyList<AedaModuleDescriptor> GetModulesByCapability(string capabilityId) =>
+            [MemoryModule];
         public AedaModuleStatus GetAvailability(AedaModuleId moduleId) =>
-            AedaModuleStatus.Unavailable;
+            AedaModuleStatus.Available;
     }
 }

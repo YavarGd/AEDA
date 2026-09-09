@@ -158,17 +158,42 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        Dashboard = await _moduleService.GetDashboardAsync(cancellationToken);
-        SafeStatusMessage = Dashboard.SafeStatusMessage;
-        NotifyDashboardChanged();
+        try
+        {
+            await LoadDashboardAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Memory load cancelled.";
+        }
+        catch (InvalidOperationException exception) when (IsStorageFailure(exception))
+        {
+            SafeStatusMessage = "Memory could not be loaded. Try again.";
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanSearchMemories))]
     public async Task SearchMemoriesAsync()
     {
-        SearchResults = await _moduleService.SearchMemoriesAsync(
-            SearchText,
-            SummaryLimit);
+        IReadOnlyList<AedaMemoryRecordSummary> results;
+        try
+        {
+            results = await _moduleService.SearchMemoriesAsync(
+                SearchText,
+                SummaryLimit);
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Memory search cancelled.";
+            return;
+        }
+        catch (InvalidOperationException exception) when (IsStorageFailure(exception))
+        {
+            SafeStatusMessage = "Memory search is temporarily unavailable. Try again.";
+            return;
+        }
+
+        SearchResults = results;
         SafeStatusMessage = SearchResults.Count == 0
             ? "No memories matched."
             : "Memory search complete.";
@@ -221,8 +246,24 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
             return;
         }
 
-        SelectedMemory = await _moduleService.GetMemoryDetailAsync(
-            new MemoryId(summary.Id));
+        AedaMemoryRecordDetail? detail;
+        try
+        {
+            detail = await _moduleService.GetMemoryDetailAsync(
+                new MemoryId(summary.Id));
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Memory detail load cancelled.";
+            return;
+        }
+        catch (InvalidOperationException exception) when (IsStorageFailure(exception))
+        {
+            SafeStatusMessage = "Memory detail could not be loaded. Try again.";
+            return;
+        }
+
+        SelectedMemory = detail;
         SafeStatusMessage = SelectedMemory is null
             ? "Memory not found."
             : "Memory detail loaded.";
@@ -264,12 +305,25 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
             return;
         }
 
-        var result = await _moduleService.DeleteMemoryAsync(
-            new MemoryId(summary.Id));
-        SafeStatusMessage = result.Succeeded
-            ? "Memory deleted."
-            : result.SafeReasonCode ?? "Memory was not deleted.";
-        await InitializeAsync();
+        var result = await RunMemoryOperationAsync(
+            () => _moduleService.DeleteMemoryAsync(new MemoryId(summary.Id)),
+            "Memory delete cancelled.",
+            "Memory could not be deleted. Try again.");
+        if (result is null)
+        {
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            SafeStatusMessage = result.SafeReasonCode ?? "Memory was not deleted.";
+            await InitializeAsync();
+            return;
+        }
+
+        SafeStatusMessage = "Memory deleted.";
+        await RefreshAfterMutationAsync(
+            "Memory was deleted, but the dashboard could not be refreshed.");
     }
 
     [RelayCommand(CanExecute = nameof(CanPreviewRetrieval))]
@@ -335,8 +389,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         {
             SafeStatusMessage = cancellationStatus;
         }
-        catch (InvalidOperationException exception) when (
-            string.Equals(exception.Message, StorageFailureMessage, StringComparison.Ordinal))
+        catch (InvalidOperationException exception) when (IsStorageFailure(exception))
         {
             SafeStatusMessage = failureStatus;
         }
@@ -348,18 +401,27 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     {
         try
         {
-            await InitializeAsync();
+            await LoadDashboardAsync();
         }
         catch (OperationCanceledException)
         {
             SafeStatusMessage = "Memory refresh cancelled.";
         }
-        catch (InvalidOperationException exception) when (
-            string.Equals(exception.Message, StorageFailureMessage, StringComparison.Ordinal))
+        catch (InvalidOperationException exception) when (IsStorageFailure(exception))
         {
             SafeStatusMessage = failureStatus;
         }
     }
+
+    private async Task LoadDashboardAsync(CancellationToken cancellationToken = default)
+    {
+        Dashboard = await _moduleService.GetDashboardAsync(cancellationToken);
+        SafeStatusMessage = Dashboard.SafeStatusMessage;
+        NotifyDashboardChanged();
+    }
+
+    private static bool IsStorageFailure(InvalidOperationException exception) =>
+        string.Equals(exception.Message, StorageFailureMessage, StringComparison.Ordinal);
 
     private void NotifyDashboardChanged()
     {
