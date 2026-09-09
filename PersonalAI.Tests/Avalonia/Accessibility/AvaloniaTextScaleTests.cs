@@ -1,10 +1,21 @@
 using System.Runtime.InteropServices;
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Data;
+using Avalonia.Diagnostics;
 using PersonalAI.Desktop.Avalonia.Platform.Windows;
 using PersonalAI.Desktop.Avalonia.Themes;
+using PersonalAI.Desktop.Avalonia.Views.Chat;
 
 namespace PersonalAI.Tests.Avalonia.Accessibility;
 
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class TextScaleUiCollection
+{
+    public const string Name = "Text scale UI";
+}
+
+[Collection(TextScaleUiCollection.Name)]
 public sealed class AvaloniaTextScaleTests
 {
     [Theory]
@@ -46,6 +57,170 @@ public sealed class AvaloniaTextScaleTests
         Assert.DoesNotContain("JsonApplicationSettings", app + manager + source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SameValueResponsiveWriteBecomesTheNewApplicationBase()
+    {
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 20 };
+
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.10);
+        Assert.Equal(22, text.FontSize, 10);
+
+        text.FontSize = 22;
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.10);
+
+        Assert.Equal(24.2, text.FontSize, 10);
+    }
+
+    [Fact]
+    public void SameValueWideWriteBecomesTheNewApplicationBase()
+    {
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 20 };
+
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.30);
+        Assert.Equal(26, text.FontSize, 10);
+
+        text.FontSize = 26;
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.30);
+
+        Assert.Equal(33.8, text.FontSize, 10);
+    }
+
+    [Fact]
+    public void FactorChangeAfterSameValueCollisionUsesTheNewBase()
+    {
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 20 };
+
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.10);
+        text.FontSize = 22;
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.10);
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.50);
+
+        Assert.Equal(33, text.FontSize, 10);
+    }
+
+    [Fact]
+    public void RepeatedPassesWithoutAnApplicationWriteStayIdempotent()
+    {
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 20 };
+
+        for (var pass = 0; pass < 5; pass++)
+        {
+            manager.Apply(text, TextBlock.FontSizeProperty, 1.10);
+            Assert.Equal(22, text.FontSize, 10);
+        }
+    }
+
+    [Fact]
+    public void SameLocalWriteClearsCurrentValueOwnership()
+    {
+        var text = new TextBlock { FontSize = 20 };
+
+        text.SetCurrentValue(TextBlock.FontSizeProperty, 22);
+        Assert.Equal(22, text.GetValue(TextBlock.FontSizeProperty));
+        Assert.Equal(22, text.GetBaseValue(TextBlock.FontSizeProperty).Value);
+        Assert.True(text.GetDiagnostic(TextBlock.FontSizeProperty).IsOverriddenCurrentValue);
+
+        text.FontSize = 22;
+
+        Assert.Equal(22, text.GetValue(TextBlock.FontSizeProperty));
+        Assert.Equal(22, text.GetBaseValue(TextBlock.FontSizeProperty).Value);
+        Assert.False(text.GetDiagnostic(TextBlock.FontSizeProperty).IsOverriddenCurrentValue);
+    }
+
+    [Fact]
+    public void CurrentValueKeepsBindingAttached()
+    {
+        var source = new FontSizeSource(20);
+        var text = new TextBlock();
+        text.Bind(
+            TextBlock.FontSizeProperty,
+            new Binding(nameof(FontSizeSource.Value)) { Source = source });
+        var binding = BindingOperations.GetBindingExpressionBase(text, TextBlock.FontSizeProperty);
+
+        Assert.NotNull(binding);
+        text.SetCurrentValue(TextBlock.FontSizeProperty, 22);
+
+        Assert.Same(
+            binding,
+            BindingOperations.GetBindingExpressionBase(text, TextBlock.FontSizeProperty));
+    }
+
+    [Fact]
+    public void CurrentValueRetainsStylePriority()
+    {
+        var text = new TextBlock();
+        using var style = text.SetValue(TextBlock.FontSizeProperty, 20, BindingPriority.Style);
+
+        Assert.Equal(20, text.FontSize);
+        Assert.Equal(BindingPriority.Style, text.GetDiagnostic(TextBlock.FontSizeProperty).Priority);
+        text.SetCurrentValue(TextBlock.FontSizeProperty, 22);
+
+        Assert.Equal(22, text.FontSize);
+        Assert.Equal(BindingPriority.Style, text.GetDiagnostic(TextBlock.FontSizeProperty).Priority);
+        Assert.True(text.GetDiagnostic(TextBlock.FontSizeProperty).IsOverriddenCurrentValue);
+    }
+
+    [Fact]
+    public void ResponsiveStyleChangeBecomesTheNewManagerBase()
+    {
+        using var manager = CreateManager();
+        var text = new TextBlock();
+        var compactStyle = text.SetValue(TextBlock.FontSizeProperty, 20, BindingPriority.Style);
+
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.10);
+        compactStyle?.Dispose();
+        using var mediumStyle = text.SetValue(TextBlock.FontSizeProperty, 22, BindingPriority.Style);
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.10);
+
+        Assert.Equal(24.2, text.FontSize, 10);
+        Assert.Equal(BindingPriority.Style, text.GetDiagnostic(TextBlock.FontSizeProperty).Priority);
+    }
+
+    [Fact]
+    public void UnsetDefaultHasNoBaseValue()
+    {
+        var text = new TextBlock();
+
+        Assert.False(text.GetBaseValue(TextBlock.FontSizeProperty).HasValue);
+        text.SetCurrentValue(TextBlock.FontSizeProperty, 22);
+
+        Assert.Equal(22, text.FontSize);
+        Assert.False(text.GetBaseValue(TextBlock.FontSizeProperty).HasValue);
+    }
+
+    [Fact]
+    public void ForcedDefaultAndInheritedValuesDoNotDrift()
+    {
+        using var manager = CreateManager();
+        var defaultText = new TextBlock();
+        var inheritedText = new TextBlock();
+        var parent = new ContentControl { FontSize = 20, Content = inheritedText };
+
+        Assert.Equal(20, inheritedText.FontSize);
+
+        for (var pass = 0; pass < 3; pass++)
+        {
+            manager.Apply(defaultText, TextBlock.FontSizeProperty, 1.5, force: true);
+            manager.Apply(inheritedText, TextBlock.FontSizeProperty, 1.5, force: true);
+            Assert.Equal(18, defaultText.FontSize);
+            Assert.Equal(30, inheritedText.FontSize);
+        }
+
+        GC.KeepAlive(parent);
+    }
+
+    [Fact]
+    public void ChatHeadingResponsiveBasesRemainCompactMediumAndWide()
+    {
+        Assert.Equal(20, ChatView.ResolveLayout(compact: true, medium: false).EmptyTitleSize);
+        Assert.Equal(22, ChatView.ResolveLayout(compact: false, medium: true).EmptyTitleSize);
+        Assert.Equal(26, ChatView.ResolveLayout(compact: false, medium: false).EmptyTitleSize);
+    }
+
     [Theory]
     [InlineData(1, 32, 24)]
     [InlineData(1.5, 48, 36)]
@@ -55,63 +230,65 @@ public sealed class AvaloniaTextScaleTests
         double initialScaled,
         double responsiveScaled)
     {
-        var size = 32d;
-        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 32 };
 
-        size = Apply(state, size, factor);
-        Assert.Equal(initialScaled, size);
+        manager.Apply(text, TextBlock.FontSizeProperty, factor);
+        Assert.Equal(initialScaled, text.FontSize);
 
-        size = 24;
-        size = Apply(state, size, factor);
-        Assert.Equal(responsiveScaled, size);
+        text.FontSize = 24;
+        manager.Apply(text, TextBlock.FontSizeProperty, factor);
+        Assert.Equal(responsiveScaled, text.FontSize);
     }
 
     [Fact]
     public void ManagerWritesAndRepeatedLayoutsDoNotDrift()
     {
-        var size = 32d;
-        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 32 };
 
         for (var pass = 0; pass < 5; pass++)
         {
-            size = Apply(state, size, 1.5);
-            Assert.Equal(48, size);
+            manager.Apply(text, TextBlock.FontSizeProperty, 1.5);
+            Assert.Equal(48, text.FontSize);
         }
     }
 
     [Fact]
     public void FactorTransitionsUseTheLatestResponsiveBase()
     {
-        var size = 32d;
-        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 32 };
 
-        size = Apply(state, size, 1);
-        Assert.Equal(32, size);
-        size = 24;
-        size = Apply(state, size, 1);
-        Assert.Equal(24, size);
-        size = Apply(state, size, 1.5);
-        Assert.Equal(36, size);
-        size = Apply(state, size, 2);
-        Assert.Equal(48, size);
-        size = Apply(state, size, 1);
-        Assert.Equal(24, size);
+        manager.Apply(text, TextBlock.FontSizeProperty, 1);
+        Assert.Equal(32, text.FontSize);
+        text.FontSize = 24;
+        manager.Apply(text, TextBlock.FontSizeProperty, 1);
+        Assert.Equal(24, text.FontSize);
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.5);
+        Assert.Equal(36, text.FontSize);
+        manager.Apply(text, TextBlock.FontSizeProperty, 2);
+        Assert.Equal(48, text.FontSize);
+        manager.Apply(text, TextBlock.FontSizeProperty, 1);
+        Assert.Equal(24, text.FontSize);
     }
 
     [Fact]
     public void ExternalWriteClearsStaleManagerOwnership()
     {
-        var size = 32d;
-        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 32 };
 
-        size = Apply(state, size, 1.5);
-        size = Apply(state, size, 1);
-        Assert.Equal(32, size);
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.5);
+        manager.Apply(text, TextBlock.FontSizeProperty, 1);
+        Assert.Equal(32, text.FontSize);
 
-        size = Apply(state, 24, 1);
-        Assert.Equal(24, size);
-        size = Apply(state, 32, 1);
-        Assert.Equal(32, size);
+        text.FontSize = 24;
+        manager.Apply(text, TextBlock.FontSizeProperty, 1);
+        Assert.Equal(24, text.FontSize);
+        text.FontSize = 32;
+        manager.Apply(text, TextBlock.FontSizeProperty, 1);
+        Assert.Equal(32, text.FontSize);
     }
 
     [Theory]
@@ -123,72 +300,72 @@ public sealed class AvaloniaTextScaleTests
         double wideScaled,
         double compactScaled)
     {
-        var size = 32d;
-        var state = new AvaloniaTextScaleManager.FontSizeState(size);
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 32 };
 
-        size = Apply(state, size, factor);
-        Assert.Equal(wideScaled, size);
-        size = Apply(state, 24, factor);
-        Assert.Equal(compactScaled, size);
-        size = Apply(state, 32, factor);
-        Assert.Equal(wideScaled, size);
+        manager.Apply(text, TextBlock.FontSizeProperty, factor);
+        Assert.Equal(wideScaled, text.FontSize);
+        text.FontSize = 24;
+        manager.Apply(text, TextBlock.FontSizeProperty, factor);
+        Assert.Equal(compactScaled, text.FontSize);
+        text.FontSize = 32;
+        manager.Apply(text, TextBlock.FontSizeProperty, factor);
+        Assert.Equal(wideScaled, text.FontSize);
     }
 
     [Fact]
     public void ControlsKeepIndependentResponsiveBases()
     {
-        var heading = 32d;
-        var body = 14d;
-        var headingState = new AvaloniaTextScaleManager.FontSizeState(heading);
-        var bodyState = new AvaloniaTextScaleManager.FontSizeState(body);
+        using var manager = CreateManager();
+        var heading = new TextBlock { FontSize = 32 };
+        var body = new TextBlock { FontSize = 14 };
 
-        heading = Apply(headingState, heading, 1.5);
-        body = Apply(bodyState, body, 1.5);
-        Assert.Equal(48, heading);
-        Assert.Equal(21, body);
+        manager.Apply(heading, TextBlock.FontSizeProperty, 1.5);
+        manager.Apply(body, TextBlock.FontSizeProperty, 1.5);
+        Assert.Equal(48, heading.FontSize);
+        Assert.Equal(21, body.FontSize);
 
-        heading = Apply(headingState, 24, 1.5);
-        body = Apply(bodyState, body, 1.5);
-        Assert.Equal(36, heading);
-        Assert.Equal(21, body);
+        heading.FontSize = 24;
+        manager.Apply(heading, TextBlock.FontSizeProperty, 1.5);
+        manager.Apply(body, TextBlock.FontSizeProperty, 1.5);
+        Assert.Equal(36, heading.FontSize);
+        Assert.Equal(21, body.FontSize);
     }
 
     [Fact]
     public void NewlyDiscoveredControlReceivesCurrentScaleWithoutChangingExistingControl()
     {
-        var existing = 32d;
-        var existingState = new AvaloniaTextScaleManager.FontSizeState(existing);
-        existing = Apply(existingState, existing, 1.5);
+        using var manager = CreateManager();
+        var existing = new TextBlock { FontSize = 32 };
+        manager.Apply(existing, TextBlock.FontSizeProperty, 1.5);
 
-        var added = 18d;
-        var addedState = new AvaloniaTextScaleManager.FontSizeState(added);
-        added = Apply(addedState, added, 1.5);
-        existing = Apply(existingState, existing, 1.5);
+        var added = new TextBlock { FontSize = 18 };
+        manager.Apply(added, TextBlock.FontSizeProperty, 1.5);
+        manager.Apply(existing, TextBlock.FontSizeProperty, 1.5);
 
-        Assert.Equal(27, added);
-        Assert.Equal(48, existing);
+        Assert.Equal(27, added.FontSize);
+        Assert.Equal(48, existing.FontSize);
     }
 
     [Fact]
     public void ManagerWriteCanReenterWithoutBecomingTheBase()
     {
-        var size = 32d;
+        using var manager = CreateManager();
+        var text = new TextBlock { FontSize = 32 };
         var writes = 0;
-        var state = new AvaloniaTextScaleManager.FontSizeState(size);
-
-        state.Apply(size, 1.5, scaled =>
+        text.PropertyChanged += (_, args) =>
         {
-            writes++;
-            size = scaled;
-            state.Apply(size, 1.5, nested =>
+            if (args.Property == TextBlock.FontSizeProperty)
             {
                 writes++;
-                size = nested;
-            });
-        });
+                manager.Apply(text, TextBlock.FontSizeProperty, 1.5);
+            }
+        };
+
+        manager.Apply(text, TextBlock.FontSizeProperty, 1.5);
 
         Assert.Equal(1, writes);
-        Assert.Equal(48, size);
+        Assert.Equal(48, text.FontSize);
     }
 
     [Fact]
@@ -328,15 +505,13 @@ public sealed class AvaloniaTextScaleTests
         }
     }
 
-    private static double Apply(
-        AvaloniaTextScaleManager.FontSizeState state,
-        double observed,
-        double factor)
+    private sealed class FontSizeSource(double value)
     {
-        var result = observed;
-        state.Apply(observed, factor, scaled => result = scaled);
-        return result;
+        public double Value => value;
     }
+
+    private static AvaloniaTextScaleManager CreateManager() =>
+        new(new FakeSource(), action => action());
 
     private static string ReadAvaloniaSource(params string[] path) =>
         File.ReadAllText(FindRepositoryFile("PersonalAI.Desktop.Avalonia", path));

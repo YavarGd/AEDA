@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
+using Avalonia.Diagnostics;
 using Avalonia.LogicalTree;
 using PersonalAI.Desktop.Avalonia.Platform.Windows;
 using System.Runtime.CompilerServices;
@@ -14,7 +15,7 @@ public sealed class AvaloniaTextScaleManager : IDisposable
     private readonly Action<Action> _dispatch;
     private readonly List<Action<double>> _targets = [];
     private readonly Dictionary<Window, IDisposable> _windows = [];
-    private readonly ConditionalWeakTable<AvaloniaObject, Dictionary<AvaloniaProperty, FontSizeState>> _states = new();
+    private readonly ConditionalWeakTable<AvaloniaObject, Dictionary<AvaloniaProperty, double>> _baselines = new();
     private bool _disposed;
 
     public AvaloniaTextScaleManager(
@@ -108,7 +109,7 @@ public sealed class AvaloniaTextScaleManager : IDisposable
         }
     }
 
-    private void Apply(
+    internal void Apply(
         AvaloniaObject target,
         StyledProperty<double> property,
         double factor,
@@ -120,37 +121,18 @@ public sealed class AvaloniaTextScaleManager : IDisposable
         }
 
         var observed = target.GetValue(property);
-        var properties = _states.GetOrCreateValue(target);
-        if (!properties.TryGetValue(property, out var state))
+        var properties = _baselines.GetOrCreateValue(target);
+        if (!properties.TryGetValue(property, out var baseline) ||
+            !target.GetDiagnostic(property).IsOverriddenCurrentValue)
         {
-            state = new FontSizeState(observed);
-            properties.Add(property, state);
+            baseline = observed;
+            properties[property] = baseline;
         }
 
-        state.Apply(observed, factor, scaled => target.SetCurrentValue(property, scaled));
-    }
-
-    internal sealed class FontSizeState(double baseline)
-    {
-        private double _baseline = baseline;
-        private double? _lastManagerValue;
-
-        internal void Apply(double observed, double factor, Action<double> write)
+        var scaled = ScaleFontSize(baseline, factor);
+        if (Different(observed, scaled))
         {
-            if (_lastManagerValue is not double last || Different(observed, last))
-            {
-                _baseline = observed;
-                _lastManagerValue = null;
-            }
-
-            var scaled = ScaleFontSize(_baseline, factor);
-            if (!Different(observed, scaled))
-            {
-                return;
-            }
-
-            _lastManagerValue = scaled;
-            write(scaled);
+            target.SetCurrentValue(property, scaled);
         }
     }
 
