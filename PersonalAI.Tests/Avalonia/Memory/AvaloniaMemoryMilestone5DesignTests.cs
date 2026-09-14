@@ -175,13 +175,13 @@ public sealed partial class AvaloniaMemoryMilestone5DesignTests
     [Fact]
     public void ResponsiveMeasurementsMatchTheApprovedLayouts()
     {
-        Assert.Contains("HorizontalScrollBarVisibility=\"Auto\"", ReadAvaloniaSource("Views", "Memory", "MemoryView.axaml"));
+        Assert.Contains("HorizontalScrollBarVisibility=\"Disabled\"", ReadAvaloniaSource("Views", "Memory", "MemoryView.axaml"));
 
         var wide = MemoryView.ResolveLayout(compact: false, medium: false);
         var medium = MemoryView.ResolveLayout(compact: false, medium: true);
         var compact = MemoryView.ResolveLayout(compact: true, medium: false);
 
-        Assert.Equal((32, 24, 200, 380, 320, 24, 28), wide);
+        Assert.Equal((24, 20, 140, 240, 220, 20, 28), wide);
         Assert.Equal(24, medium.PagePadding);
         Assert.Equal(20, medium.TrustPadding);
         Assert.Equal(320, medium.RecordListWidth);
@@ -189,6 +189,52 @@ public sealed partial class AvaloniaMemoryMilestone5DesignTests
         Assert.Equal(16, compact.PagePadding);
         Assert.Equal(16, compact.TrustPadding);
         Assert.Equal(16, compact.MajorGap);
+    }
+
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(1080)]
+    [InlineData(1440)]
+    public void PopulatedWideWorkspaceFitsTheAvailableContentWidth(double windowWidth)
+    {
+        var layout = MemoryView.ResolveLayout(compact: false, medium: false);
+        const double selectedDetailMinimumWidth = 280;
+        var availableWidth = windowWidth - (2 * layout.PagePadding);
+        var requiredWidth = layout.SourceRailWidth
+            + layout.RecordListWidth
+            + selectedDetailMinimumWidth
+            + layout.ToolWidth
+            + (3 * layout.MajorGap);
+
+        Assert.True(
+            requiredWidth <= availableWidth,
+            $"Populated Memory requires {requiredWidth} px but only {availableWidth} px is available.");
+    }
+
+    [Theory]
+    [InlineData(760)]
+    [InlineData(999)]
+    public void PopulatedMediumWorkspaceFitsTheAvailableContentWidth(double windowWidth)
+    {
+        var layout = MemoryView.ResolveLayout(compact: false, medium: true);
+        const double selectedDetailMinimumWidth = 280;
+        var availableWidth = windowWidth - (2 * layout.PagePadding);
+        var requiredWidth = layout.RecordListWidth
+            + selectedDetailMinimumWidth
+            + layout.MajorGap;
+
+        Assert.True(requiredWidth <= availableWidth);
+    }
+
+    [Fact]
+    public void WideLayoutKeepsListDetailAndToolsInTheMultiPaneWorkspace()
+    {
+        var source = ReadAvaloniaSource("Views", "Memory", "MemoryView.axaml.cs");
+        var wide = MethodSlice(source, "private void ArrangeWorkspace", "private void UpdatePresentation");
+
+        Assert.Contains("Position(RecordWorkspace, 0, 1, 1)", wide);
+        Assert.Contains("Position(SelectedDetailSurface, 0, 2, 1)", wide);
+        Assert.Contains("Position(ToolsPanel, 0, 3, 1)", wide);
     }
 
     [Fact]

@@ -266,7 +266,7 @@
 
     <ScrollViewer Grid.Row="3"
                   VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Auto">
+                  HorizontalScrollBarVisibility="Disabled">
       <Grid RowDefinitions="Auto,*" RowSpacing="12">
         <Button x:Name="CompactBackButton"
                 IsVisible="False"
@@ -281,7 +281,7 @@
 
         <Grid x:Name="WorkspaceLayout"
               Grid.Row="1"
-              ColumnDefinitions="200,380,*,320"
+              ColumnDefinitions="140,240,*,220"
               RowDefinitions="Auto,Auto,Auto"
               ColumnSpacing="24"
               RowSpacing="24">

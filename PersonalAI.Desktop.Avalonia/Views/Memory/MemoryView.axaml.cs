@@ -75,7 +75,7 @@ public partial class MemoryView : UserControl
             ? (16, 16, 0, 0, 0, 16, 22)
             : medium
                 ? (24, 20, 0, 320, 0, 20, 24)
-                : (32, 24, 200, 380, 320, 24, 28);
+                : (24, 20, 140, 240, 220, 20, 28);
 
     private async void OnAttachedToVisualTree(
         object? sender,
