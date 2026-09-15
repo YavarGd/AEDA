@@ -24,7 +24,11 @@ public partial class TaskCenterView : UserControl
         AttachedToVisualTree += OnAttachedToVisualTree;
     }
 
-    public void FocusPrimaryAction() => RefreshButton.Focus();
+    public void FocusPrimaryAction() => FocusAfterLayout(PrimaryFocusTargets());
+
+    internal Control[] PrimaryFocusTargets() => _compact
+        ? [RegionFor(_compactPane), CompactBackButton, CompactOverview]
+        : [RefreshButton, ApprovalSurface];
 
     public void ApplyResponsiveMode(bool compact, bool medium)
     {

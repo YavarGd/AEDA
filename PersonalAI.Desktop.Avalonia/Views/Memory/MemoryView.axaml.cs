@@ -26,15 +26,29 @@ public partial class MemoryView : UserControl
     }
 
     public void FocusPrimaryAction()
+        => FocusAfterLayout(PrimaryFocusTargets());
+
+    internal Control[] PrimaryFocusTargets()
     {
-        if (_compact)
+        if (!_compact)
         {
-            _source = MemorySource.Recent;
-            _compactPane = CompactPane.MemoryList;
-            UpdatePresentation();
+            return _source == MemorySource.IndexedKnowledge
+                ? [IndexedKnowledgeHeading, IndexedSourceButton]
+                : [MemorySearchTextBox, _source == MemorySource.TaskOutcomes
+                    ? TaskSourceButton
+                    : RecentSourceButton];
         }
 
-        MemorySearchTextBox.Focus();
+        return _compactPane switch
+        {
+            CompactPane.Overview => [CompactOverview],
+            CompactPane.MemoryList => [MemorySearchTextBox, RecordWorkspace, CompactBackButton],
+            CompactPane.SelectedDetail => [SelectedMemoryDetailHeading, CompactBackButton],
+            CompactPane.IndexedKnowledge => [IndexedKnowledgeHeading, CompactBackButton],
+            CompactPane.AddMemory => [AddMemoryTextBox, CompactBackButton],
+            CompactPane.Retrieval => [RetrievalQueryTextBox, CompactBackButton],
+            _ => [CompactOverview]
+        };
     }
 
     public void ApplyResponsiveMode(bool compact, bool medium)
@@ -308,6 +322,20 @@ public partial class MemoryView : UserControl
             MemorySearchTextBox.Focus();
         }
     }
+
+    private void FocusAfterLayout(params Control[] targets) =>
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                foreach (var target in targets)
+                {
+                    if (target.IsEffectivelyVisible && target.Focus())
+                    {
+                        return;
+                    }
+                }
+            },
+            DispatcherPriority.Input);
 
     private void SetColumnWidths(
         GridLength first,

@@ -266,8 +266,9 @@ public sealed partial class AvaloniaMemoryMilestone5DesignTests
         var shell = ReadAvaloniaSource("MainWindow.axaml.cs");
         var focus = MethodSlice(memory, "FocusPrimaryAction", "ApplyResponsiveMode");
 
-        Assert.Contains("_compactPane = CompactPane.MemoryList", focus);
-        Assert.Contains("MemorySearchTextBox.Focus()", focus);
+        Assert.Contains("FocusAfterLayout(PrimaryFocusTargets())", focus);
+        Assert.DoesNotMatch(@"_source\s*=(?!=)", focus);
+        Assert.DoesNotMatch(@"_compactPane\s*=(?!=)", focus);
         Assert.Contains("SelectedMemoryDetailHeading.Focus()", memory);
         Assert.Contains("_lastOpenButton?.Focus()", memory);
         Assert.Contains("_lastOverviewButton?.Focus()", memory);

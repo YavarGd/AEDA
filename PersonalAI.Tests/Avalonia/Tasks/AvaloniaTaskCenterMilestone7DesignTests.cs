@@ -226,7 +226,8 @@ public sealed partial class AvaloniaTaskCenterMilestone7DesignTests
         var focus = MethodSlice(source, "public void FocusPrimaryAction", "public void ApplyResponsiveMode");
         var attach = MethodSlice(source, "private async void OnAttachedToVisualTree", "private async void OnTaskClick");
 
-        Assert.Contains("RefreshButton.Focus()", focus);
+        Assert.Contains("FocusAfterLayout(PrimaryFocusTargets())", focus);
+        Assert.DoesNotContain("_compactPane =", focus);
         Assert.Contains("_loaded || DataContext is not AedaTaskCenterViewModel", attach);
         Assert.Contains("_loaded = true", attach);
         Assert.Single(Regex.Matches(attach, "RefreshAsync").Cast<Match>());

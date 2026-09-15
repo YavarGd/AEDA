@@ -515,7 +515,11 @@
                   Classes="memorySurface"
                   IsVisible="False">
             <StackPanel Spacing="10">
-              <TextBlock Text="Indexed knowledge" FontSize="13" FontWeight="Bold" />
+              <TextBlock x:Name="IndexedKnowledgeHeading"
+                         Text="Indexed knowledge"
+                         FontSize="13"
+                         FontWeight="Bold"
+                         Focusable="True" />
               <TextBlock Text="Read-only document summaries. Not selectable in this milestone."
                          Classes="metadata"
                          TextWrapping="Wrap" />
@@ -541,7 +545,8 @@
                 </StackPanel>
                 <StackPanel Spacing="4">
                   <TextBlock Text="Memory content" Classes="memoryFieldLabel" />
-                  <TextBox MinHeight="80"
+                  <TextBox x:Name="AddMemoryTextBox"
+                           MinHeight="80"
                            PlaceholderText="What should AEDA remember?"
                            AcceptsReturn="True"
                            TextWrapping="Wrap"
@@ -574,7 +579,8 @@
                              TextWrapping="Wrap" />
                 </StackPanel>
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                  <TextBox MinHeight="36"
+                  <TextBox x:Name="RetrievalQueryTextBox"
+                           MinHeight="36"
                            PlaceholderText="Preview query"
                            Text="{Binding RetrievalQuery}"
                            AutomationProperties.Name="Retrieval query" />
