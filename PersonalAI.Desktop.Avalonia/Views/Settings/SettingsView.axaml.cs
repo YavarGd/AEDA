@@ -177,25 +177,44 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void OnThemeClick(object? sender, RoutedEventArgs e)
+    private void OnThemeSelectionChanged(object? sender, RoutedEventArgs e)
     {
-        if (sender is RadioButton { Tag: string value } &&
-            Enum.TryParse<ThemePreference>(value, out var theme) &&
-            DataContext is SettingsViewModel viewModel)
+        if (sender is RadioButton { IsChecked: true, Tag: string value } &&
+            Enum.TryParse<ThemePreference>(value, out var theme))
         {
-            _themeManager?.Apply(theme);
-            viewModel.Theme = theme;
+            ApplyThemeSelection(theme);
         }
     }
 
-    private void OnCategoryClick(object? sender, RoutedEventArgs e)
+    private void ApplyThemeSelection(ThemePreference theme)
     {
-        if (sender is RadioButton { Tag: string value } &&
+        if (DataContext is not SettingsViewModel viewModel || viewModel.Theme == theme)
+        {
+            return;
+        }
+
+        _themeManager?.Apply(theme);
+        viewModel.Theme = theme;
+    }
+
+    private void OnCategorySelectionChanged(object? sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { IsChecked: true, Tag: string value } &&
             Enum.TryParse<SettingsCategory>(value, out var category))
         {
-            _selectedCategory = category;
-            UpdateCategoryPresentation();
+            SelectCategory(category);
         }
+    }
+
+    private void SelectCategory(SettingsCategory category)
+    {
+        if (_selectedCategory == category)
+        {
+            return;
+        }
+
+        _selectedCategory = category;
+        UpdateCategoryPresentation();
     }
 
     private async void OnProviderSelectionChanged(

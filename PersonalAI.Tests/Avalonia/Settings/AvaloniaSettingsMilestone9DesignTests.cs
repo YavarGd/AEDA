@@ -41,7 +41,7 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
     }
 
     [Fact]
-    public void AppearanceUsesOnlyTheFourExistingThemesAndImmediateClickPath()
+    public void AppearanceUsesOnlyTheFourExistingThemesAndImmediateSelectionPath()
     {
         var source = ReadSettingsSource("SettingsView.axaml");
         var code = ReadSettingsSource("SettingsView.axaml.cs");
@@ -53,7 +53,7 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
             .ToArray();
 
         Assert.Equal(["SystemMica", "Graphite", "MineralStone", "SharpAlmond"], themeTags);
-        Assert.Equal(4, Count(source, "Click=\"OnThemeClick\""));
+        Assert.Equal(4, Count(source, "IsCheckedChanged=\"OnThemeSelectionChanged\""));
         Assert.Contains("_themeManager?.Apply(theme)", code);
         Assert.Contains("viewModel.Theme = theme", code);
         Assert.DoesNotContain("new Graphite", code, StringComparison.OrdinalIgnoreCase);
@@ -179,7 +179,7 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
         var attach = MethodSlice(
             code,
             "private async void OnAttachedToVisualTree",
-            "private void OnThemeClick");
+            "private void OnThemeSelectionChanged");
         var provider = MethodSlice(
             code,
             "private async void OnProviderSelectionChanged",
@@ -328,15 +328,18 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
     public void CategorySelectionIsViewLocalAndDoesNotInvokeRuntimeBehavior()
     {
         var code = ReadSettingsSource("SettingsView.axaml.cs");
-        var click = MethodSlice(code, "private void OnCategoryClick", "private async void OnProviderSelectionChanged");
+        var selection = MethodSlice(
+            code,
+            "private void OnCategorySelectionChanged",
+            "private async void OnProviderSelectionChanged");
 
         Assert.Contains("private SettingsCategory _selectedCategory", code);
-        Assert.Contains("_selectedCategory = category", click);
-        Assert.Contains("UpdateCategoryPresentation()", click);
-        Assert.DoesNotContain("Save", click);
-        Assert.DoesNotContain("Refresh", click);
-        Assert.DoesNotContain("Command", click);
-        Assert.DoesNotContain("DataContext", click);
+        Assert.Contains("_selectedCategory = category", selection);
+        Assert.Contains("UpdateCategoryPresentation()", selection);
+        Assert.DoesNotContain("Save", selection);
+        Assert.DoesNotContain("Refresh", selection);
+        Assert.DoesNotContain("Command", selection);
+        Assert.DoesNotContain("DataContext", selection);
     }
 
     [Fact]
@@ -344,7 +347,10 @@ public sealed partial class AvaloniaSettingsMilestone9DesignTests
     {
         var code = ReadSettingsSource("SettingsView.axaml.cs");
         var focus = MethodSlice(code, "public void FocusPrimaryAction", "public void ApplyResponsiveMode");
-        var attach = MethodSlice(code, "private async void OnAttachedToVisualTree", "private void OnThemeClick");
+        var attach = MethodSlice(
+            code,
+            "private async void OnAttachedToVisualTree",
+            "private void OnThemeSelectionChanged");
 
         Assert.Contains("SystemMicaThemeOption.Focus()", focus);
         Assert.Contains("GetCategoryControl(_selectedCategory, _medium).Focus()", focus);

@@ -103,35 +103,35 @@
                  IsVisible="False"
                  Orientation="Horizontal"
                  AutomationProperties.Name="Settings categories">
-        <RadioButton x:Name="AppearanceMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Appearance" Tag="Appearance" IsChecked="True" Margin="0,0,8,8" Click="OnCategoryClick" />
-        <RadioButton x:Name="AssistMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Assist" Tag="Assist" Margin="0,0,8,8" Click="OnCategoryClick" />
-        <RadioButton x:Name="WindowMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Window &amp; startup" Tag="Window" Margin="0,0,8,8" Click="OnCategoryClick" />
-        <RadioButton x:Name="ProviderMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Provider &amp; models" Tag="Provider" Margin="0,0,8,8" Click="OnCategoryClick" />
-        <RadioButton x:Name="PrivacyMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Context &amp; privacy" Tag="Privacy" Margin="0,0,8,8" Click="OnCategoryClick" />
-        <RadioButton x:Name="WorkspacesMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Workspaces" Tag="Workspaces" Margin="0,0,8,8" Click="OnCategoryClick" />
-        <RadioButton x:Name="AdvancedMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Advanced &amp; maintenance" Tag="Advanced" Margin="0,0,8,8" Click="OnCategoryClick" />
+        <RadioButton x:Name="AppearanceMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Appearance" Tag="Appearance" IsChecked="True" Margin="0,0,8,8" IsCheckedChanged="OnCategorySelectionChanged" />
+        <RadioButton x:Name="AssistMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Assist" Tag="Assist" Margin="0,0,8,8" IsCheckedChanged="OnCategorySelectionChanged" />
+        <RadioButton x:Name="WindowMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Window &amp; startup" Tag="Window" Margin="0,0,8,8" IsCheckedChanged="OnCategorySelectionChanged" />
+        <RadioButton x:Name="ProviderMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Provider &amp; models" Tag="Provider" Margin="0,0,8,8" IsCheckedChanged="OnCategorySelectionChanged" />
+        <RadioButton x:Name="PrivacyMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Context &amp; privacy" Tag="Privacy" Margin="0,0,8,8" IsCheckedChanged="OnCategorySelectionChanged" />
+        <RadioButton x:Name="WorkspacesMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Workspaces" Tag="Workspaces" Margin="0,0,8,8" IsCheckedChanged="OnCategorySelectionChanged" />
+        <RadioButton x:Name="AdvancedMediumCategory" Classes="settingsCategory" GroupName="SettingsMediumCategories" Content="Advanced &amp; maintenance" Tag="Advanced" Margin="0,0,8,8" IsCheckedChanged="OnCategorySelectionChanged" />
       </WrapPanel>
 
       <Grid x:Name="SettingsWorkspace" ColumnDefinitions="224,*" ColumnSpacing="24">
         <StackPanel x:Name="CategoryRail" Grid.Column="0" Spacing="16" AutomationProperties.Name="Settings categories">
           <StackPanel Spacing="2">
             <TextBlock Text="EVERYDAY" Classes="metadata" Margin="10,0,0,4" />
-            <RadioButton x:Name="AppearanceCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Appearance" Tag="Appearance" IsChecked="True" Click="OnCategoryClick" />
-            <RadioButton x:Name="AssistCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Assist" Tag="Assist" Click="OnCategoryClick" />
-            <RadioButton x:Name="WindowCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Window &amp; startup" Tag="Window" Click="OnCategoryClick" />
+            <RadioButton x:Name="AppearanceCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Appearance" Tag="Appearance" IsChecked="True" IsCheckedChanged="OnCategorySelectionChanged" />
+            <RadioButton x:Name="AssistCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Assist" Tag="Assist" IsCheckedChanged="OnCategorySelectionChanged" />
+            <RadioButton x:Name="WindowCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Window &amp; startup" Tag="Window" IsCheckedChanged="OnCategorySelectionChanged" />
           </StackPanel>
           <StackPanel Spacing="2">
             <TextBlock Text="AI" Classes="metadata" Margin="10,0,0,4" />
-            <RadioButton x:Name="ProviderCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Provider &amp; models" Tag="Provider" Click="OnCategoryClick" />
+            <RadioButton x:Name="ProviderCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Provider &amp; models" Tag="Provider" IsCheckedChanged="OnCategorySelectionChanged" />
           </StackPanel>
           <StackPanel Spacing="2">
             <TextBlock Text="ACCESS &amp; PRIVACY" Classes="metadata" Margin="10,0,0,4" />
-            <RadioButton x:Name="PrivacyCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Context &amp; privacy" Tag="Privacy" Click="OnCategoryClick" />
-            <RadioButton x:Name="WorkspacesCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Workspaces" Tag="Workspaces" Click="OnCategoryClick" />
+            <RadioButton x:Name="PrivacyCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Context &amp; privacy" Tag="Privacy" IsCheckedChanged="OnCategorySelectionChanged" />
+            <RadioButton x:Name="WorkspacesCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Workspaces" Tag="Workspaces" IsCheckedChanged="OnCategorySelectionChanged" />
           </StackPanel>
           <StackPanel Spacing="2">
             <TextBlock Text="ADVANCED" Classes="metadata" Margin="10,0,0,4" />
-            <RadioButton x:Name="AdvancedCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Advanced &amp; maintenance" Tag="Advanced" Click="OnCategoryClick" />
+            <RadioButton x:Name="AdvancedCategory" Classes="settingsCategory" GroupName="SettingsWideCategories" Content="Advanced &amp; maintenance" Tag="Advanced" IsCheckedChanged="OnCategorySelectionChanged" />
           </StackPanel>
         </StackPanel>
 
@@ -141,10 +141,10 @@
               <TextBlock Text="Appearance" Classes="settingsSectionTitle" />
               <TextBlock Text="Choose one of AEDA's four palettes. Changes apply immediately." Classes="settingsSectionCopy" />
               <WrapPanel>
-                <RadioButton x:Name="SystemMicaThemeOption" Classes="themeChoice" Content="System Mica" GroupName="AedaPalette" Tag="SystemMica" IsChecked="{Binding IsSystemMicaTheme, Mode=OneWay}" Click="OnThemeClick" />
-                <RadioButton Classes="themeChoice" Content="Graphite" GroupName="AedaPalette" Tag="Graphite" IsChecked="{Binding IsGraphiteTheme, Mode=OneWay}" Click="OnThemeClick" />
-                <RadioButton Classes="themeChoice" Content="Mineral Stone" GroupName="AedaPalette" Tag="MineralStone" IsChecked="{Binding IsMineralStoneTheme, Mode=OneWay}" Click="OnThemeClick" />
-                <RadioButton Classes="themeChoice" Content="Sharp Almond" GroupName="AedaPalette" Tag="SharpAlmond" IsChecked="{Binding IsSharpAlmondTheme, Mode=OneWay}" Click="OnThemeClick" />
+                <RadioButton x:Name="SystemMicaThemeOption" Classes="themeChoice" Content="System Mica" GroupName="AedaPalette" Tag="SystemMica" IsChecked="{Binding IsSystemMicaTheme, Mode=OneWay}" IsCheckedChanged="OnThemeSelectionChanged" />
+                <RadioButton Classes="themeChoice" Content="Graphite" GroupName="AedaPalette" Tag="Graphite" IsChecked="{Binding IsGraphiteTheme, Mode=OneWay}" IsCheckedChanged="OnThemeSelectionChanged" />
+                <RadioButton Classes="themeChoice" Content="Mineral Stone" GroupName="AedaPalette" Tag="MineralStone" IsChecked="{Binding IsMineralStoneTheme, Mode=OneWay}" IsCheckedChanged="OnThemeSelectionChanged" />
+                <RadioButton Classes="themeChoice" Content="Sharp Almond" GroupName="AedaPalette" Tag="SharpAlmond" IsChecked="{Binding IsSharpAlmondTheme, Mode=OneWay}" IsCheckedChanged="OnThemeSelectionChanged" />
               </WrapPanel>
             </StackPanel>
           </Border>
