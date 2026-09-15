@@ -183,28 +183,28 @@ public sealed record AedaPalette(
     public static AedaPalette SystemMica { get; } = new(
         false,
         "#EEF0F2", "#FFFFFF", "#EEF0F2", "#FFFFFF", "#FFFFFF", "#F6F7F9",
-        "#F6F7F9", "#E4EBF3", "#FFFFFF", "#1B222A", "#5B6572", "#8A93A0",
+        "#F6F7F9", "#E4EBF3", "#FFFFFF", "#1B222A", "#5B6572", "#64686D",
         "#DCE1E6", "#DCE1E6", "#4C6FA0", "#4C6FA0", "#4C6FA0", "#3E8F5B",
         "#B4842A", "#B4483E", "#2E86A8", "#4C6FA0");
 
     public static AedaPalette Graphite { get; } = new(
         true,
         "#16181C", "#202329", "#1B1E23", "#292D34", "#24272D", "#30343C",
-        "#24272D", "#302E3B", "#F1F2F4", "#F1F2F4", "#C4C7CD", "#9CA1AA", "#3B4049", "#555C68",
+        "#24272D", "#302E3B", "#000000", "#F1F2F4", "#C4C7CD", "#9CA1AA", "#3B4049", "#555C68",
         "#8D84BC", "#A198D0", "#766DA8", "#74A36B", "#C6924E", "#D66565",
         "#4E9DB6", "#B0A5E8");
 
     public static AedaPalette MineralStone { get; } = new(
         false,
         "#EFEAE1", "#FBF7F0", "#EFEAE1", "#FBF7F0", "#FBF7F0", "#F4EEE3",
-        "#F4EEE3", "#E7ECDF", "#FFFFFF", "#2B2620", "#6B6255", "#9A9082",
+        "#F4EEE3", "#E7ECDF", "#000000", "#2B2620", "#6B6255", "#756456",
         "#E0D6C4", "#E0D6C4", "#6B7F5C", "#6B7F5C", "#6B7F5C", "#5C7A3E",
         "#B4842A", "#A85C42", "#3B7F86", "#6B7F5C");
 
     public static AedaPalette SharpAlmond { get; } = new(
         true,
         "#15131A", "#1D1B23", "#15131A", "#1D1B23", "#1D1B23", "#24222C",
-        "#24222C", "#2C2740", "#17151C", "#F1EEF6", "#A9A5B4", "#77738A",
+        "#24222C", "#2C2740", "#17151C", "#F1EEF6", "#A9A5B4", "#9691A5",
         "#34313D", "#34313D", "#9C8CE0", "#9C8CE0", "#9C8CE0", "#6FCB8F",
         "#E0A94B", "#E08079", "#5FC2D9", "#B3A6EA");
 

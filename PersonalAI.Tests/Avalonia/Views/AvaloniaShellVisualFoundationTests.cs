@@ -33,21 +33,21 @@ public sealed class AvaloniaShellVisualFoundationTests
         Assert.Equal(
         [
             "#EEF0F2", "#FFFFFF", "#EEF0F2", "#FFFFFF", "#FFFFFF", "#F6F7F9",
-            "#DCE1E6", "#1B222A", "#5B6572", "#8A93A0", "#4C6FA0", "#E4EBF3",
+            "#DCE1E6", "#1B222A", "#5B6572", "#64686D", "#4C6FA0", "#E4EBF3",
             "#FFFFFF", "#4C6FA0", "#2E86A8", "#B4842A", "#3E8F5B", "#B4483E"
         ], LockedTokens(AvaloniaThemeManager.GetPalette(ThemePreference.SystemMica)));
 
         Assert.Equal(
         [
             "#EFEAE1", "#FBF7F0", "#EFEAE1", "#FBF7F0", "#FBF7F0", "#F4EEE3",
-            "#E0D6C4", "#2B2620", "#6B6255", "#9A9082", "#6B7F5C", "#E7ECDF",
-            "#FFFFFF", "#6B7F5C", "#3B7F86", "#B4842A", "#5C7A3E", "#A85C42"
+            "#E0D6C4", "#2B2620", "#6B6255", "#756456", "#6B7F5C", "#E7ECDF",
+            "#000000", "#6B7F5C", "#3B7F86", "#B4842A", "#5C7A3E", "#A85C42"
         ], LockedTokens(AvaloniaThemeManager.GetPalette(ThemePreference.MineralStone)));
 
         Assert.Equal(
         [
             "#15131A", "#1D1B23", "#15131A", "#1D1B23", "#1D1B23", "#24222C",
-            "#34313D", "#F1EEF6", "#A9A5B4", "#77738A", "#9C8CE0", "#2C2740",
+            "#34313D", "#F1EEF6", "#A9A5B4", "#9691A5", "#9C8CE0", "#2C2740",
             "#17151C", "#B3A6EA", "#5FC2D9", "#E0A94B", "#6FCB8F", "#E08079"
         ], LockedTokens(AvaloniaThemeManager.GetPalette(ThemePreference.SharpAlmond)));
     }
