@@ -6,6 +6,7 @@ using PersonalAI.Desktop.Presentation.ViewModels;
 
 namespace PersonalAI.Tests.Ui;
 
+[Collection(TimingSensitiveCollection.Name)]
 public sealed class AssistPillViewModelTests
 {
     [Theory]

@@ -6,6 +6,7 @@ using PersonalAI.Infrastructure.Ipc;
 
 namespace PersonalAI.Tests.Editor;
 
+[Collection(TimingSensitiveCollection.Name)]
 public sealed class PersonalAiActivationClientTests
 {
     [Fact]
