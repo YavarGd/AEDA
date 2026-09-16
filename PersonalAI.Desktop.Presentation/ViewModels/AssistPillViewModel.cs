@@ -326,16 +326,11 @@ public sealed partial class AssistPillViewModel : ObservableObject, IAsyncDispos
 
     public void Collapse()
     {
-        if (IsDetectingContext)
+        if (IsDetectingContext || IsStreaming)
         {
+            Interlocked.Increment(ref _invocationId);
             CancelContextCapture();
-            return;
-        }
-
-        if (IsStreaming)
-        {
             Cancel();
-            return;
         }
 
         ShowIdle();

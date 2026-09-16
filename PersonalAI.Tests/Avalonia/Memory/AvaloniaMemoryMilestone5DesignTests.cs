@@ -269,7 +269,7 @@ public sealed partial class AvaloniaMemoryMilestone5DesignTests
         Assert.Contains("FocusAfterLayout(PrimaryFocusTargets())", focus);
         Assert.DoesNotMatch(@"_source\s*=(?!=)", focus);
         Assert.DoesNotMatch(@"_compactPane\s*=(?!=)", focus);
-        Assert.Contains("SelectedMemoryDetailHeading.Focus()", memory);
+        Assert.DoesNotContain("SelectedMemoryDetailHeading.Focus()", memory);
         Assert.Contains("_lastOpenButton?.Focus()", memory);
         Assert.Contains("_lastOverviewButton?.Focus()", memory);
         Assert.Contains("DashboardRoute.ApplyResponsiveMode(compact, medium)", shell);

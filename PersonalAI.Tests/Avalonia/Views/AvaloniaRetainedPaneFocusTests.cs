@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using PersonalAI.Desktop.Avalonia.Views.Memory;
 using PersonalAI.Desktop.Avalonia.Views.Tasks;
@@ -37,6 +38,20 @@ public sealed class AvaloniaRetainedPaneFocusTests
         await RunProbeInIsolatedProcessAsync(
             nameof(MemoryReentryPreservesEveryRetainedPresentationWithoutResizeFocusSteal),
             "memory");
+    }
+
+    [Fact]
+    public async Task CompactMemoryPaneEntryFocusesEachVisibleLocalTarget()
+    {
+        if (Environment.GetEnvironmentVariable(ProbeVariable) == "memory-entry")
+        {
+            RunMemoryEntryProbe();
+            return;
+        }
+
+        await RunProbeInIsolatedProcessAsync(
+            nameof(CompactMemoryPaneEntryFocusesEachVisibleLocalTarget),
+            "memory-entry");
     }
 
     private static void RunTaskCenterProbe()
@@ -87,6 +102,77 @@ public sealed class AvaloniaRetainedPaneFocusTests
         AssertMemoryFocus(view, true, false, "Recent", "Retrieval", "RetrievalQueryTextBox");
         window.Close();
     }
+
+    private static void RunMemoryEntryProbe()
+    {
+        StartApplication();
+        var view = new MemoryView();
+        var sentinel = new Button { Content = "sentinel" };
+        var window = Show(view, sentinel);
+        view.ApplyResponsiveMode(compact: true, medium: false);
+
+        AssertPaneEntry(
+            view,
+            sentinel,
+            "OverviewRecentButton",
+            "MemorySearchTextBox",
+            "Recent",
+            "MemoryList");
+        Click(view, "CompactBackButton");
+        AssertPaneEntry(
+            view,
+            sentinel,
+            "OverviewAddButton",
+            "AddMemoryTextBox",
+            "Recent",
+            "AddMemory");
+        Click(view, "CompactBackButton");
+        AssertPaneEntry(
+            view,
+            sentinel,
+            "OverviewIndexedButton",
+            "IndexedKnowledgeHeading",
+            "IndexedKnowledge",
+            "IndexedKnowledge");
+        Click(view, "CompactBackButton");
+        AssertPaneEntry(
+            view,
+            sentinel,
+            "OverviewRetrievalButton",
+            "RetrievalQueryTextBox",
+            "IndexedKnowledge",
+            "Retrieval");
+
+        AssertResponsiveDoesNotMoveFocus(
+            sentinel,
+            () => view.ApplyResponsiveMode(compact: true, medium: false));
+        window.Close();
+    }
+
+    private static void AssertPaneEntry(
+        MemoryView view,
+        Button sentinel,
+        string buttonName,
+        string targetName,
+        string expectedSource,
+        string expectedPane)
+    {
+        Click(view, buttonName);
+        Dispatcher.UIThread.RunJobs();
+
+        var target = view.FindControl<Control>(targetName)!;
+        Assert.Equal(expectedSource, GetPrivateEnum(view, "_source"));
+        Assert.Equal(expectedPane, GetPrivateEnum(view, "_compactPane"));
+        Assert.True(target.IsEffectivelyVisible);
+        Assert.Same(target, TopLevel.GetTopLevel(view)!.FocusManager!.GetFocusedElement());
+
+        Assert.True(sentinel.Focus());
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(sentinel, TopLevel.GetTopLevel(view)!.FocusManager!.GetFocusedElement());
+    }
+
+    private static void Click(MemoryView view, string buttonName) =>
+        view.FindControl<Button>(buttonName)!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
     private static void AssertTaskCenterFocus(
         TaskCenterView view,

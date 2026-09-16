@@ -578,6 +578,24 @@ public sealed class AssistPillViewModelTests
         Assert.Equal(0, host.GenerateCalls);
     }
 
+    [Fact]
+    public async Task CollapseWhileStreamingReturnsToPillWithoutLateStateJump()
+    {
+        var host = new FakeHost { WaitForCancellation = true };
+        var viewModel = CreateViewModel(host);
+        await viewModel.OpenPromptAsync();
+        viewModel.Prompt = "Long answer";
+        var generation = viewModel.SubmitAsync();
+        await host.GenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        viewModel.Collapse();
+
+        Assert.Equal(AssistPillState.IdlePill, viewModel.State);
+        await generation;
+        Assert.Equal(AssistPillState.IdlePill, viewModel.State);
+        Assert.True(host.GenerationWasCancelled);
+    }
+
     [Theory]
     [InlineData("Code", "Program.cs - repo - Visual Studio Code", true)]
     [InlineData("Code - Insiders", "Program.cs - repo - Visual Studio Code", true)]

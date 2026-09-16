@@ -129,6 +129,7 @@ public partial class MemoryView : UserControl
         _lastOverviewButton = sender as Button;
         _compactPane = CompactPane.AddMemory;
         UpdatePresentation();
+        FocusAfterLayout(PrimaryFocusTargets());
     }
 
     private void OnOpenRetrievalClick(object? sender, RoutedEventArgs e)
@@ -141,6 +142,7 @@ public partial class MemoryView : UserControl
         _lastOverviewButton = sender as Button;
         _compactPane = CompactPane.Retrieval;
         UpdatePresentation();
+        FocusAfterLayout(PrimaryFocusTargets());
     }
 
     private async void OnOpenMemoryClick(object? sender, RoutedEventArgs e)
@@ -162,9 +164,7 @@ public partial class MemoryView : UserControl
         {
             _compactPane = CompactPane.SelectedDetail;
             UpdatePresentation();
-            Dispatcher.UIThread.Post(
-                () => SelectedMemoryDetailHeading.Focus(),
-                DispatcherPriority.Input);
+            FocusAfterLayout(PrimaryFocusTargets());
         }
     }
 
@@ -227,6 +227,10 @@ public partial class MemoryView : UserControl
         }
 
         UpdatePresentation();
+        if (_compact)
+        {
+            FocusAfterLayout(PrimaryFocusTargets());
+        }
     }
 
     private void ArrangeWorkspace((

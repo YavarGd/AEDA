@@ -34,7 +34,7 @@ public sealed class AvaloniaAssistMilestone8DesignTests
         }, command => Assert.Contains($"Command=\"{{Binding {command}}}\"", markup));
         Assert.Contains("Click=\"OnAskClick\"", markup);
         Assert.Contains("await viewModel.OpenPromptAsync()", code);
-        Assert.Equal(8, Count(markup, "<Button x:Name="));
+        Assert.Equal(9, Count(markup, "<Button x:Name="));
     }
 
     [Fact]

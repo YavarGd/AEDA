@@ -95,6 +95,7 @@ public partial class AssistView : UserControl
 
         CompactPill.IsEnabled = _viewModel?.IsEnabled ?? false;
         CompactPill.IsVisible = compact && idle;
+        CollapseButton.IsVisible = compact && !idle;
         ExpandedBackground.IsVisible = compact && !idle;
         SetStateClasses(CompactPill, state);
         SetStateClasses(ExpandedBackground, state);
@@ -154,6 +155,15 @@ public partial class AssistView : UserControl
         }
     }
 
+    private void OnCollapseClick(object? sender, RoutedEventArgs e)
+    {
+        if (_hostMode == AssistViewHostMode.CompactWindow &&
+            DataContext is AssistPillViewModel { IsExpanded: true } viewModel)
+        {
+            viewModel.Collapse();
+        }
+    }
+
     private void OnPromptKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter || e.KeyModifiers != KeyModifiers.None)
@@ -180,7 +190,19 @@ public partial class AssistView : UserControl
             return;
         }
 
-        if (DataContext is not AssistPillViewModel viewModel || !viewModel.CanCancel)
+        if (DataContext is not AssistPillViewModel viewModel)
+        {
+            return;
+        }
+
+        if (_hostMode == AssistViewHostMode.CompactWindow && viewModel.IsExpanded)
+        {
+            e.Handled = true;
+            viewModel.Collapse();
+            return;
+        }
+
+        if (!viewModel.CanCancel)
         {
             return;
         }
