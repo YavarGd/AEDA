@@ -1370,32 +1370,6 @@ public sealed class CodingProposalFoundationTests : IDisposable
     }
 
     [Fact]
-    public async Task DraftService_ModelGenerationTimeoutCancelsProviderCallSafely()
-    {
-        var workspaceId = WorkspaceId.NewId();
-        var provider = new FakeChatProvider(DraftJson("src/App.cs"))
-        {
-            Delay = TimeSpan.FromMilliseconds(200)
-        };
-        var service = CreateDraftService(provider, modelGenerationTimeout: TimeSpan.FromMilliseconds(10));
-        var context = new CodeContextPack(
-            workspaceId,
-            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
-            [],
-            [],
-            false);
-
-        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
-            service.CreateDraftAsync(new CodeProposalDraftRequest(
-                CodeChangeRequest.Create(workspaceId, "Change app."),
-                context)));
-
-        Assert.Equal("model_timeout", failure.Failure.SafeCode);
-        Assert.Contains("took too long", failure.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(1, provider.RequestCount);
-    }
-
-    [Fact]
     public void Capabilities_ExposeProposalAndDeferApplyAndTests()
     {
         var registry = BackendCapabilityRegistry.CreateDefault(
@@ -1463,7 +1437,7 @@ public sealed class CodingProposalFoundationTests : IDisposable
             now);
     }
 
-    private sealed record DraftServiceFixture(
+    internal sealed record DraftServiceFixture(
         CodeProposalDraftService Service,
         FakeChatProvider ChatProvider)
     {
@@ -1474,7 +1448,7 @@ public sealed class CodingProposalFoundationTests : IDisposable
             Service.CreateDraftAsync(request, progress, cancellationToken);
     }
 
-    private static DraftServiceFixture CreateDraftService(
+    internal static DraftServiceFixture CreateDraftService(
         FakeChatProvider provider,
         bool includeCodeCapability = true,
         bool isRemote = false,
@@ -1529,12 +1503,12 @@ public sealed class CodingProposalFoundationTests : IDisposable
             provider);
     }
 
-    private static string DraftJson(string relativePath) =>
+    internal static string DraftJson(string relativePath) =>
         $$"""
         {"title":"Add docs","summary":"Adds XML docs.","changes":[{"relativePath":{{JsonSerializer.Serialize(relativePath)}},"proposedContent":"new"}]}
         """;
 
-    private sealed class FakeChatProvider : IChatProvider
+    internal sealed class FakeChatProvider : IChatProvider
     {
         private readonly Queue<string?> _outputs;
         private readonly Exception? _failure;
@@ -1608,5 +1582,38 @@ public sealed class CodingProposalFoundationTests : IDisposable
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             Directory.Delete(_root, recursive: true);
         }
+    }
+}
+
+[Collection(TimingSensitiveCollection.Name)]
+public sealed class CodingProposalTimeoutTimingTests
+{
+    [Fact]
+    public async Task DraftService_ModelGenerationTimeoutCancelsProviderCallSafely()
+    {
+        var workspaceId = WorkspaceId.NewId();
+        var provider = new CodingProposalFoundationTests.FakeChatProvider(
+            CodingProposalFoundationTests.DraftJson("src/App.cs"))
+        {
+            Delay = TimeSpan.FromMilliseconds(200)
+        };
+        var service = CodingProposalFoundationTests.CreateDraftService(
+            provider,
+            modelGenerationTimeout: TimeSpan.FromMilliseconds(10));
+        var context = new CodeContextPack(
+            workspaceId,
+            [new CodeContextFile(workspaceId, "src/App.cs", "old", "hash", "utf-8", 3, false, false)],
+            [],
+            [],
+            false);
+
+        var failure = await Assert.ThrowsAsync<AedaCodeProposalCreationException>(() =>
+            service.CreateDraftAsync(new CodeProposalDraftRequest(
+                CodeChangeRequest.Create(workspaceId, "Change app."),
+                context)));
+
+        Assert.Equal("model_timeout", failure.Failure.SafeCode);
+        Assert.Contains("took too long", failure.Failure.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, provider.RequestCount);
     }
 }
