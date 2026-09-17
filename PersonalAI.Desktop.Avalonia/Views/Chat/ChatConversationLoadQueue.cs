@@ -38,9 +38,10 @@ public sealed class ChatConversationLoadQueue
         ArgumentNullException.ThrowIfNull(load);
         ArgumentNullException.ThrowIfNull(onAbandoned);
 
-        _cancellation?.Cancel();
+        var previousCancellation = _cancellation;
         var cancellation = new CancellationTokenSource();
         _cancellation = cancellation;
+        previousCancellation?.Cancel();
 
         _previous = RunAsync(_previous, load, onAbandoned, cancellation);
         return _previous;
@@ -53,8 +54,9 @@ public sealed class ChatConversationLoadQueue
     /// </summary>
     public void Invalidate()
     {
-        _cancellation?.Cancel();
+        var cancellation = _cancellation;
         _cancellation = null;
+        cancellation?.Cancel();
     }
 
     private async Task RunAsync(

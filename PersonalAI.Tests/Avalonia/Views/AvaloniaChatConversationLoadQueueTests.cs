@@ -130,6 +130,43 @@ public sealed class AvaloniaChatConversationLoadQueueTests
     }
 
     [Fact]
+    public async Task ImmediateCancellationContinuation_ObservesReplacementAsCurrent()
+    {
+        var queue = new ChatConversationLoadQueue();
+
+        for (var iteration = 0; iteration < 10; iteration++)
+        {
+            var firstStarted = new TaskCompletionSource();
+            var firstCancelled = new TaskCompletionSource();
+            var staleAbandoned = false;
+            var currentAbandoned = false;
+
+            var first = queue.Enqueue(
+                async token =>
+                {
+                    using var registration = token.Register(firstCancelled.SetResult);
+                    firstStarted.SetResult();
+                    await firstCancelled.Task;
+                    token.ThrowIfCancellationRequested();
+                },
+                () => staleAbandoned = true);
+
+            await firstStarted.Task;
+
+            var second = queue.Enqueue(
+                _ => Task.CompletedTask,
+                () => currentAbandoned = true);
+
+            await first;
+            await second;
+
+            Assert.True(firstCancelled.Task.IsCompleted);
+            Assert.False(staleAbandoned, "the cancelling request must observe its replacement as current");
+            Assert.False(currentAbandoned);
+        }
+    }
+
+    [Fact]
     public async Task CurrentRequest_RunsTheVisibleFallbackOnFailure()
     {
         var queue = new ChatConversationLoadQueue();
