@@ -67,7 +67,7 @@ public sealed class AedaMemoryReliabilityTests
         Assert.Equal(1, service.ArchiveCalls);
         Assert.Equal(1, service.DashboardCalls);
         Assert.Same(service.DashboardResult, viewModel.Dashboard);
-        Assert.Equal(service.DashboardResult.SafeStatusMessage, viewModel.SafeStatusMessage);
+        Assert.Equal("Memory archived.", viewModel.SafeStatusMessage);
     }
 
     [Theory]
@@ -361,7 +361,7 @@ public sealed class AedaMemoryReliabilityTests
         Assert.Equal(1, service.DeleteCalls);
         Assert.Equal(1, service.DashboardCalls);
         Assert.Same(service.DashboardResult, viewModel.Dashboard);
-        Assert.Equal(service.DashboardResult.SafeStatusMessage, viewModel.SafeStatusMessage);
+        Assert.Equal("Memory deleted.", viewModel.SafeStatusMessage);
     }
 
     [Fact]
@@ -383,6 +383,176 @@ public sealed class AedaMemoryReliabilityTests
         Assert.Equal(
             "Memory was deleted, but the dashboard could not be refreshed.",
             viewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task D07_CreateSuccessPreservesFeedbackAndVisibleState()
+    {
+        var service = ProjectionService();
+        var viewModel = CreateViewModel(service);
+        await LoadVisibleStateAsync(viewModel);
+        var searchResults = viewModel.SearchResults;
+        var selectedMemory = viewModel.SelectedMemory;
+        var retrievalPreview = viewModel.RetrievalPreview;
+        viewModel.NewMemoryText = "new memory";
+
+        await viewModel.CreateExplicitMemoryAsync();
+
+        Assert.Equal("Explicit memory saved.", viewModel.SafeStatusMessage);
+        Assert.Equal(1, service.DashboardCalls);
+        Assert.Same(searchResults, viewModel.SearchResults);
+        Assert.Same(selectedMemory, viewModel.SelectedMemory);
+        Assert.Same(retrievalPreview, viewModel.RetrievalPreview);
+        Assert.Equal(string.Empty, viewModel.NewMemoryText);
+    }
+
+    [Fact]
+    public async Task D07_CreateFailurePreservesDraftAndVisibleState()
+    {
+        var service = ProjectionService();
+        service.Create = (_, _) => Task.FromResult(
+            new AedaMemoryOperationResult(false, SafeReasonCode: "memory_rejected"));
+        var viewModel = CreateViewModel(service);
+        await LoadVisibleStateAsync(viewModel);
+        var searchResults = viewModel.SearchResults;
+        var selectedMemory = viewModel.SelectedMemory;
+        var retrievalPreview = viewModel.RetrievalPreview;
+        viewModel.NewMemoryText = "keep this draft";
+
+        await viewModel.CreateExplicitMemoryAsync();
+
+        Assert.Equal("memory_rejected", viewModel.SafeStatusMessage);
+        Assert.Equal("keep this draft", viewModel.NewMemoryText);
+        Assert.Equal(0, service.DashboardCalls);
+        Assert.Same(searchResults, viewModel.SearchResults);
+        Assert.Same(selectedMemory, viewModel.SelectedMemory);
+        Assert.Same(retrievalPreview, viewModel.RetrievalPreview);
+    }
+
+    [Fact]
+    public async Task D07_ArchiveSuccessReconcilesOnlyMatchingProjections()
+    {
+        var archived = MemoryDetail(MemoryRow, "Archived");
+        var service = ProjectionService();
+        service.Archive = (_, _) => Task.FromResult(new AedaMemoryOperationResult(true, archived));
+        var viewModel = CreateViewModel(service);
+        await LoadVisibleStateAsync(viewModel);
+
+        await viewModel.ArchiveMemoryAsync(MemoryRow);
+
+        Assert.Equal("Memory archived.", viewModel.SafeStatusMessage);
+        Assert.Equal(1, service.DashboardCalls);
+        Assert.Equal([OtherMemoryRow], viewModel.SearchResults);
+        Assert.Same(archived, viewModel.SelectedMemory);
+        Assert.Equal([RetrievalItem(OtherMemoryRow)], viewModel.RetrievalPreview);
+        Assert.Equal("saved search", viewModel.SearchText);
+        Assert.Equal("retrieval query", viewModel.RetrievalQuery);
+    }
+
+    [Fact]
+    public async Task D07_ArchiveFailurePreservesAllProjections()
+    {
+        var service = ProjectionService();
+        service.Archive = (_, _) => Task.FromResult(
+            new AedaMemoryOperationResult(false, SafeReasonCode: "archive_rejected"));
+        var viewModel = CreateViewModel(service);
+        await LoadVisibleStateAsync(viewModel);
+        var searchResults = viewModel.SearchResults;
+        var selectedMemory = viewModel.SelectedMemory;
+        var retrievalPreview = viewModel.RetrievalPreview;
+
+        await viewModel.ArchiveMemoryAsync(MemoryRow);
+
+        Assert.Equal("archive_rejected", viewModel.SafeStatusMessage);
+        Assert.Equal(0, service.DashboardCalls);
+        Assert.Same(searchResults, viewModel.SearchResults);
+        Assert.Same(selectedMemory, viewModel.SelectedMemory);
+        Assert.Same(retrievalPreview, viewModel.RetrievalPreview);
+    }
+
+    [Fact]
+    public async Task D07_DeleteSuccessRemovesOnlyMatchingProjections()
+    {
+        var service = ProjectionService();
+        var viewModel = CreateViewModel(service);
+        await LoadVisibleStateAsync(viewModel);
+
+        await viewModel.DeleteMemoryAsync(MemoryRow);
+
+        Assert.Equal("Memory deleted.", viewModel.SafeStatusMessage);
+        Assert.Equal(1, service.DashboardCalls);
+        Assert.Equal([OtherMemoryRow], viewModel.SearchResults);
+        Assert.Null(viewModel.SelectedMemory);
+        Assert.Equal([RetrievalItem(OtherMemoryRow)], viewModel.RetrievalPreview);
+        Assert.Equal("saved search", viewModel.SearchText);
+        Assert.Equal("retrieval query", viewModel.RetrievalQuery);
+    }
+
+    [Fact]
+    public async Task D07_DeleteFailurePreservesAllProjections()
+    {
+        var service = ProjectionService();
+        service.Delete = (_, _) => Task.FromResult(
+            new AedaMemoryOperationResult(false, SafeReasonCode: "delete_rejected"));
+        var viewModel = CreateViewModel(service);
+        await LoadVisibleStateAsync(viewModel);
+        var searchResults = viewModel.SearchResults;
+        var selectedMemory = viewModel.SelectedMemory;
+        var retrievalPreview = viewModel.RetrievalPreview;
+
+        await viewModel.DeleteMemoryAsync(MemoryRow);
+
+        Assert.Equal("delete_rejected", viewModel.SafeStatusMessage);
+        Assert.Equal(0, service.DashboardCalls);
+        Assert.Same(searchResults, viewModel.SearchResults);
+        Assert.Same(selectedMemory, viewModel.SelectedMemory);
+        Assert.Same(retrievalPreview, viewModel.RetrievalPreview);
+    }
+
+    [Fact]
+    public async Task D07_SuccessfulDeleteKeepsReconciliationWhenRefreshFails()
+    {
+        var service = ProjectionService();
+        service.Dashboard = _ => Task.FromException<AedaMemoryDashboardModel>(StorageFailure());
+        var viewModel = CreateViewModel(service);
+        var dashboard = Dashboard();
+        viewModel.Dashboard = dashboard;
+        await LoadVisibleStateAsync(viewModel);
+
+        await viewModel.DeleteMemoryAsync(MemoryRow);
+
+        Assert.Equal(
+            "Memory was deleted, but the dashboard could not be refreshed.",
+            viewModel.SafeStatusMessage);
+        Assert.DoesNotContain(StorageFailureMessage, viewModel.SafeStatusMessage);
+        Assert.Same(dashboard, viewModel.Dashboard);
+        Assert.Equal([OtherMemoryRow], viewModel.SearchResults);
+        Assert.Null(viewModel.SelectedMemory);
+        Assert.Equal([RetrievalItem(OtherMemoryRow)], viewModel.RetrievalPreview);
+    }
+
+    [Fact]
+    public async Task D07_RepeatedMutationsDoNotCorruptRemainingState()
+    {
+        var archivedOther = MemoryDetail(OtherMemoryRow, "Archived");
+        var service = ProjectionService();
+        service.Archive = (_, _) => Task.FromResult(
+            new AedaMemoryOperationResult(true, archivedOther));
+        var viewModel = CreateViewModel(service);
+        await LoadVisibleStateAsync(viewModel);
+
+        await viewModel.DeleteMemoryAsync(MemoryRow);
+        service.Detail = (_, _) => Task.FromResult<AedaMemoryRecordDetail?>(
+            MemoryDetail(OtherMemoryRow));
+        await viewModel.OpenMemoryDetailAsync(OtherMemoryRow);
+        await viewModel.ArchiveMemoryAsync(OtherMemoryRow);
+
+        Assert.Empty(viewModel.SearchResults);
+        Assert.Empty(viewModel.RetrievalPreview);
+        Assert.Same(archivedOther, viewModel.SelectedMemory);
+        Assert.Equal("Memory archived.", viewModel.SafeStatusMessage);
+        Assert.Equal(2, service.DashboardCalls);
+        Assert.Equal("saved search", viewModel.SearchText);
     }
 
     [Theory]
@@ -616,6 +786,23 @@ public sealed class AedaMemoryReliabilityTests
     private static AedaMemoryModuleViewModel CreateViewModel(ServiceState service) =>
         new(service.CreateProxy(), new MemoryModuleRegistry());
 
+    private static ServiceState ProjectionService() => new()
+    {
+        Search = (_, _, _) => Task.FromResult<IReadOnlyList<AedaMemoryRecordSummary>>(
+            [MemoryRow, OtherMemoryRow]),
+        Preview = (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>(
+            [RetrievalItem(MemoryRow), RetrievalItem(OtherMemoryRow)])
+    };
+
+    private static async Task LoadVisibleStateAsync(AedaMemoryModuleViewModel viewModel)
+    {
+        viewModel.SearchText = "saved search";
+        await viewModel.SearchMemoriesAsync();
+        await viewModel.OpenMemoryDetailAsync(MemoryRow);
+        viewModel.RetrievalQuery = "retrieval query";
+        await viewModel.PreviewRetrievalAsync();
+    }
+
     private static TaskCompletionSource<AedaMemoryOperationResult> PendingOperation() =>
         Pending<AedaMemoryOperationResult>();
 
@@ -637,22 +824,47 @@ public sealed class AedaMemoryReliabilityTests
         "Explicit user save",
         DateTimeOffset.UtcNow);
 
-    private static AedaMemoryRecordDetail MemoryDetail() => new(
-        MemoryRow.Id,
-        MemoryRow.Kind,
-        MemoryRow.Scope,
-        MemoryRow.PreviewText,
-        MemoryRow.Visibility,
-        MemoryRow.SensitivityStatus,
-        "High",
-        new AedaMemorySourceSummary(
-            "explicit_user_save",
-            "Explicit user save",
-            null,
-            "Explicit user save",
-            DateTimeOffset.UtcNow),
-        DateTimeOffset.UtcNow,
+    private static readonly AedaMemoryRecordSummary OtherMemoryRow = new(
+        "memory-2",
+        new AedaMemoryKindBadge("project", "Project fact"),
+        new AedaMemoryScopeBadge("project", "Project"),
+        "Keep this memory.",
+        "Active",
+        "Normal",
+        "Project memory",
         DateTimeOffset.UtcNow);
+
+    private static AedaMemoryRecordDetail MemoryDetail(
+        AedaMemoryRecordSummary? row = null,
+        string? visibility = null)
+    {
+        row ??= MemoryRow;
+        return new AedaMemoryRecordDetail(
+            row.Id,
+            row.Kind,
+            row.Scope,
+            row.PreviewText,
+            visibility ?? row.Visibility,
+            row.SensitivityStatus,
+            "High",
+            new AedaMemorySourceSummary(
+                "explicit_user_save",
+                "Explicit user save",
+                null,
+                "Explicit user save",
+                DateTimeOffset.UtcNow),
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow);
+    }
+
+    private static AedaRetrievalPreviewItem RetrievalItem(AedaMemoryRecordSummary row) => new(
+        "Memory",
+        row.PreviewText,
+        0.9,
+        row.SourceLabel,
+        "memory_text",
+        row.Id,
+        null);
 
     private static AedaMemoryDashboardModel Dashboard() => new(
         1,
@@ -684,6 +896,8 @@ public sealed class AedaMemoryReliabilityTests
             (_, _) => Task.FromResult(Success);
         public Func<MemoryId, CancellationToken, Task<AedaMemoryOperationResult>> Delete { get; set; } =
             (_, _) => Task.FromResult(Success);
+        public Func<string, int, CancellationToken, Task<IReadOnlyList<AedaRetrievalPreviewItem>>> Preview { get; set; } =
+            (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>([]);
 
         public AedaMemoryDashboardModel DashboardResult { get; private set; } = null!;
         public AedaMemoryCreateRequest? LastCreateRequest { get; private set; }
@@ -693,6 +907,7 @@ public sealed class AedaMemoryReliabilityTests
         public int CreateCalls { get; private set; }
         public int ArchiveCalls { get; private set; }
         public int DeleteCalls { get; private set; }
+        public int PreviewCalls { get; private set; }
 
         public IAedaMemoryModuleService CreateProxy() =>
             Proxy<IAedaMemoryModuleService>((method, arguments) => method.Name switch
@@ -715,6 +930,10 @@ public sealed class AedaMemoryReliabilityTests
                 nameof(IAedaMemoryModuleService.DeleteMemoryAsync) => DeleteMemory(
                     (MemoryId)arguments![0]!,
                     (CancellationToken)arguments[1]!),
+                nameof(IAedaMemoryModuleService.PreviewRetrievalAsync) => PreviewRetrieval(
+                    (string)arguments![0]!,
+                    (int)arguments[1]!,
+                    (CancellationToken)arguments[2]!),
                 _ => throw new NotSupportedException(method.Name)
             });
 
@@ -765,6 +984,15 @@ public sealed class AedaMemoryReliabilityTests
         {
             DeleteCalls++;
             return Delete(memoryId, token);
+        }
+
+        private Task<IReadOnlyList<AedaRetrievalPreviewItem>> PreviewRetrieval(
+            string text,
+            int limit,
+            CancellationToken token)
+        {
+            PreviewCalls++;
+            return Preview(text, limit, token);
         }
     }
 

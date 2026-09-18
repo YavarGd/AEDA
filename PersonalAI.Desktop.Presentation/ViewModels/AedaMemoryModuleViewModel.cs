@@ -292,6 +292,7 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
             return;
         }
 
+        ReconcileRemovedMemory(summary.Id, result.Memory);
         SafeStatusMessage = "Memory archived.";
         await RefreshAfterMutationAsync(
             "Memory was archived, but the dashboard could not be refreshed.");
@@ -317,10 +318,10 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         if (!result.Succeeded)
         {
             SafeStatusMessage = result.SafeReasonCode ?? "Memory was not deleted.";
-            await InitializeAsync();
             return;
         }
 
+        ReconcileRemovedMemory(summary.Id);
         SafeStatusMessage = "Memory deleted.";
         await RefreshAfterMutationAsync(
             "Memory was deleted, but the dashboard could not be refreshed.");
@@ -397,26 +398,64 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
         return null;
     }
 
-    private async Task RefreshAfterMutationAsync(string failureStatus)
+    private async Task RefreshAfterMutationAsync(string refreshFailureStatus)
     {
         try
         {
-            await LoadDashboardAsync();
+            await LoadDashboardAsync(updateStatus: false);
         }
         catch (OperationCanceledException)
         {
-            SafeStatusMessage = "Memory refresh cancelled.";
+            SafeStatusMessage = refreshFailureStatus;
         }
         catch (InvalidOperationException exception) when (IsStorageFailure(exception))
         {
-            SafeStatusMessage = failureStatus;
+            SafeStatusMessage = refreshFailureStatus;
         }
     }
 
-    private async Task LoadDashboardAsync(CancellationToken cancellationToken = default)
+    private void ReconcileRemovedMemory(
+        string memoryId,
+        AedaMemoryRecordDetail? replacement = null)
+    {
+        var searchResults = SearchResults
+            .Where(item => !string.Equals(item.Id, memoryId, StringComparison.Ordinal))
+            .ToArray();
+        if (searchResults.Length != SearchResults.Count)
+        {
+            SearchResults = searchResults;
+            OnPropertyChanged(nameof(SearchResults));
+            OnPropertyChanged(nameof(HasSearchResults));
+        }
+
+        if (string.Equals(SelectedMemory?.Id, memoryId, StringComparison.Ordinal))
+        {
+            SelectedMemory = replacement;
+        }
+
+        var retrievalPreview = RetrievalPreview
+            .Where(item =>
+                !string.Equals(item.Kind, RetrievalContextItemKind.Memory.ToString(), StringComparison.Ordinal) ||
+                !string.Equals(item.TraceId, memoryId, StringComparison.Ordinal))
+            .ToArray();
+        if (retrievalPreview.Length != RetrievalPreview.Count)
+        {
+            RetrievalPreview = retrievalPreview;
+            OnPropertyChanged(nameof(RetrievalPreview));
+            OnPropertyChanged(nameof(HasRetrievalPreview));
+        }
+    }
+
+    private async Task LoadDashboardAsync(
+        CancellationToken cancellationToken = default,
+        bool updateStatus = true)
     {
         Dashboard = await _moduleService.GetDashboardAsync(cancellationToken);
-        SafeStatusMessage = Dashboard.SafeStatusMessage;
+        if (updateStatus)
+        {
+            SafeStatusMessage = Dashboard.SafeStatusMessage;
+        }
+
         NotifyDashboardChanged();
     }
 
