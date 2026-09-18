@@ -115,6 +115,11 @@ public partial class TaskCenterView : UserControl
             return;
         }
 
+        if (pane == CompactPane.SelectedTask)
+        {
+            _originQueue = CompactPane.Overview;
+        }
+
         _lastOverviewButton = new WeakReference<Button>(button);
         _compactPane = pane;
         UpdatePresentation();
