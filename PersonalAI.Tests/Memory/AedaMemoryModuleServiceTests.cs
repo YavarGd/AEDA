@@ -144,10 +144,22 @@ public sealed class AedaMemoryModuleServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RetrievalPreview_IsExplicitBoundedAndExcludesSensitiveByDefault()
+    public async Task D07_RetrievalPreviewPreservesMemoryIdentityAndBoundsOtherTraceIds()
     {
-        var service = await CreateServiceAsync();
-        await service.CreateExplicitMemoryAsync(new AedaMemoryCreateRequest(
+        const string documentId = "abcdef0123456789abcdef0123456789";
+        var repository = new SqliteKnowledgeRepository(_databasePath);
+        await repository.InitializeAsync();
+        var chunks = KnowledgeChunker.ChunkText(
+            documentId,
+            "retrieval.md",
+            "Visible retrieval knowledge about dashboards.",
+            new KnowledgeSource(
+                KnowledgeSourceType.WorkspaceFile,
+                DateTimeOffset.UtcNow,
+                RelativePath: "retrieval.md"));
+        await repository.UpsertDocumentAsync(chunks.Document, chunks.Chunks);
+        var service = await CreateServiceAsync(knowledgeRepository: repository);
+        var visible = await service.CreateExplicitMemoryAsync(new AedaMemoryCreateRequest(
             MemoryKind.ExplicitUserPreference,
             MemoryScope.Global,
             "Visible retrieval memory about dashboards.",
@@ -162,9 +174,14 @@ public sealed class AedaMemoryModuleServiceTests : IDisposable
 
         var empty = await service.PreviewRetrievalAsync("");
         var preview = await service.PreviewRetrievalAsync("dashboards", limit: 3);
+        var memory = Assert.Single(preview, item => item.Kind == "Memory");
+        var knowledge = Assert.Single(preview, item => item.Kind == "KnowledgeChunk");
 
         Assert.Empty(empty);
-        Assert.Single(preview);
+        Assert.Equal(2, preview.Count);
+        Assert.Matches("^[0-9a-f]{32}$", visible.Memory!.Id);
+        Assert.Equal(visible.Memory.Id, memory.TraceId);
+        Assert.Equal(documentId[..16], knowledge.TraceId);
         Assert.DoesNotContain(preview, item =>
             item.PreviewText.Contains("Sensitive", StringComparison.OrdinalIgnoreCase));
         Assert.All(preview, item => Assert.True(item.PreviewText.Length <= 280));

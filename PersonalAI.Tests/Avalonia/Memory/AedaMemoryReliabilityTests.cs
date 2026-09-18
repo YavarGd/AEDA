@@ -444,7 +444,7 @@ public sealed class AedaMemoryReliabilityTests
         Assert.Equal(1, service.DashboardCalls);
         Assert.Equal([OtherMemoryRow], viewModel.SearchResults);
         Assert.Same(archived, viewModel.SelectedMemory);
-        Assert.Equal([RetrievalItem(OtherMemoryRow)], viewModel.RetrievalPreview);
+        Assert.Equal([RetrievalItem(OtherMemoryRow), NonMemoryRetrievalItem], viewModel.RetrievalPreview);
         Assert.Equal("saved search", viewModel.SearchText);
         Assert.Equal("retrieval query", viewModel.RetrievalQuery);
     }
@@ -483,7 +483,7 @@ public sealed class AedaMemoryReliabilityTests
         Assert.Equal(1, service.DashboardCalls);
         Assert.Equal([OtherMemoryRow], viewModel.SearchResults);
         Assert.Null(viewModel.SelectedMemory);
-        Assert.Equal([RetrievalItem(OtherMemoryRow)], viewModel.RetrievalPreview);
+        Assert.Equal([RetrievalItem(OtherMemoryRow), NonMemoryRetrievalItem], viewModel.RetrievalPreview);
         Assert.Equal("saved search", viewModel.SearchText);
         Assert.Equal("retrieval query", viewModel.RetrievalQuery);
     }
@@ -528,7 +528,7 @@ public sealed class AedaMemoryReliabilityTests
         Assert.Same(dashboard, viewModel.Dashboard);
         Assert.Equal([OtherMemoryRow], viewModel.SearchResults);
         Assert.Null(viewModel.SelectedMemory);
-        Assert.Equal([RetrievalItem(OtherMemoryRow)], viewModel.RetrievalPreview);
+        Assert.Equal([RetrievalItem(OtherMemoryRow), NonMemoryRetrievalItem], viewModel.RetrievalPreview);
     }
 
     [Fact]
@@ -548,7 +548,7 @@ public sealed class AedaMemoryReliabilityTests
         await viewModel.ArchiveMemoryAsync(OtherMemoryRow);
 
         Assert.Empty(viewModel.SearchResults);
-        Assert.Empty(viewModel.RetrievalPreview);
+        Assert.Equal([NonMemoryRetrievalItem], viewModel.RetrievalPreview);
         Assert.Same(archivedOther, viewModel.SelectedMemory);
         Assert.Equal("Memory archived.", viewModel.SafeStatusMessage);
         Assert.Equal(2, service.DashboardCalls);
@@ -791,7 +791,7 @@ public sealed class AedaMemoryReliabilityTests
         Search = (_, _, _) => Task.FromResult<IReadOnlyList<AedaMemoryRecordSummary>>(
             [MemoryRow, OtherMemoryRow]),
         Preview = (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>(
-            [RetrievalItem(MemoryRow), RetrievalItem(OtherMemoryRow)])
+            [RetrievalItem(MemoryRow), RetrievalItem(OtherMemoryRow), NonMemoryRetrievalItem])
     };
 
     private static async Task LoadVisibleStateAsync(AedaMemoryModuleViewModel viewModel)
@@ -815,7 +815,7 @@ public sealed class AedaMemoryReliabilityTests
     private static readonly AedaMemoryOperationResult Success = new(true);
 
     private static readonly AedaMemoryRecordSummary MemoryRow = new(
-        "memory-1",
+        "0123456789abcdef0123456789abcdef",
         new AedaMemoryKindBadge("explicit", "Explicit"),
         new AedaMemoryScopeBadge("global", "Global"),
         "Remember this.",
@@ -825,7 +825,7 @@ public sealed class AedaMemoryReliabilityTests
         DateTimeOffset.UtcNow);
 
     private static readonly AedaMemoryRecordSummary OtherMemoryRow = new(
-        "memory-2",
+        "fedcba9876543210fedcba9876543210",
         new AedaMemoryKindBadge("project", "Project fact"),
         new AedaMemoryScopeBadge("project", "Project"),
         "Keep this memory.",
@@ -864,6 +864,15 @@ public sealed class AedaMemoryReliabilityTests
         row.SourceLabel,
         "memory_text",
         row.Id,
+        null);
+
+    private static readonly AedaRetrievalPreviewItem NonMemoryRetrievalItem = new(
+        "KnowledgeChunk",
+        "Keep this knowledge result.",
+        0.8,
+        "notes.md",
+        "chunk_text",
+        "aaaaaaaaaaaaaaaa",
         null);
 
     private static AedaMemoryDashboardModel Dashboard() => new(

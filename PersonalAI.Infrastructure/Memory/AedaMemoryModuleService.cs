@@ -398,7 +398,9 @@ public sealed class AedaMemoryModuleService(
                     item.Score,
                     item.SourceLabel ?? CreateSourceLabel(item.Source),
                     item.MatchType ?? "retrieval",
-                    SafeTraceId(item.TraceId),
+                    item.Kind == RetrievalContextItemKind.Memory
+                        ? item.TraceId
+                        : SafeTraceId(item.TraceId),
                     item.ContentHash))
                 .ToArray();
         }
