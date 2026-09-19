@@ -28,6 +28,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly ExternalForegroundWindowMonitor _foregroundWindowMonitor;
     private readonly WindowsUiaSelectedTextProvider _uiaSelectedTextProvider;
+    private readonly SettingsViewModel _settings;
     private AvaloniaAssistWindow? _assistWindow;
     private nint _assistWindowHandle;
 
@@ -66,7 +67,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
         var workspaces = new WorkspaceManagementViewModel(
             runtime.WorkspaceRegistration,
             folderPicker);
-        var settings = new SettingsViewModel(
+        _settings = new SettingsViewModel(
             runtime.Settings,
             new WindowsStartupRegistrationService(),
             _ => Task.FromResult(new SettingsApplyResult(
@@ -130,7 +131,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             new AvaloniaPresentationScreen(
                 "settings",
                 "Settings",
-                settings,
+                _settings,
                 () => settingsView = new SettingsView(_themeManager, runtime.Settings),
                 content => ((SettingsView)content).FocusPrimaryAction()),
             new AvaloniaPresentationScreen(
@@ -243,6 +244,7 @@ public sealed class AvaloniaAppComposition : IAsyncDisposable
             await Assist.DisposeAsync();
             await _foregroundWindowMonitor.DisposeAsync();
             await _uiaSelectedTextProvider.DisposeAsync();
+            await _settings.DrainAutosavesAsync();
         }
         finally
         {

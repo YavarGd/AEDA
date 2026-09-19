@@ -17,6 +17,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action _resetWindowPosition;
     private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _refreshModelsAsync;
     private readonly SemaphoreSlim _providerSelectionLock = new(1, 1);
+    private readonly SemaphoreSlim _settingsSaveLock = new(1, 1);
+    private readonly object _autosaveSync = new();
+    private Task _autosaveTask = Task.CompletedTask;
+    private ApplicationSettings? _pendingAutosave;
+    private long _autosaveVersion;
+    private long _pendingAutosaveVersion;
+    private bool _autosaveRunning;
     private bool _isLoading;
     private bool _isApplyingHotkey;
     private long _providerSelectionVersion;
@@ -257,10 +264,41 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        await DrainAutosavesAsync();
         var settings = BuildSettings();
-        await _settingsService.SaveAsync(settings, cancellationToken);
-        _applyRuntimeSettings(_settingsService.Current);
-        StatusMessage = "Settings saved.";
+        await _settingsSaveLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _settingsService.SaveAsync(settings, cancellationToken);
+            _applyRuntimeSettings(_settingsService.Current);
+            StatusMessage = "Settings saved.";
+        }
+        finally
+        {
+            _settingsSaveLock.Release();
+        }
+    }
+
+    public async Task DrainAutosavesAsync()
+    {
+        while (true)
+        {
+            Task autosaveTask;
+            lock (_autosaveSync)
+            {
+                autosaveTask = _autosaveTask;
+            }
+
+            await autosaveTask;
+
+            lock (_autosaveSync)
+            {
+                if (ReferenceEquals(autosaveTask, _autosaveTask) && !_autosaveRunning)
+                {
+                    return;
+                }
+            }
+        }
     }
 
     [RelayCommand]
@@ -685,7 +723,18 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        _ = SaveSettingsAsync();
+        lock (_autosaveSync)
+        {
+            _pendingAutosave = BuildSettings();
+            _pendingAutosaveVersion = ++_autosaveVersion;
+            if (_autosaveRunning)
+            {
+                return;
+            }
+
+            _autosaveRunning = true;
+            _autosaveTask = RunAutosavesAsync();
+        }
     }
 
     private void QueueSaveModels()
@@ -697,11 +746,95 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         if (!ValidateVisionAssignment(out var errorMessage))
         {
+            lock (_autosaveSync)
+            {
+                ++_autosaveVersion;
+            }
+
             StatusMessage = errorMessage;
             return;
         }
 
         QueueSave();
+    }
+
+    private async Task RunAutosavesAsync()
+    {
+        while (true)
+        {
+            ApplicationSettings settings;
+            long version;
+            lock (_autosaveSync)
+            {
+                if (_pendingAutosave is null)
+                {
+                    _autosaveRunning = false;
+                    return;
+                }
+
+                settings = _pendingAutosave;
+                version = _pendingAutosaveVersion;
+                _pendingAutosave = null;
+            }
+
+            await SaveAutosaveAsync(settings, version);
+        }
+    }
+
+    private async Task SaveAutosaveAsync(ApplicationSettings settings, long version)
+    {
+        await _settingsSaveLock.WaitAsync();
+        try
+        {
+            try
+            {
+                await _settingsService.SaveAsync(settings);
+            }
+            catch (OperationCanceledException)
+            {
+                PublishAutosaveStatus(version, "Settings save cancelled.");
+                return;
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is UnauthorizedAccessException ||
+                exception is ArgumentException ||
+                exception is NotSupportedException)
+            {
+                PublishAutosaveStatus(
+                    version,
+                    "Settings could not be saved. Try again.");
+                return;
+            }
+
+            if (!OwnsAutosaveStatus(version))
+            {
+                return;
+            }
+
+            _applyRuntimeSettings(_settingsService.Current);
+            StatusMessage = "Settings saved.";
+        }
+        finally
+        {
+            _settingsSaveLock.Release();
+        }
+    }
+
+    private void PublishAutosaveStatus(long version, string message)
+    {
+        if (OwnsAutosaveStatus(version))
+        {
+            StatusMessage = message;
+        }
+    }
+
+    private bool OwnsAutosaveStatus(long version)
+    {
+        lock (_autosaveSync)
+        {
+            return version == _autosaveVersion;
+        }
     }
 
     private bool ValidateVisionAssignment(out string errorMessage)
