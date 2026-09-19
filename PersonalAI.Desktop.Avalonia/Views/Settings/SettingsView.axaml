@@ -200,8 +200,8 @@
                 <ComboBox x:Name="ProviderPicker" Classes="settingsField" SelectionChanged="OnProviderSelectionChanged" AutomationProperties.Name="Chat provider" />
               </StackPanel>
               <WrapPanel>
-                <Button Margin="0,0,8,8" Content="Refresh models" Command="{Binding RefreshModelsCommand}" AutomationProperties.Name="Refresh provider models" />
-                <Button Margin="0,0,8,8" Content="Reset assignments" Command="{Binding ResetModelAssignmentsCommand}" />
+                <Button Margin="0,0,8,8" Classes="actionUtility" Content="Refresh models" Command="{Binding RefreshModelsCommand}" AutomationProperties.Name="Refresh provider models" />
+                <Button Margin="0,0,8,8" Classes="actionCautionary" Content="Reset assignments" Command="{Binding ResetModelAssignmentsCommand}" />
               </WrapPanel>
               <TextBlock Text="{Binding ModelRefreshStatus, Converter={x:Static settings:SettingsPresentationConverters.SafeProviderStatus}}" Classes="metadata" TextWrapping="Wrap" />
               <StackPanel Spacing="14">
@@ -261,9 +261,9 @@
                 <TextBlock Text="Only folders explicitly registered with AEDA are available to workspace tools. Removing a workspace never deletes files." Classes="settingsSectionCopy" />
               </StackPanel>
               <WrapPanel>
-                <Button Margin="0,0,8,8" Content="Choose workspace folder" Command="{Binding Workspaces.PickWorkspaceFolderCommand}" />
-                <Button Margin="0,0,8,8" Content="Revalidate all" Command="{Binding Workspaces.RevalidateAllCommand}" />
-                <Button Margin="0,0,8,8" Content="Refresh" Command="{Binding Workspaces.RefreshCommand}" AutomationProperties.Name="Refresh workspaces" />
+                <Button Margin="0,0,8,8" Classes="actionPrimary" Content="Choose workspace folder" Command="{Binding Workspaces.PickWorkspaceFolderCommand}" />
+                <Button Margin="0,0,8,8" Classes="actionUtility" Content="Revalidate all" Command="{Binding Workspaces.RevalidateAllCommand}" />
+                <Button Margin="0,0,8,8" Classes="actionUtility" Content="Refresh" Command="{Binding Workspaces.RefreshCommand}" AutomationProperties.Name="Refresh workspaces" />
               </WrapPanel>
               <TextBlock Text="{Binding Workspaces.BusyMessage}" Classes="metadata" TextWrapping="Wrap" />
               <TextBlock Text="{Binding Workspaces.StatusMessage}" Classes="metadata" TextWrapping="Wrap" />
@@ -275,8 +275,8 @@
                   <TextBox Text="{Binding Workspaces.PendingDisplayName}" AutomationProperties.Name="Workspace display name" />
                   <TextBlock Text="AEDA registers this folder without modifying its files." Classes="metadata" TextWrapping="Wrap" />
                   <WrapPanel>
-                    <Button Margin="0,0,8,8" Content="Add workspace" Click="OnAddWorkspaceClick" />
-                    <Button Margin="0,0,8,8" Content="Cancel" Command="{Binding Workspaces.CancelPendingWorkspaceCommand}" />
+                    <Button Margin="0,0,8,8" Classes="actionPrimary" Content="Add workspace" Click="OnAddWorkspaceClick" />
+                    <Button Margin="0,0,8,8" Classes="actionSecondary" Content="Cancel" Command="{Binding Workspaces.CancelPendingWorkspaceCommand}" />
                   </WrapPanel>
                 </StackPanel>
               </Border>
@@ -294,9 +294,9 @@
                         <TextBlock Text="{Binding Status}" FontWeight="SemiBold" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding StatusDetail}" Classes="metadata" TextWrapping="Wrap" />
                         <WrapPanel>
-                          <Button Margin="0,0,8,8" Content="Rename" Click="OnRenameWorkspaceClick" />
-                          <Button Margin="0,0,8,8" Content="Revalidate" Click="OnRevalidateWorkspaceClick" />
-                          <Button Margin="0,0,8,8" Content="Remove" Click="OnRemoveWorkspaceClick" />
+                          <Button Margin="0,0,8,8" Classes="actionSecondary" Content="Rename" Click="OnRenameWorkspaceClick" />
+                          <Button Margin="0,0,8,8" Classes="actionUtility" Content="Revalidate" Click="OnRevalidateWorkspaceClick" />
+                          <Button Margin="0,0,8,8" Classes="actionCautionary" Content="Remove" Click="OnRemoveWorkspaceClick" />
                         </WrapPanel>
                       </StackPanel>
                     </Border>
@@ -350,7 +350,7 @@
                   <TextBlock Text="{Binding SchemaVersionDisplay}" TextWrapping="Wrap" />
                 </StackPanel>
                 <WrapPanel>
-                  <Button Margin="0,0,8,8" Content="Open settings folder" Command="{Binding OpenSettingsFolderCommand}" />
+                  <Button Margin="0,0,8,8" Classes="actionUtility" Content="Open settings folder" Command="{Binding OpenSettingsFolderCommand}" />
                 </WrapPanel>
               </StackPanel>
             </StackPanel>
