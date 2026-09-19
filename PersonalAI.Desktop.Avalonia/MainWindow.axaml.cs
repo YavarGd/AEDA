@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<ListBoxItem, MountedPresentationScreen> _screenByNavItem = [];
     private readonly Dictionary<string, MountedPresentationScreen> _screenByRoute =
         new(StringComparer.Ordinal);
+    private bool _initialRouteApplied;
     private bool _suppressNavigationSelection;
     private MountedPresentationScreen? _activePresentationScreen;
 
@@ -44,7 +45,15 @@ public partial class MainWindow : Window
         DashboardRoute.OpenModuleRequested += (_, e) =>
             NavigateToPresentation(e.Route, focusContent: true);
         Opened += (_, _) =>
+        {
+            if (_initialRouteApplied)
+            {
+                return;
+            }
+
+            _initialRouteApplied = true;
             Navigate(ShellRoute.Dashboard, focusContent: true);
+        };
         SizeChanged += (_, _) => ApplyResponsiveMode();
         AddHandler(KeyDownEvent, OnShellKeyDown, RoutingStrategies.Tunnel);
         ApplyResponsiveMode();
