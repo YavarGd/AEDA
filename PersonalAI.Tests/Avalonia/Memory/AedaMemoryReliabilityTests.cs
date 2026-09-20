@@ -385,6 +385,91 @@ public sealed class AedaMemoryReliabilityTests
             viewModel.SafeStatusMessage);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreviewRetrievalFailureIsContainedWithoutFalseSuccessOrNoResults(bool cancel)
+    {
+        var pending = Pending<IReadOnlyList<AedaRetrievalPreviewItem>>();
+        var service = new ServiceState
+        {
+            Preview = (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>(
+                [RetrievalItem(MemoryRow)])
+        };
+        var viewModel = CreateViewModel(service);
+        viewModel.RetrievalQuery = "saved query";
+        await viewModel.PreviewRetrievalAsync();
+        var preview = viewModel.RetrievalPreview;
+        Assert.NotEmpty(preview);
+        service.Preview = (_, _, _) => pending.Task;
+
+        var operation = viewModel.PreviewRetrievalAsync();
+        if (cancel)
+        {
+            pending.SetCanceled();
+        }
+        else
+        {
+            pending.SetException(StorageFailure());
+        }
+
+        await operation.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Same(preview, viewModel.RetrievalPreview);
+        Assert.Equal(2, service.PreviewCalls);
+        Assert.Equal(
+            cancel
+                ? "Retrieval preview cancelled."
+                : "Retrieval preview is temporarily unavailable. Try again.",
+            viewModel.SafeStatusMessage);
+        Assert.NotEqual("Retrieval preview loaded.", viewModel.SafeStatusMessage);
+        Assert.NotEqual("No retrieval preview items.", viewModel.SafeStatusMessage);
+        Assert.DoesNotContain(StorageFailureMessage, viewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task SuccessfulPreviewWithZeroResultsClearsPriorPreviewAndReportsNoResults()
+    {
+        var service = new ServiceState
+        {
+            Preview = (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>(
+                [RetrievalItem(MemoryRow)])
+        };
+        var viewModel = CreateViewModel(service);
+        viewModel.RetrievalQuery = "saved query";
+        await viewModel.PreviewRetrievalAsync();
+        Assert.NotEmpty(viewModel.RetrievalPreview);
+
+        service.Preview = (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>([]);
+        await viewModel.PreviewRetrievalAsync();
+
+        Assert.Empty(viewModel.RetrievalPreview);
+        Assert.Equal("No retrieval preview items.", viewModel.SafeStatusMessage);
+        Assert.NotEqual("Retrieval preview is temporarily unavailable. Try again.", viewModel.SafeStatusMessage);
+    }
+
+    [Fact]
+    public async Task SuccessfulPreviewWithResultsReplacesPriorPreview()
+    {
+        var service = new ServiceState
+        {
+            Preview = (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>(
+                [RetrievalItem(MemoryRow)])
+        };
+        var viewModel = CreateViewModel(service);
+        viewModel.RetrievalQuery = "saved query";
+        await viewModel.PreviewRetrievalAsync();
+        var firstPreview = viewModel.RetrievalPreview;
+
+        service.Preview = (_, _, _) => Task.FromResult<IReadOnlyList<AedaRetrievalPreviewItem>>(
+            [RetrievalItem(OtherMemoryRow), NonMemoryRetrievalItem]);
+        await viewModel.PreviewRetrievalAsync();
+
+        Assert.NotSame(firstPreview, viewModel.RetrievalPreview);
+        Assert.Equal([RetrievalItem(OtherMemoryRow), NonMemoryRetrievalItem], viewModel.RetrievalPreview);
+        Assert.Equal("Retrieval preview loaded.", viewModel.SafeStatusMessage);
+    }
+
     [Fact]
     public async Task D07_CreateSuccessPreservesFeedbackAndVisibleState()
     {
@@ -562,6 +647,7 @@ public sealed class AedaMemoryReliabilityTests
     [InlineData("search")]
     [InlineData("detail")]
     [InlineData("delete")]
+    [InlineData("preview")]
     public async Task UnexpectedInvalidOperationIsNotSwallowed(string action)
     {
         var unexpected = new InvalidOperationException("programming error");
@@ -572,10 +658,12 @@ public sealed class AedaMemoryReliabilityTests
             Dashboard = _ => Task.FromException<AedaMemoryDashboardModel>(unexpected),
             Search = (_, _, _) => Task.FromException<IReadOnlyList<AedaMemoryRecordSummary>>(unexpected),
             Detail = (_, _) => Task.FromException<AedaMemoryRecordDetail?>(unexpected),
-            Delete = (_, _) => Task.FromException<AedaMemoryOperationResult>(unexpected)
+            Delete = (_, _) => Task.FromException<AedaMemoryOperationResult>(unexpected),
+            Preview = (_, _, _) => Task.FromException<IReadOnlyList<AedaRetrievalPreviewItem>>(unexpected)
         };
         var viewModel = CreateViewModel(service);
         viewModel.NewMemoryText = "draft A";
+        viewModel.RetrievalQuery = "retrieval query";
 
         var operation = action switch
         {
@@ -584,6 +672,7 @@ public sealed class AedaMemoryReliabilityTests
             "initialize" => viewModel.InitializeAsync(),
             "search" => viewModel.SearchMemoriesAsync(),
             "detail" => viewModel.OpenMemoryDetailAsync(MemoryRow),
+            "preview" => viewModel.PreviewRetrievalAsync(),
             _ => viewModel.DeleteMemoryAsync(MemoryRow)
         };
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => operation);

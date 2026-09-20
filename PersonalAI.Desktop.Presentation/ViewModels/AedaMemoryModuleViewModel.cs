@@ -330,9 +330,25 @@ public sealed partial class AedaMemoryModuleViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanPreviewRetrieval))]
     public async Task PreviewRetrievalAsync()
     {
-        RetrievalPreview = await _moduleService.PreviewRetrievalAsync(
-            RetrievalQuery,
-            SummaryLimit);
+        IReadOnlyList<AedaRetrievalPreviewItem> results;
+        try
+        {
+            results = await _moduleService.PreviewRetrievalAsync(
+                RetrievalQuery,
+                SummaryLimit);
+        }
+        catch (OperationCanceledException)
+        {
+            SafeStatusMessage = "Retrieval preview cancelled.";
+            return;
+        }
+        catch (InvalidOperationException exception) when (IsStorageFailure(exception))
+        {
+            SafeStatusMessage = "Retrieval preview is temporarily unavailable. Try again.";
+            return;
+        }
+
+        RetrievalPreview = results;
         SafeStatusMessage = RetrievalPreview.Count == 0
             ? "No retrieval preview items."
             : "Retrieval preview loaded.";
