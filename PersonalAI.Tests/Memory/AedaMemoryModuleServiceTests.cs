@@ -188,8 +188,35 @@ public sealed class AedaMemoryModuleServiceTests : IDisposable
         Assert.All(preview, item => Assert.False(string.IsNullOrWhiteSpace(item.SourceLabel)));
     }
 
+    [Fact]
+    public async Task PreviewRetrievalAsync_NormalizesExpectedBackendFailureInsteadOfReturningEmpty()
+    {
+        var service = await CreateServiceAsync(
+            retrievalService: new FailingRetrievalService(
+                new InvalidOperationException("vector index unavailable")));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.PreviewRetrievalAsync("dashboards"));
+
+        Assert.Equal("Memory records could not be loaded or saved.", exception.Message);
+        Assert.DoesNotContain("vector index unavailable", exception.Message);
+    }
+
+    [Fact]
+    public async Task PreviewRetrievalAsync_RealZeroMatchSuccessReturnsEmptyWithoutThrowing()
+    {
+        var service = await CreateServiceAsync(
+            retrievalService: new FixedRetrievalService(
+                new RetrievalContextPack([], UsedEmbeddingSearch: false, IsTruncated: false)));
+
+        var preview = await service.PreviewRetrievalAsync("dashboards");
+
+        Assert.Empty(preview);
+    }
+
     private async Task<AedaMemoryModuleService> CreateServiceAsync(
-        SqliteKnowledgeRepository? knowledgeRepository = null)
+        SqliteKnowledgeRepository? knowledgeRepository = null,
+        IRetrievalService? retrievalService = null)
     {
         var memoryRepository = new SqliteMemoryRepository(_databasePath);
         await memoryRepository.InitializeAsync();
@@ -220,7 +247,7 @@ public sealed class AedaMemoryModuleServiceTests : IDisposable
             capabilities,
             policy,
             knowledgeRepository,
-            new RetrievalService(memoryRepository, knowledgeRepository));
+            retrievalService ?? new RetrievalService(memoryRepository, knowledgeRepository));
     }
 
     public void Dispose()
@@ -229,5 +256,21 @@ public sealed class AedaMemoryModuleServiceTests : IDisposable
         {
             Directory.Delete(_directory, recursive: true);
         }
+    }
+
+    private sealed class FailingRetrievalService(Exception exception) : IRetrievalService
+    {
+        public Task<RetrievalContextPack> RetrieveAsync(
+            RetrievalQuery query,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<RetrievalContextPack>(exception);
+    }
+
+    private sealed class FixedRetrievalService(RetrievalContextPack pack) : IRetrievalService
+    {
+        public Task<RetrievalContextPack> RetrieveAsync(
+            RetrievalQuery query,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(pack);
     }
 }

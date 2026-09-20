@@ -409,7 +409,8 @@ public sealed class AedaMemoryModuleService(
             exception is ArgumentException ||
             exception is IOException)
         {
-            return [];
+            throw new InvalidOperationException(
+                "Memory records could not be loaded or saved.");
         }
     }
 
